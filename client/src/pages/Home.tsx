@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import React, { useState } from "react";
 import { toast } from "sonner";
+import { CoachFinderQuiz } from "@/components/CoachFinderQuiz";
 
 // Image URLs from generated assets
 const IMAGES = {
@@ -184,14 +185,7 @@ function HeroSection() {
             </motion.p>
             
             <motion.div variants={fadeInUp} className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
-              <Button 
-                size="lg" 
-                className="bg-gradient-to-r from-cyan to-cyan/80 hover:opacity-90 text-background font-semibold text-lg px-8 glow-cyan"
-                onClick={() => toast("Sign up feature coming soon!")}
-              >
-                Start Free Trial
-                <ArrowRight className="ml-2 w-5 h-5" />
-              </Button>
+              <CoachFinderQuiz />
               <Button 
                 size="lg" 
                 variant="outline" 
