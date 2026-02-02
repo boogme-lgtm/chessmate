@@ -29,7 +29,15 @@ import {
   Crown,
   Sparkles,
   ArrowRight,
-  Check
+  Check,
+  Lock,
+  RefreshCw,
+  Clock,
+  BadgeCheck,
+  Wallet,
+  ShieldCheck,
+  CircleDollarSign,
+  ThumbsUp
 } from "lucide-react";
 import React, { useState } from "react";
 import { toast } from "sonner";
@@ -94,7 +102,7 @@ function Navigation() {
             <Crown className="w-5 h-5 md:w-6 md:h-6 text-white" />
           </div>
           <span className="font-display font-bold text-xl md:text-2xl">
-            Chess<span className="text-cyan">Mate</span>
+            Boo<span className="text-cyan">GMe</span>
           </span>
         </div>
         
@@ -346,6 +354,183 @@ function FeaturesSection() {
               </Card>
             </motion.div>
           ))}
+        </motion.div>
+      </div>
+    </section>
+  );
+}
+
+// Payment Protection Section
+function PaymentProtectionSection() {
+  const protectionFeatures = [
+    {
+      icon: Lock,
+      title: "Escrow Payments",
+      description: "Your payment is held securely until the lesson is completed and you confirm satisfaction. Coaches only receive funds after verified delivery.",
+      highlight: "100% Secure"
+    },
+    {
+      icon: RefreshCw,
+      title: "Pay-Per-Lesson",
+      description: "No risky bulk packages. Pay only for each individual lesson after it's completed. Full control over your spending.",
+      highlight: "No Lock-in"
+    },
+    {
+      icon: Clock,
+      title: "48-Hour Guarantee",
+      description: "Not satisfied? Request a full refund within 48 hours of any lesson. No questions asked, no hassle.",
+      highlight: "Money Back"
+    },
+    {
+      icon: BadgeCheck,
+      title: "Quality Assurance",
+      description: "Coaches must maintain a minimum 4.5-star rating to receive payments. Underperformers are automatically flagged.",
+      highlight: "Verified Quality"
+    }
+  ];
+
+  const howItWorks = [
+    { step: 1, title: "Book Lesson", description: "Schedule with your matched coach", icon: BookOpen },
+    { step: 2, title: "Payment Held", description: "Funds secured in escrow", icon: Wallet },
+    { step: 3, title: "Learn & Play", description: "Enjoy your coaching session", icon: Trophy },
+    { step: 4, title: "Confirm & Release", description: "Approve payment after satisfaction", icon: ThumbsUp }
+  ];
+
+  return (
+    <section id="payment-protection" className="py-24 relative overflow-hidden">
+      <div className="absolute inset-0 bg-gradient-to-b from-background via-cyan/5 to-background" />
+      
+      <div className="container relative z-10">
+        <motion.div
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, margin: "-100px" }}
+          variants={staggerContainer}
+          className="text-center mb-16"
+        >
+          <motion.div variants={fadeInUp}>
+            <Badge className="mb-4 bg-cyan/10 text-cyan border-cyan/20">
+              <ShieldCheck className="w-3 h-3 mr-1" />
+              Payment Protection
+            </Badge>
+          </motion.div>
+          <motion.h2 variants={fadeInUp} className="font-display text-3xl sm:text-4xl lg:text-5xl font-bold mb-4">
+            Your Money is
+            <span className="text-cyan"> Always Protected</span>
+          </motion.h2>
+          <motion.p variants={fadeInUp} className="text-muted-foreground text-lg max-w-2xl mx-auto">
+            Unlike other platforms, BooGMe uses an escrow-based payment system. You only pay when you're satisfied — 
+            no more worrying about coaches underperforming after you've paid.
+          </motion.p>
+        </motion.div>
+
+        {/* How It Works Flow */}
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          className="mb-16"
+        >
+          <div className="relative">
+            {/* Connection line */}
+            <div className="hidden md:block absolute top-1/2 left-0 right-0 h-0.5 bg-gradient-to-r from-cyan/20 via-cyan to-cyan/20 -translate-y-1/2" />
+            
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+              {howItWorks.map((item, index) => (
+                <motion.div
+                  key={item.step}
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  whileInView={{ opacity: 1, scale: 1 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: index * 0.1 }}
+                  className="relative"
+                >
+                  <Card className="glass-card border-cyan/20 hover:border-cyan/50 transition-all text-center h-full">
+                    <CardContent className="p-6">
+                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-cyan to-magenta flex items-center justify-center mx-auto mb-4 relative z-10">
+                        <span className="font-display font-bold text-white">{item.step}</span>
+                      </div>
+                      <item.icon className="w-6 h-6 text-cyan mx-auto mb-2" />
+                      <h4 className="font-display font-semibold mb-1">{item.title}</h4>
+                      <p className="text-sm text-muted-foreground">{item.description}</p>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Protection Features Grid */}
+        <motion.div
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, margin: "-100px" }}
+          variants={staggerContainer}
+          className="grid md:grid-cols-2 gap-6"
+        >
+          {protectionFeatures.map((feature) => (
+            <motion.div key={feature.title} variants={scaleIn}>
+              <Card className="glass-card border-border hover:border-cyan/50 transition-all duration-300 group h-full">
+                <CardContent className="p-6">
+                  <div className="flex items-start gap-4">
+                    <div className="w-14 h-14 rounded-xl bg-cyan/10 text-cyan group-hover:bg-cyan/20 transition-colors flex items-center justify-center flex-shrink-0">
+                      <feature.icon className="w-7 h-7" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <h3 className="font-display text-xl font-semibold">{feature.title}</h3>
+                        <Badge className="bg-cyan/20 text-cyan border-0 text-xs">
+                          {feature.highlight}
+                        </Badge>
+                      </div>
+                      <p className="text-muted-foreground">{feature.description}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          ))}
+        </motion.div>
+
+        {/* Trust Banner */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          className="mt-12"
+        >
+          <Card className="bg-gradient-to-r from-cyan/10 via-magenta/10 to-cyan/10 border-cyan/20">
+            <CardContent className="p-8">
+              <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+                <div className="flex items-center gap-4">
+                  <div className="w-16 h-16 rounded-full bg-gradient-to-br from-cyan to-magenta flex items-center justify-center">
+                    <CircleDollarSign className="w-8 h-8 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="font-display text-xl font-bold">$0 Lost to Bad Coaches</h3>
+                    <p className="text-muted-foreground">Our escrow system has protected over $2M in student payments</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-6 text-center">
+                  <div>
+                    <div className="font-display text-2xl font-bold text-cyan">99.2%</div>
+                    <div className="text-sm text-muted-foreground">Satisfaction Rate</div>
+                  </div>
+                  <div className="w-px h-12 bg-border" />
+                  <div>
+                    <div className="font-display text-2xl font-bold text-magenta">48hr</div>
+                    <div className="text-sm text-muted-foreground">Refund Window</div>
+                  </div>
+                  <div className="w-px h-12 bg-border" />
+                  <div>
+                    <div className="font-display text-2xl font-bold text-cyan">0%</div>
+                    <div className="text-sm text-muted-foreground">Hidden Fees</div>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </motion.div>
       </div>
     </section>
@@ -954,7 +1139,7 @@ function CTASection() {
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan to-magenta"> Elevate Your Game?</span>
           </h2>
           <p className="text-muted-foreground text-lg mb-8">
-            Join thousands of players who have transformed their chess journey with ChessMate. 
+            Join thousands of players who have transformed their chess journey with BooGMe. 
             Start your free trial today and discover your perfect coach.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
@@ -993,7 +1178,7 @@ function Footer() {
                 <Crown className="w-5 h-5 text-white" />
               </div>
               <span className="font-display font-bold text-xl">
-                Chess<span className="text-cyan">Mate</span>
+                Boo<span className="text-cyan">GMe</span>
               </span>
             </div>
             <p className="text-muted-foreground text-sm">
@@ -1035,7 +1220,7 @@ function Footer() {
         
         <div className="pt-8 border-t border-border flex flex-col md:flex-row justify-between items-center gap-4">
           <p className="text-muted-foreground text-sm">
-            © 2026 ChessMate. All rights reserved.
+            © 2026 BooGMe. All rights reserved.
           </p>
           <div className="flex items-center gap-4">
             <Badge variant="outline" className="text-cyan border-cyan/30">
@@ -1060,6 +1245,7 @@ export default function Home() {
       <Navigation />
       <HeroSection />
       <FeaturesSection />
+      <PaymentProtectionSection />
       <MatchingSection />
       <CoachesSection />
       <GamificationSection />
