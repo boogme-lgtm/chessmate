@@ -179,6 +179,32 @@ export const appRouter = router({
       const loginLink = await stripeService.createConnectLoginLink(user.stripeConnectAccountId);
       return { url: loginLink.url };
     }),
+
+    // Get coach earnings summary (for delayed signup flow)
+    getEarnings: protectedProcedure.query(async ({ ctx }) => {
+      const earnings = await db.getCoachEarningsSummary(ctx.user.id);
+      const user = await db.getUserById(ctx.user.id);
+      
+      return {
+        ...earnings,
+        stripeOnboarded: user?.stripeConnectOnboarded || false,
+        needsOnboarding: earnings.hasReachedThreshold && !user?.stripeConnectOnboarded,
+      };
+    }),
+
+    // Check if coach needs to complete Stripe onboarding
+    checkOnboardingRequired: protectedProcedure.query(async ({ ctx }) => {
+      const user = await db.getUserById(ctx.user.id);
+      if (user?.stripeConnectOnboarded) {
+        return { required: false, reason: "already_onboarded" };
+      }
+
+      const hasReachedThreshold = await db.hasCoachReachedPayoutThreshold(ctx.user.id);
+      return {
+        required: hasReachedThreshold,
+        reason: hasReachedThreshold ? "threshold_reached" : "below_threshold",
+      };
+    }),
   }),
 
   // ============ STUDENT OPERATIONS ============

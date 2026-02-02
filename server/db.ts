@@ -434,6 +434,78 @@ export async function getMatchesForStudent(studentId: number) {
     .orderBy(desc(coachMatches.overallScore));
 }
 
+// ============ COACH EARNINGS OPERATIONS ============
+
+/**
+ * Get total earnings for a coach (sum of completed lessons)
+ * Used for delayed Stripe onboarding - coaches don't need to add payment details until $100 threshold
+ */
+export async function getCoachTotalEarnings(coachId: number) {
+  const db = await getDb();
+  if (!db) return 0;
+
+  const result = await db
+    .select({
+      totalEarnings: sql<number>`COALESCE(SUM(${lessons.coachPayoutCents}), 0)`,
+    })
+    .from(lessons)
+    .where(and(
+      eq(lessons.coachId, coachId),
+      eq(lessons.status, "released")
+    ));
+
+  return result[0]?.totalEarnings || 0;
+}
+
+/**
+ * Get pending earnings (completed but not yet released)
+ */
+export async function getCoachPendingEarnings(coachId: number) {
+  const db = await getDb();
+  if (!db) return 0;
+
+  const result = await db
+    .select({
+      pendingEarnings: sql<number>`COALESCE(SUM(${lessons.coachPayoutCents}), 0)`,
+    })
+    .from(lessons)
+    .where(and(
+      eq(lessons.coachId, coachId),
+      eq(lessons.status, "completed")
+    ));
+
+  return result[0]?.pendingEarnings || 0;
+}
+
+/**
+ * Check if coach has reached the $100 threshold for Stripe onboarding
+ * Returns true if total + pending earnings >= $100 (10000 cents)
+ */
+export async function hasCoachReachedPayoutThreshold(coachId: number, thresholdCents: number = 10000) {
+  const totalEarnings = await getCoachTotalEarnings(coachId);
+  const pendingEarnings = await getCoachPendingEarnings(coachId);
+  return (totalEarnings + pendingEarnings) >= thresholdCents;
+}
+
+/**
+ * Get coach earnings summary
+ */
+export async function getCoachEarningsSummary(coachId: number) {
+  const totalEarnings = await getCoachTotalEarnings(coachId);
+  const pendingEarnings = await getCoachPendingEarnings(coachId);
+  const thresholdCents = 10000; // $100
+  const hasReachedThreshold = (totalEarnings + pendingEarnings) >= thresholdCents;
+  
+  return {
+    totalEarningsCents: totalEarnings,
+    pendingEarningsCents: pendingEarnings,
+    combinedEarningsCents: totalEarnings + pendingEarnings,
+    thresholdCents,
+    hasReachedThreshold,
+    percentToThreshold: Math.min(100, Math.round(((totalEarnings + pendingEarnings) / thresholdCents) * 100)),
+  };
+}
+
 // ============ WAITLIST OPERATIONS ============
 
 export async function addToWaitlist(entry: InsertWaitlist) {

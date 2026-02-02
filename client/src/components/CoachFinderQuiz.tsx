@@ -1,13 +1,12 @@
 /*
- * DESIGN: Digital Grandmaster - Coach Finder Quiz
+ * DESIGN: Swiss Modern + Neo-Minimal - Coach Finder Quiz
  * Multi-step questionnaire simulating AI matching process
- * Cyberpunk-lite aesthetic with progress indicators and animated results
+ * Clean, minimal aesthetic with burgundy/terracotta accents
  */
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
@@ -21,7 +20,6 @@ import {
   Trophy,
   Users,
   Star,
-  Sparkles,
   Check,
   Loader2,
   Crown,
@@ -61,10 +59,10 @@ const quizQuestions = [
     subtitle: "We'll find coaches who complement your approach",
     icon: Zap,
     options: [
-      { value: "aggressive", label: "Aggressive", description: "Attack-minded, sharp positions", color: "magenta" },
-      { value: "positional", label: "Positional", description: "Strategic, long-term plans", color: "cyan" },
-      { value: "balanced", label: "Balanced", description: "Flexible, adapts to position", color: "cyan" },
-      { value: "defensive", label: "Solid/Defensive", description: "Safe, minimize risk", color: "cyan" }
+      { value: "aggressive", label: "Aggressive", description: "Attack-minded, sharp positions" },
+      { value: "positional", label: "Positional", description: "Strategic, long-term plans" },
+      { value: "balanced", label: "Balanced", description: "Flexible, adapts to position" },
+      { value: "defensive", label: "Solid/Defensive", description: "Safe, minimize risk" }
     ]
   },
   {
@@ -157,7 +155,6 @@ export function CoachFinderQuiz() {
     if (currentStep < totalSteps - 1) {
       setCurrentStep(prev => prev + 1);
     } else {
-      // Start matching animation
       startMatching();
     }
   };
@@ -172,7 +169,6 @@ export function CoachFinderQuiz() {
     setIsMatching(true);
     setMatchProgress(0);
     
-    // Simulate AI matching process
     const interval = setInterval(() => {
       setMatchProgress(prev => {
         if (prev >= 100) {
@@ -206,7 +202,7 @@ export function CoachFinderQuiz() {
       <DialogTrigger asChild>
         <Button 
           size="lg" 
-          className="bg-gradient-to-r from-cyan to-cyan/80 hover:opacity-90 text-background font-semibold text-lg px-8 glow-cyan"
+          className="bg-burgundy hover:bg-burgundy/90 text-white font-medium px-6"
         >
           <Brain className="mr-2 w-5 h-5" />
           Find Your Coach
@@ -215,8 +211,8 @@ export function CoachFinderQuiz() {
       
       <DialogContent className="sm:max-w-2xl bg-background border-border max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="font-display text-2xl flex items-center gap-2">
-            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-cyan to-magenta flex items-center justify-center">
+          <DialogTitle className="text-xl flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-burgundy flex items-center justify-center">
               <Brain className="w-5 h-5 text-white" />
             </div>
             <span>
@@ -242,16 +238,16 @@ export function CoachFinderQuiz() {
                   <span>Question {currentStep + 1} of {totalSteps}</span>
                   <span>{Math.round(progress)}% complete</span>
                 </div>
-                <Progress value={progress} className="h-2 bg-secondary" />
+                <Progress value={progress} className="h-2" />
               </div>
 
               {/* Question */}
               <div className="text-center py-4">
-                <div className="w-16 h-16 rounded-full bg-cyan/10 flex items-center justify-center mx-auto mb-4">
-                  <currentQuestion.icon className="w-8 h-8 text-cyan" />
+                <div className="w-14 h-14 rounded-full bg-burgundy/10 flex items-center justify-center mx-auto mb-4">
+                  <currentQuestion.icon className="w-7 h-7 text-burgundy" />
                 </div>
-                <h3 className="font-display text-xl font-semibold mb-2">{currentQuestion.title}</h3>
-                <p className="text-muted-foreground">{currentQuestion.subtitle}</p>
+                <h3 className="text-lg font-semibold mb-2">{currentQuestion.title}</h3>
+                <p className="text-muted-foreground text-sm">{currentQuestion.subtitle}</p>
               </div>
 
               {/* Options */}
@@ -261,8 +257,8 @@ export function CoachFinderQuiz() {
                     key={option.value}
                     className={`cursor-pointer transition-all duration-200 ${
                       answers[currentQuestion.id] === option.value
-                        ? "border-cyan bg-cyan/10 glow-cyan"
-                        : "border-border hover:border-cyan/50 glass-card"
+                        ? "border-burgundy bg-burgundy/5 shadow-sm"
+                        : "border-border hover:border-burgundy/50"
                     }`}
                     onClick={() => handleAnswer(option.value)}
                   >
@@ -270,28 +266,21 @@ export function CoachFinderQuiz() {
                       <div className="flex items-start gap-3">
                         <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-0.5 ${
                           answers[currentQuestion.id] === option.value
-                            ? "border-cyan bg-cyan"
+                            ? "border-burgundy bg-burgundy"
                             : "border-muted-foreground"
                         }`}>
                           {answers[currentQuestion.id] === option.value && (
-                            <Check className="w-3 h-3 text-background" />
+                            <Check className="w-3 h-3 text-white" />
                           )}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="font-semibold flex items-center gap-2">
-                            {('icon' in option) && <span>{option.icon}</span>}
-                            {option.label}
-                          </div>
-                          <div className="text-sm text-muted-foreground">{option.description}</div>
-                          {('rating' in option) && (
-                            <Badge variant="outline" className="mt-2 text-xs border-cyan/30 text-cyan">
-                              {option.rating}
-                            </Badge>
+                          <div className="font-medium text-sm">{option.label}</div>
+                          <div className="text-xs text-muted-foreground mt-0.5">{option.description}</div>
+                          {"rating" in option && (
+                            <div className="text-xs font-mono text-burgundy mt-1">{option.rating}</div>
                           )}
-                          {('sessions' in option) && (
-                            <Badge variant="outline" className="mt-2 text-xs border-magenta/30 text-magenta">
-                              {option.sessions}
-                            </Badge>
+                          {"sessions" in option && (
+                            <div className="text-xs font-mono text-terracotta mt-1">{option.sessions}</div>
                           )}
                         </div>
                       </div>
@@ -301,12 +290,12 @@ export function CoachFinderQuiz() {
               </div>
 
               {/* Navigation */}
-              <div className="flex justify-between pt-4">
+              <div className="flex justify-between pt-4 border-t border-border">
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   onClick={handleBack}
                   disabled={currentStep === 0}
-                  className="border-border"
+                  className="text-muted-foreground"
                 >
                   <ChevronLeft className="w-4 h-4 mr-1" />
                   Back
@@ -314,19 +303,10 @@ export function CoachFinderQuiz() {
                 <Button
                   onClick={handleNext}
                   disabled={!answers[currentQuestion.id]}
-                  className="bg-gradient-to-r from-cyan to-magenta hover:opacity-90 text-white"
+                  className="bg-burgundy hover:bg-burgundy/90 text-white"
                 >
-                  {currentStep === totalSteps - 1 ? (
-                    <>
-                      Find Matches
-                      <Sparkles className="w-4 h-4 ml-1" />
-                    </>
-                  ) : (
-                    <>
-                      Next
-                      <ChevronRight className="w-4 h-4 ml-1" />
-                    </>
-                  )}
+                  {currentStep === totalSteps - 1 ? "Find Matches" : "Next"}
+                  <ChevronRight className="w-4 h-4 ml-1" />
                 </Button>
               </div>
             </motion.div>
@@ -336,68 +316,72 @@ export function CoachFinderQuiz() {
           {isMatching && (
             <motion.div
               key="matching"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="py-12 text-center space-y-8"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="py-12 text-center"
             >
-              <div className="relative w-32 h-32 mx-auto">
-                <motion.div
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                  className="absolute inset-0 rounded-full border-4 border-transparent border-t-cyan border-r-magenta"
-                />
-                <div className="absolute inset-4 rounded-full bg-gradient-to-br from-cyan/20 to-magenta/20 flex items-center justify-center">
-                  <Brain className="w-12 h-12 text-cyan" />
+              <div className="relative w-24 h-24 mx-auto mb-6">
+                <div className="absolute inset-0 rounded-full bg-burgundy/10 animate-ping" />
+                <div className="relative w-24 h-24 rounded-full bg-burgundy/20 flex items-center justify-center">
+                  <Brain className="w-10 h-10 text-burgundy animate-pulse" />
                 </div>
               </div>
-
-              <div className="space-y-2">
-                <h3 className="font-display text-xl font-semibold">AI Matching in Progress</h3>
-                <p className="text-muted-foreground">Analyzing your preferences and finding ideal coaches...</p>
-              </div>
-
-              <div className="max-w-xs mx-auto space-y-2">
-                <Progress value={Math.min(matchProgress, 100)} className="h-3 bg-secondary" />
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Processing</span>
-                  <span className="text-cyan font-mono">{Math.min(Math.round(matchProgress), 100)}%</span>
+              
+              <h3 className="text-lg font-semibold mb-2">AI Matching in Progress</h3>
+              <p className="text-muted-foreground text-sm mb-6">
+                Analyzing your preferences and finding the best coaches...
+              </p>
+              
+              <div className="max-w-xs mx-auto space-y-3">
+                <Progress value={Math.min(matchProgress, 100)} className="h-2" />
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>Analyzing profile...</span>
+                  <span>{Math.round(Math.min(matchProgress, 100))}%</span>
                 </div>
               </div>
-
-              <div className="space-y-2 text-sm text-muted-foreground">
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: matchProgress > 20 ? 1 : 0 }}
-                  className="flex items-center justify-center gap-2"
-                >
-                  <Check className="w-4 h-4 text-cyan" />
-                  Analyzing skill level preferences
-                </motion.div>
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: matchProgress > 40 ? 1 : 0 }}
-                  className="flex items-center justify-center gap-2"
-                >
-                  <Check className="w-4 h-4 text-cyan" />
-                  Matching learning styles
-                </motion.div>
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: matchProgress > 60 ? 1 : 0 }}
-                  className="flex items-center justify-center gap-2"
-                >
-                  <Check className="w-4 h-4 text-cyan" />
-                  Checking coach availability
-                </motion.div>
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: matchProgress > 80 ? 1 : 0 }}
-                  className="flex items-center justify-center gap-2"
-                >
-                  <Check className="w-4 h-4 text-cyan" />
-                  Calculating compatibility scores
-                </motion.div>
+              
+              <div className="mt-8 space-y-2 text-sm text-muted-foreground">
+                {matchProgress > 20 && (
+                  <motion.div 
+                    initial={{ opacity: 0 }} 
+                    animate={{ opacity: 1 }}
+                    className="flex items-center justify-center gap-2"
+                  >
+                    <Check className="w-4 h-4 text-burgundy" />
+                    <span>Skill level analyzed</span>
+                  </motion.div>
+                )}
+                {matchProgress > 40 && (
+                  <motion.div 
+                    initial={{ opacity: 0 }} 
+                    animate={{ opacity: 1 }}
+                    className="flex items-center justify-center gap-2"
+                  >
+                    <Check className="w-4 h-4 text-burgundy" />
+                    <span>Goals matched</span>
+                  </motion.div>
+                )}
+                {matchProgress > 60 && (
+                  <motion.div 
+                    initial={{ opacity: 0 }} 
+                    animate={{ opacity: 1 }}
+                    className="flex items-center justify-center gap-2"
+                  >
+                    <Check className="w-4 h-4 text-burgundy" />
+                    <span>Style compatibility checked</span>
+                  </motion.div>
+                )}
+                {matchProgress > 80 && (
+                  <motion.div 
+                    initial={{ opacity: 0 }} 
+                    animate={{ opacity: 1 }}
+                    className="flex items-center justify-center gap-2"
+                  >
+                    <Check className="w-4 h-4 text-burgundy" />
+                    <span>Schedule alignment verified</span>
+                  </motion.div>
+                )}
               </div>
             </motion.div>
           )}
@@ -411,12 +395,12 @@ export function CoachFinderQuiz() {
               className="space-y-6"
             >
               <div className="text-center py-4">
-                <Badge className="mb-4 bg-cyan/10 text-cyan border-cyan/20">
-                  <Sparkles className="w-3 h-3 mr-1" />
+                <div className="badge-burgundy inline-flex mb-3">
+                  <Check className="w-4 h-4 mr-1" />
                   3 Perfect Matches Found
-                </Badge>
-                <p className="text-muted-foreground">
-                  Based on your preferences, here are your top coach recommendations
+                </div>
+                <p className="text-muted-foreground text-sm">
+                  Based on your preferences, here are your top coach matches
                 </p>
               </div>
 
@@ -424,64 +408,59 @@ export function CoachFinderQuiz() {
                 {mockCoaches.map((coach, index) => (
                   <motion.div
                     key={coach.id}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: index * 0.15 }}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.1 }}
                   >
-                    <Card className="glass-card border-border hover:border-cyan/50 transition-all">
+                    <Card className="border-border hover:border-burgundy/30 transition-colors">
                       <CardContent className="p-4">
                         <div className="flex gap-4">
                           <div className="relative flex-shrink-0">
-                            <img
-                              src={coach.image}
+                            <img 
+                              src={coach.image} 
                               alt={coach.name}
-                              className="w-20 h-20 rounded-lg object-cover"
+                              className="w-16 h-16 rounded-lg object-cover"
                             />
-                            {index === 0 && (
-                              <div className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-gradient-to-br from-cyan to-magenta flex items-center justify-center">
-                                <Crown className="w-3 h-3 text-white" />
-                              </div>
-                            )}
+                            <div className="absolute -top-2 -right-2 w-8 h-8 rounded-full bg-burgundy text-white flex items-center justify-center text-xs font-bold">
+                              {coach.matchScore}%
+                            </div>
                           </div>
                           
                           <div className="flex-1 min-w-0">
                             <div className="flex items-start justify-between gap-2">
                               <div>
-                                <h4 className="font-display font-semibold">{coach.name}</h4>
-                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                  <Badge variant="outline" className="text-xs border-magenta/30 text-magenta">
-                                    {coach.title}
-                                  </Badge>
-                                  <span className="font-mono text-cyan">{coach.rating}</span>
+                                <h4 className="font-semibold">{coach.name}</h4>
+                                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                  <span className="badge-burgundy text-xs py-0.5">{coach.title}</span>
+                                  <span className="font-mono">{coach.rating}</span>
                                 </div>
                               </div>
-                              <div className="text-right flex-shrink-0">
-                                <div className="text-2xl font-bold text-cyan">{coach.matchScore}%</div>
-                                <div className="text-xs text-muted-foreground">match</div>
+                              <div className="flex items-center gap-1">
+                                <Star className="w-4 h-4 text-gold fill-gold" />
+                                <span className="text-sm font-medium">{coach.rating_stars}</span>
                               </div>
                             </div>
                             
-                            <div className="flex flex-wrap gap-1 mt-2">
+                            <div className="mt-2 flex flex-wrap gap-1">
                               {coach.highlights.map((highlight) => (
-                                <Badge 
-                                  key={highlight} 
-                                  variant="outline" 
-                                  className="text-xs border-border bg-secondary/50"
+                                <span 
+                                  key={highlight}
+                                  className="text-xs bg-muted px-2 py-0.5 rounded"
                                 >
                                   {highlight}
-                                </Badge>
+                                </span>
                               ))}
                             </div>
                             
-                            <div className="flex items-center gap-4 mt-3 text-sm">
-                              <div className="flex items-center gap-1">
-                                <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
-                                <span>{coach.rating_stars}</span>
+                            <div className="mt-3 flex items-center justify-between">
+                              <div className="text-xs text-muted-foreground">
+                                <Users className="w-3 h-3 inline mr-1" />
+                                {coach.students} students
                               </div>
-                              <div className="flex items-center gap-1 text-muted-foreground">
-                                <Users className="w-4 h-4" />
-                                <span>{coach.students} students</span>
-                              </div>
+                              <Button size="sm" variant="outline" className="text-xs h-7 border-burgundy text-burgundy hover:bg-burgundy/5">
+                                <MessageSquare className="w-3 h-3 mr-1" />
+                                Book Trial
+                              </Button>
                             </div>
                           </div>
                         </div>
@@ -491,21 +470,19 @@ export function CoachFinderQuiz() {
                 ))}
               </div>
 
-              <div className="flex flex-col sm:flex-row gap-3 pt-4">
+              <div className="flex gap-3 pt-4 border-t border-border">
                 <Button
                   variant="outline"
                   onClick={resetQuiz}
-                  className="flex-1 border-border"
+                  className="flex-1"
                 >
-                  <ChevronLeft className="w-4 h-4 mr-1" />
                   Retake Quiz
                 </Button>
                 <Button
                   onClick={handleClose}
-                  className="flex-1 bg-gradient-to-r from-cyan to-magenta hover:opacity-90 text-white"
+                  className="flex-1 bg-burgundy hover:bg-burgundy/90 text-white"
                 >
-                  <MessageSquare className="w-4 h-4 mr-1" />
-                  Contact Top Match
+                  Browse All Coaches
                 </Button>
               </div>
             </motion.div>
@@ -515,5 +492,3 @@ export function CoachFinderQuiz() {
     </Dialog>
   );
 }
-
-export default CoachFinderQuiz;

@@ -22,6 +22,21 @@
 - [x] Business model document
 
 ## Planned
-- [ ] Email capture / waitlist functionality
-- [ ] Interactive puzzle demo
+- [x] Email capture / waitlist functionality
+- [x] Interactive puzzle demo
 - [ ] Coach video introductions
+- [x] Coach dashboard with earnings tracking
+
+
+## Design Overhaul (Swiss Modern + Neo-Minimal)
+- [x] Update color palette to burgundy/terracotta earthy tones
+- [x] Implement Swiss Modern grid-based layout
+- [x] Update typography to Inter font family
+- [x] Remove cyberpunk glow effects
+- [x] Add generous whitespace and clean lines
+- [x] Simplify animations to subtle micro-interactions
+
+## Delayed Coach Signup
+- [x] Implement $100 earnings threshold before requiring payment details
+- [x] Create coach earnings tracking system
+- [x] Add Stripe Connect Express embedded onboarding flow
