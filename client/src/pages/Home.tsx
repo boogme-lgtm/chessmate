@@ -21,8 +21,7 @@ import {
 import React, { useState } from "react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
-import { CoachFinderQuiz } from "@/components/CoachFinderQuiz";
-import { PuzzleDemoTrigger } from "@/components/PuzzleDemo";
+import { CoachMatchingAssessment } from "@/components/CoachMatchingAssessment";
 
 // Minimal animation variants
 const fadeIn = {
@@ -78,12 +77,12 @@ function Navigation() {
           >
             Features
           </button>
-          <button 
-            onClick={() => handleNavClick("coaches")}
+          <a 
+            href="/coaches"
             className="text-sm font-light text-muted-foreground hover:text-foreground transition-colors"
           >
             For Coaches
-          </button>
+          </a>
           <button 
             onClick={() => handleNavClick("waitlist")}
             className="text-sm font-light text-muted-foreground hover:text-foreground transition-colors"
@@ -115,12 +114,12 @@ function Navigation() {
             >
               Features
             </button>
-            <button 
-              onClick={() => handleNavClick("coaches")}
+            <a 
+              href="/coaches"
               className="block text-sm font-light text-muted-foreground hover:text-foreground transition-colors"
             >
               For Coaches
-            </button>
+            </a>
             <button 
               onClick={() => handleNavClick("waitlist")}
               className="block text-sm font-light text-muted-foreground hover:text-foreground transition-colors"
@@ -136,7 +135,7 @@ function Navigation() {
 
 // Hero Section - Palantir minimalism
 function HeroSection() {
-  const [quizOpen, setQuizOpen] = useState(false);
+  const [assessmentOpen, setAssessmentOpen] = useState(false);
 
   return (
     <section className="relative min-h-screen flex items-center justify-center pt-20">
@@ -158,16 +157,15 @@ function HeroSection() {
             </p>
           </motion.div>
 
-          <motion.div variants={fadeIn} className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+          <motion.div variants={fadeIn} className="flex justify-center">
             <Button 
-              onClick={() => setQuizOpen(true)}
+              onClick={() => setAssessmentOpen(true)}
               size="lg" 
               className="btn-primary group"
             >
               Find Your Coach
               <ChevronRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
             </Button>
-            <PuzzleDemoTrigger />
           </motion.div>
 
           <motion.div variants={fadeIn} className="pt-12">
@@ -189,7 +187,7 @@ function HeroSection() {
         </motion.div>
       </div>
 
-      {quizOpen && <CoachFinderQuiz />}
+      {assessmentOpen && <CoachMatchingAssessment onClose={() => setAssessmentOpen(false)} />}
     </section>
   );
 }

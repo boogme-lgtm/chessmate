@@ -85,10 +85,23 @@
 - [x] Phase 1: Enhance typography hierarchy
 - [x] Phase 1: Fix spacing consistency
 - [x] Phase 1: Strengthen coach value proposition
-- [ ] Phase 2: Create dedicated /coaches landing page
+- [x] Phase 2: Create dedicated /coaches landing page
+- [x] Phase 2: Add interactive earnings calculator component
+- [x] Phase 2: Add onboarding flow visualization for coaches
+- [x] Phase 2: Add coach FAQ section
+- [x] Phase 2: Create route for /coaches page in App.tsx
 - [ ] Phase 2: Expand payment protection with examples
 - [ ] Phase 2: Add "How It Works" for coaches
 
 
 ## Bug Fixes (In Progress)
 - [x] Fix puzzle FEN parsing error causing crash when opening puzzle demo
+
+## Questionnaire Enhancement (New)
+- [x] Research best practices from questionnaire-based matching platforms
+- [x] Design comprehensive 20-question AI-powered assessment
+- [x] Remove "Try a Puzzle" demo from homepage
+- [x] Replace 5-question quiz with 20-question comprehensive assessment
+- [x] Implement multi-step questionnaire with progress tracking
+- [x] Add AI-powered analysis and coach matching logic
+- [x] Update "Find Your Coach" CTA to launch questionnaire
