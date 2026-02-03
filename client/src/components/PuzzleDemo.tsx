@@ -124,7 +124,8 @@ export function PuzzleDemo({ difficulty, onDifficultyChange, onClose }: PuzzleDe
   useEffect(() => {
     if (puzzleData) {
       setCurrentPuzzle(puzzleData);
-      setBoard(fenToBoard(puzzleData.puzzle.initialPly?.fen || puzzleData.game.fen));
+      // Use the FEN provided by the server (parsed from PGN)
+      setBoard(fenToBoard(puzzleData.fen));
       setMovesMade([]);
       setPuzzleSolved(false);
       setShowHint(false);
@@ -173,7 +174,7 @@ export function PuzzleDemo({ difficulty, onDifficultyChange, onClose }: PuzzleDe
 
   const handleReset = () => {
     if (currentPuzzle) {
-      setBoard(fenToBoard(currentPuzzle.puzzle.initialPly?.fen || currentPuzzle.game.fen));
+      setBoard(fenToBoard(currentPuzzle.fen));
       setMovesMade([]);
       setPuzzleSolved(false);
       setShowHint(false);

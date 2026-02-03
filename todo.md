@@ -88,3 +88,7 @@
 - [ ] Phase 2: Create dedicated /coaches landing page
 - [ ] Phase 2: Expand payment protection with examples
 - [ ] Phase 2: Add "How It Works" for coaches
+
+
+## Bug Fixes (In Progress)
+- [x] Fix puzzle FEN parsing error causing crash when opening puzzle demo

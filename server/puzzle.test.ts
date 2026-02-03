@@ -25,6 +25,8 @@ describe("puzzle.getNext", () => {
     expect(result.puzzle.solution).toBeInstanceOf(Array);
     expect(result.puzzle.rating).toBeTypeOf("number");
     expect(result.game).toBeDefined();
+    expect(result.fen).toBeTypeOf("string");
+    expect(result.fen).toMatch(/^[rnbqkpRNBQKP1-8\/\s]+/);
   }, 10000); // 10s timeout for API call
 
   it("fetches a puzzle with specific difficulty", async () => {
@@ -37,6 +39,7 @@ describe("puzzle.getNext", () => {
     expect(result.puzzle).toBeDefined();
     expect(result.puzzle.solution).toBeInstanceOf(Array);
     expect(result.puzzle.rating).toBeTypeOf("number");
+    expect(result.fen).toBeTypeOf("string");
   }, 10000);
 
   it("fetches a puzzle with a specific theme", async () => {

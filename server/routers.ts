@@ -7,6 +7,7 @@ import { TRPCError } from "@trpc/server";
 import * as db from "./db";
 import * as stripeService from "./stripe";
 import { ENV } from "./_core/env";
+import { Chess } from "chess.js";
 
 export const appRouter = router({
   system: systemRouter,
@@ -42,8 +43,28 @@ export const appRouter = router({
               message: "Failed to fetch puzzle from Lichess",
             });
           }
-          const puzzle = await response.json();
-          return puzzle;
+          const puzzleData = await response.json();
+          
+          // Parse PGN to get FEN at the puzzle start position
+          const chess = new Chess();
+          const moves = puzzleData.game.pgn.split(' ');
+          const initialPly = puzzleData.puzzle.initialPly;
+          
+          // Play moves up to the puzzle start
+          for (let i = 0; i < initialPly && i < moves.length; i++) {
+            try {
+              chess.move(moves[i]);
+            } catch (e) {
+              // Skip invalid moves
+              console.warn(`[Lichess] Skipping invalid move: ${moves[i]}`);
+            }
+          }
+          
+          // Add FEN to the response
+          return {
+            ...puzzleData,
+            fen: chess.fen(),
+          };
         } catch (error) {
           console.error("[Lichess API] Error fetching puzzle:", error);
           throw new TRPCError({
