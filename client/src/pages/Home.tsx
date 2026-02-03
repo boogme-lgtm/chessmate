@@ -148,13 +148,13 @@ function HeroSection() {
           className="max-w-4xl mx-auto text-center space-y-8"
         >
           <motion.div variants={fadeIn} className="space-y-6">
-            <h1 className="text-6xl md:text-7xl lg:text-8xl font-thin tracking-tighter text-balance">
-              Book Your Chess
+            <h1 className="text-5xl md:text-6xl lg:text-7xl font-thin tracking-tighter text-balance leading-tight">
+              Connect with Elite Chess Coaches.
               <br />
-              Grandmaster
+              <span className="text-muted-foreground">Pay Only After Lessons.</span>
             </h1>
-            <p className="text-lg md:text-xl font-light text-muted-foreground max-w-2xl mx-auto">
-              AI-powered coach matching with payment protection. Connect with elite chess coaches worldwide.
+            <p className="text-xl md:text-2xl font-light text-muted-foreground max-w-3xl mx-auto leading-relaxed">
+              AI-powered coach matching with escrow payment protection. No upfront fees, no risk.
             </p>
           </motion.div>
 
@@ -224,11 +224,11 @@ function FeaturesSection() {
           variants={staggerContainer}
           className="space-y-20"
         >
-          <motion.div variants={fadeIn} className="text-center space-y-4 max-w-2xl mx-auto">
-            <h2 className="text-4xl md:text-5xl font-thin tracking-tighter">
+          <motion.div variants={fadeIn} className="text-center space-y-6 max-w-3xl mx-auto">
+            <h2 className="text-5xl md:text-6xl font-thin tracking-tighter leading-tight">
               Built for serious players
             </h2>
-            <p className="text-lg font-light text-muted-foreground">
+            <p className="text-xl md:text-2xl font-light text-muted-foreground leading-relaxed">
               A platform designed to protect both students and coaches
             </p>
           </motion.div>
@@ -285,11 +285,11 @@ function PaymentProtectionSection() {
           variants={staggerContainer}
           className="max-w-4xl mx-auto space-y-16"
         >
-          <motion.div variants={fadeIn} className="text-center space-y-4">
-            <h2 className="text-4xl md:text-5xl font-thin tracking-tighter">
+          <motion.div variants={fadeIn} className="text-center space-y-6">
+            <h2 className="text-5xl md:text-6xl font-thin tracking-tighter leading-tight">
               Payment Protection
             </h2>
-            <p className="text-lg font-light text-muted-foreground max-w-2xl mx-auto">
+            <p className="text-xl md:text-2xl font-light text-muted-foreground max-w-3xl mx-auto leading-relaxed">
               The chess coaching industry lacks payment protection. We solve this with escrow-style payments and satisfaction guarantees.
             </p>
           </motion.div>
@@ -336,13 +336,16 @@ function ForCoachesSection() {
           variants={staggerContainer}
           className="max-w-4xl mx-auto space-y-16"
         >
-          <motion.div variants={fadeIn} className="text-center space-y-4">
-            <h2 className="text-4xl md:text-5xl font-thin tracking-tighter">
+          <motion.div variants={fadeIn} className="text-center space-y-6">
+            <h2 className="text-5xl md:text-6xl font-thin tracking-tighter leading-tight">
               For Chess Coaches
             </h2>
-            <p className="text-lg font-light text-muted-foreground max-w-2xl mx-auto">
-              We're building the best platform for elite chess coaches. Join our founding cohort.
+            <p className="text-xl md:text-2xl font-light text-muted-foreground max-w-3xl mx-auto leading-relaxed">
+              Earn more, keep more. Lower fees than Chess.com. Payment protection for both sides.
             </p>
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20">
+              <span className="text-sm font-light text-foreground">Limited spots for founding coaches</span>
+            </div>
           </motion.div>
 
           <motion.div variants={fadeIn} className="space-y-4">
@@ -418,13 +421,16 @@ function WaitlistSection() {
           variants={staggerContainer}
           className="max-w-2xl mx-auto text-center space-y-12"
         >
-          <motion.div variants={fadeIn} className="space-y-4">
-            <h2 className="text-4xl md:text-5xl font-thin tracking-tighter">
+          <motion.div variants={fadeIn} className="space-y-6">
+            <h2 className="text-5xl md:text-6xl font-thin tracking-tighter leading-tight">
               Join the Waitlist
             </h2>
-            <p className="text-lg font-light text-muted-foreground">
+            <p className="text-xl md:text-2xl font-light text-muted-foreground leading-relaxed">
               We're launching soon. Be among the first to access elite chess coaching with payment protection.
             </p>
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20">
+              <span className="text-sm font-light text-foreground">🔥 Limited spots for founding members</span>
+            </div>
           </motion.div>
 
           <motion.form variants={fadeIn} onSubmit={handleSubmit} className="space-y-6">

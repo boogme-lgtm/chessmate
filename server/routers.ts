@@ -20,6 +20,40 @@ export const appRouter = router({
     }),
   }),
 
+  // ============ LICHESS PUZZLES ============
+  puzzle: router({
+    getNext: publicProcedure
+      .input(z.object({
+        difficulty: z.enum(["easiest", "easier", "normal", "harder", "hardest"]).optional(),
+        theme: z.string().optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        const params = new URLSearchParams();
+        if (input?.difficulty) params.append("difficulty", input.difficulty);
+        if (input?.theme) params.append("angle", input.theme);
+        
+        const url = `https://lichess.org/api/puzzle/next${params.toString() ? `?${params.toString()}` : ''}`;
+        
+        try {
+          const response = await fetch(url);
+          if (!response.ok) {
+            throw new TRPCError({
+              code: "INTERNAL_SERVER_ERROR",
+              message: "Failed to fetch puzzle from Lichess",
+            });
+          }
+          const puzzle = await response.json();
+          return puzzle;
+        } catch (error) {
+          console.error("[Lichess API] Error fetching puzzle:", error);
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Failed to fetch puzzle",
+          });
+        }
+      }),
+  }),
+
   // ============ WAITLIST ============
   waitlist: router({
     join: publicProcedure

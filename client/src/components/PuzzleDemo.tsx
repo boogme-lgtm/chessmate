@@ -1,21 +1,23 @@
 /**
- * Interactive Chess Puzzle Demo
- * A simple puzzle component to showcase the learning experience
- * Uses a visual chess board with clickable squares
+ * Interactive Chess Puzzle Demo - Powered by Lichess
+ * Fetches real puzzles from Lichess API
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { 
   Lightbulb, 
   RotateCcw, 
   ChevronRight,
   Trophy,
-  X
+  X,
+  Loader2
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
+import { trpc } from "@/lib/trpc";
 
 // Chess piece unicode characters
 const PIECES: Record<string, string> = {
@@ -23,290 +25,332 @@ const PIECES: Record<string, string> = {
   'k': '♚', 'q': '♛', 'r': '♜', 'b': '♝', 'n': '♞', 'p': '♟',
 };
 
-// Sample puzzles with FEN-like positions and solutions
-const PUZZLES = [
-  {
-    id: 1,
-    title: "Mate in 1",
-    difficulty: "Beginner",
-    description: "White to move. Find the checkmate!",
-    // Simplified board state (8x8 array, uppercase = white, lowercase = black)
-    position: [
-      ['r', '.', '.', '.', 'k', '.', '.', 'r'],
-      ['p', 'p', 'p', '.', '.', 'p', 'p', 'p'],
-      ['.', '.', '.', '.', '.', '.', '.', '.'],
-      ['.', '.', '.', '.', '.', '.', '.', '.'],
-      ['.', '.', '.', '.', '.', '.', '.', '.'],
-      ['.', '.', '.', '.', '.', '.', '.', '.'],
-      ['P', 'P', 'P', '.', '.', 'P', 'P', 'P'],
-      ['R', '.', '.', '.', 'Q', '.', 'K', '.'],
-    ],
-    solution: { from: [7, 4], to: [0, 4] }, // Qe8#
-    hint: "Look for a back rank weakness",
-  },
-  {
-    id: 2,
-    title: "Fork the King and Queen",
-    difficulty: "Intermediate",
-    description: "White to move. Win material with a knight fork!",
-    position: [
-      ['r', '.', 'b', '.', 'k', '.', '.', 'r'],
-      ['p', 'p', 'p', '.', '.', 'p', 'p', 'p'],
-      ['.', '.', 'n', '.', '.', '.', '.', '.'],
-      ['.', '.', '.', 'q', '.', '.', '.', '.'],
-      ['.', '.', '.', '.', 'N', '.', '.', '.'],
-      ['.', '.', '.', '.', '.', '.', '.', '.'],
-      ['P', 'P', 'P', '.', '.', 'P', 'P', 'P'],
-      ['R', '.', 'B', 'Q', '.', '.', 'K', '.'],
-    ],
-    solution: { from: [4, 4], to: [2, 3] }, // Nd6+ forking
-    hint: "Knights can attack multiple pieces at once",
-  },
-  {
-    id: 3,
-    title: "Discovered Attack",
-    difficulty: "Advanced",
-    description: "White to move. Use a discovered attack to win the queen!",
-    position: [
-      ['r', '.', 'b', '.', 'k', '.', '.', 'r'],
-      ['p', 'p', '.', '.', '.', 'p', 'p', 'p'],
-      ['.', '.', '.', '.', '.', '.', '.', '.'],
-      ['.', '.', '.', 'q', 'B', '.', '.', '.'],
-      ['.', '.', '.', '.', '.', '.', '.', '.'],
-      ['.', '.', '.', '.', '.', '.', '.', '.'],
-      ['P', 'P', 'P', '.', 'R', 'P', 'P', 'P'],
-      ['.', '.', '.', 'Q', '.', '.', 'K', '.'],
-    ],
-    solution: { from: [5, 4], to: [5, 0] }, // Bxa3+ discovering attack on queen
-    hint: "Moving one piece can reveal an attack from another",
-  },
-];
-
-interface PuzzleDemoProps {
+interface PuzzleDemoTriggerProps {
   onClose?: () => void;
 }
 
-export function PuzzleDemo({ onClose }: PuzzleDemoProps) {
-  const [currentPuzzle, setCurrentPuzzle] = useState(0);
-  const [selectedSquare, setSelectedSquare] = useState<[number, number] | null>(null);
-  const [solved, setSolved] = useState(false);
-  const [showHint, setShowHint] = useState(false);
-  const [attempts, setAttempts] = useState(0);
-
-  const puzzle = PUZZLES[currentPuzzle];
-
-  const handleSquareClick = (row: number, col: number) => {
-    if (solved) return;
-
-    if (selectedSquare === null) {
-      // Select a piece
-      const piece = puzzle.position[row][col];
-      if (piece !== '.' && piece === piece.toUpperCase()) {
-        // Only allow selecting white pieces
-        setSelectedSquare([row, col]);
-      }
-    } else {
-      // Try to make a move
-      const [fromRow, fromCol] = selectedSquare;
-      const solution = puzzle.solution;
-
-      if (
-        fromRow === solution.from[0] &&
-        fromCol === solution.from[1] &&
-        row === solution.to[0] &&
-        col === solution.to[1]
-      ) {
-        // Correct move!
-        setSolved(true);
-        toast.success("Correct! Great tactical vision! 🎉", {
-          duration: 3000,
-        });
+// Convert FEN string to 8x8 board array
+function fenToBoard(fen: string): string[][] {
+  const rows = fen.split(' ')[0].split('/');
+  return rows.map(row => {
+    const squares: string[] = [];
+    for (const char of row) {
+      if (char >= '1' && char <= '8') {
+        // Empty squares
+        squares.push(...Array(parseInt(char)).fill('.'));
       } else {
-        // Wrong move
-        setAttempts(prev => prev + 1);
-        toast.error("Not quite. Try again!", {
-          duration: 2000,
-        });
+        squares.push(char);
       }
-      setSelectedSquare(null);
     }
-  };
-
-  const resetPuzzle = () => {
-    setSolved(false);
-    setSelectedSquare(null);
-    setShowHint(false);
-    setAttempts(0);
-  };
-
-  const nextPuzzle = () => {
-    setCurrentPuzzle((prev) => (prev + 1) % PUZZLES.length);
-    resetPuzzle();
-  };
-
-  const getSquareColor = (row: number, col: number) => {
-    const isLight = (row + col) % 2 === 0;
-    const isSelected = selectedSquare && selectedSquare[0] === row && selectedSquare[1] === col;
-    const isSolutionFrom = solved && puzzle.solution.from[0] === row && puzzle.solution.from[1] === col;
-    const isSolutionTo = solved && puzzle.solution.to[0] === row && puzzle.solution.to[1] === col;
-
-    if (isSelected) return "bg-burgundy/40";
-    if (isSolutionFrom) return "bg-green-400/40";
-    if (isSolutionTo) return "bg-green-500/50";
-    return isLight ? "bg-amber-100" : "bg-amber-700";
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        className="w-full max-w-lg"
-      >
-        <Card className="overflow-hidden">
-          <CardContent className="p-0">
-            {/* Header */}
-            <div className="p-4 border-b border-border flex items-center justify-between bg-stone dark:bg-secondary/30">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-burgundy/10 text-burgundy font-medium">
-                    {puzzle.difficulty}
-                  </span>
-                  <span className="text-sm text-muted-foreground">
-                    Puzzle {currentPuzzle + 1} of {PUZZLES.length}
-                  </span>
-                </div>
-                <h3 className="font-semibold mt-1">{puzzle.title}</h3>
-              </div>
-              {onClose && (
-                <Button variant="ghost" size="icon" onClick={onClose}>
-                  <X className="w-4 h-4" />
-                </Button>
-              )}
-            </div>
-
-            {/* Chess Board */}
-            <div className="p-4 bg-background">
-              <div className="aspect-square w-full max-w-sm mx-auto rounded-lg overflow-hidden shadow-lg border-4 border-amber-900">
-                <div className="grid grid-cols-8 h-full">
-                  {puzzle.position.map((row, rowIndex) =>
-                    row.map((piece, colIndex) => (
-                      <button
-                        key={`${rowIndex}-${colIndex}`}
-                        onClick={() => handleSquareClick(rowIndex, colIndex)}
-                        className={`
-                          aspect-square flex items-center justify-center
-                          text-2xl sm:text-3xl font-chess
-                          transition-colors cursor-pointer
-                          hover:brightness-110
-                          ${getSquareColor(rowIndex, colIndex)}
-                          ${piece !== '.' && piece === piece.toUpperCase() ? 'hover:ring-2 hover:ring-burgundy/50 hover:ring-inset' : ''}
-                        `}
-                        disabled={solved}
-                      >
-                        {piece !== '.' && (
-                          <span className={piece === piece.toUpperCase() ? 'text-white drop-shadow-md' : 'text-gray-900'}>
-                            {PIECES[piece]}
-                          </span>
-                        )}
-                      </button>
-                    ))
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Description & Controls */}
-            <div className="p-4 border-t border-border bg-stone dark:bg-secondary/30">
-              <p className="text-sm text-muted-foreground mb-4">
-                {puzzle.description}
-              </p>
-
-              {showHint && !solved && (
-                <motion.div
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="mb-4 p-3 rounded-lg bg-burgundy/10 text-burgundy text-sm flex items-start gap-2"
-                >
-                  <Lightbulb className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                  <span>{puzzle.hint}</span>
-                </motion.div>
-              )}
-
-              {solved && (
-                <motion.div
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="mb-4 p-3 rounded-lg bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-sm flex items-center gap-2"
-                >
-                  <Trophy className="w-4 h-4" />
-                  <span>
-                    Solved in {attempts + 1} {attempts === 0 ? 'attempt' : 'attempts'}! +50 XP
-                  </span>
-                </motion.div>
-              )}
-
-              <div className="flex gap-2">
-                {!solved && (
-                  <>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setShowHint(true)}
-                      disabled={showHint}
-                      className="gap-1"
-                    >
-                      <Lightbulb className="w-4 h-4" />
-                      Hint
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={resetPuzzle}
-                      className="gap-1"
-                    >
-                      <RotateCcw className="w-4 h-4" />
-                      Reset
-                    </Button>
-                  </>
-                )}
-                {solved && (
-                  <Button
-                    size="sm"
-                    onClick={nextPuzzle}
-                    className="bg-burgundy hover:bg-burgundy/90 text-white gap-1"
-                  >
-                    Next Puzzle
-                    <ChevronRight className="w-4 h-4" />
-                  </Button>
-                )}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </motion.div>
-    </div>
-  );
+    return squares;
+  });
 }
 
-// Trigger button component
-export function PuzzleDemoTrigger() {
-  const [isOpen, setIsOpen] = useState(false);
+// Convert algebraic notation (e.g., "e2e4") to board coordinates
+function algebraicToCoords(move: string): { from: [number, number], to: [number, number] } {
+  const files = 'abcdefgh';
+  const from = [8 - parseInt(move[1]), files.indexOf(move[0])];
+  const to = [8 - parseInt(move[3]), files.indexOf(move[2])];
+  return { from: from as [number, number], to: to as [number, number] };
+}
+
+export function PuzzleDemoTrigger({ onClose }: PuzzleDemoTriggerProps) {
+  const [showPuzzle, setShowPuzzle] = useState(false);
+  const [difficulty, setDifficulty] = useState<"easiest" | "easier" | "normal" | "harder" | "hardest">("normal");
 
   return (
     <>
       <Button
         variant="outline"
-        onClick={() => setIsOpen(true)}
+        size="lg"
+        onClick={() => setShowPuzzle(true)}
         className="gap-2"
       >
-        <Trophy className="w-4 h-4" />
+        <Trophy className="w-5 h-5" />
         Try a Puzzle
       </Button>
+
       <AnimatePresence>
-        {isOpen && <PuzzleDemo onClose={() => setIsOpen(false)} />}
+        {showPuzzle && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            onClick={() => setShowPuzzle(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-4xl"
+            >
+              <PuzzleDemo 
+                difficulty={difficulty}
+                onDifficultyChange={setDifficulty}
+                onClose={() => {
+                  setShowPuzzle(false);
+                  onClose?.();
+                }}
+              />
+            </motion.div>
+          </motion.div>
+        )}
       </AnimatePresence>
     </>
+  );
+}
+
+interface PuzzleDemoProps {
+  difficulty: "easiest" | "easier" | "normal" | "harder" | "hardest";
+  onDifficultyChange: (difficulty: "easiest" | "easier" | "normal" | "harder" | "hardest") => void;
+  onClose: () => void;
+}
+
+export function PuzzleDemo({ difficulty, onDifficultyChange, onClose }: PuzzleDemoProps) {
+  const [board, setBoard] = useState<string[][]>([]);
+  const [selectedSquare, setSelectedSquare] = useState<[number, number] | null>(null);
+  const [movesMade, setMovesMade] = useState<string[]>([]);
+  const [puzzleSolved, setPuzzleSolved] = useState(false);
+  const [showHint, setShowHint] = useState(false);
+  const [currentPuzzle, setCurrentPuzzle] = useState<any>(null);
+
+  const { data: puzzleData, isLoading, refetch } = trpc.puzzle.getNext.useQuery(
+    { difficulty },
+    { enabled: true }
+  );
+
+  useEffect(() => {
+    if (puzzleData) {
+      setCurrentPuzzle(puzzleData);
+      setBoard(fenToBoard(puzzleData.puzzle.initialPly?.fen || puzzleData.game.fen));
+      setMovesMade([]);
+      setPuzzleSolved(false);
+      setShowHint(false);
+      setSelectedSquare(null);
+    }
+  }, [puzzleData]);
+
+  const handleSquareClick = (row: number, col: number) => {
+    if (puzzleSolved || !currentPuzzle) return;
+
+    if (selectedSquare) {
+      // Attempt to make a move
+      const move = `${String.fromCharCode(97 + selectedSquare[1])}${8 - selectedSquare[0]}${String.fromCharCode(97 + col)}${8 - row}`;
+      
+      const nextMoveIndex = movesMade.length;
+      const expectedMove = currentPuzzle.puzzle.solution[nextMoveIndex];
+
+      if (move === expectedMove || move === expectedMove?.substring(0, 4)) {
+        // Correct move!
+        const newBoard = board.map(r => [...r]);
+        newBoard[row][col] = newBoard[selectedSquare[0]][selectedSquare[1]];
+        newBoard[selectedSquare[0]][selectedSquare[1]] = '.';
+        setBoard(newBoard);
+        setMovesMade([...movesMade, move]);
+        setSelectedSquare(null);
+
+        if (nextMoveIndex + 1 >= currentPuzzle.puzzle.solution.length) {
+          // Puzzle solved!
+          setPuzzleSolved(true);
+          toast.success("Puzzle solved! Well done!");
+        } else {
+          toast.success("Correct move!");
+        }
+      } else {
+        // Wrong move
+        toast.error("Not quite! Try again.");
+        setSelectedSquare(null);
+      }
+    } else {
+      // Select a piece
+      if (board[row][col] !== '.') {
+        setSelectedSquare([row, col]);
+      }
+    }
+  };
+
+  const handleReset = () => {
+    if (currentPuzzle) {
+      setBoard(fenToBoard(currentPuzzle.puzzle.initialPly?.fen || currentPuzzle.game.fen));
+      setMovesMade([]);
+      setPuzzleSolved(false);
+      setShowHint(false);
+      setSelectedSquare(null);
+    }
+  };
+
+  const handleNewPuzzle = () => {
+    refetch();
+  };
+
+  const handleShowHint = () => {
+    if (!currentPuzzle) return;
+    const nextMove = currentPuzzle.puzzle.solution[movesMade.length];
+    if (nextMove) {
+      const coords = algebraicToCoords(nextMove);
+      toast.info(`Hint: Move from ${String.fromCharCode(97 + coords.from[1])}${8 - coords.from[0]} to ${String.fromCharCode(97 + coords.to[1])}${8 - coords.to[0]}`);
+      setShowHint(true);
+    }
+  };
+
+  if (isLoading || !currentPuzzle) {
+    return (
+      <Card className="bg-background/95 border-border">
+        <CardContent className="p-8">
+          <div className="flex flex-col items-center justify-center gap-4 min-h-[400px]">
+            <Loader2 className="w-12 h-12 animate-spin text-primary" />
+            <p className="text-muted-foreground">Loading puzzle from Lichess...</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const puzzleRating = currentPuzzle.puzzle.rating;
+  const puzzleThemes = currentPuzzle.puzzle.themes || [];
+
+  return (
+    <Card className="bg-background/95 border-border">
+      <CardContent className="p-6">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-4">
+            <h3 className="text-2xl font-light">Chess Puzzle</h3>
+            <Badge variant="outline" className="text-sm">
+              Rating: {puzzleRating}
+            </Badge>
+            <select
+              value={difficulty}
+              onChange={(e) => onDifficultyChange(e.target.value as any)}
+              className="px-3 py-1 rounded-md bg-background border border-border text-sm"
+            >
+              <option value="easiest">Easiest</option>
+              <option value="easier">Easier</option>
+              <option value="normal">Normal</option>
+              <option value="harder">Harder</option>
+              <option value="hardest">Hardest</option>
+            </select>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onClose}
+          >
+            <X className="w-5 h-5" />
+          </Button>
+        </div>
+
+        <div className="flex gap-6 flex-col lg:flex-row">
+          {/* Chess Board */}
+          <div className="flex-1">
+            <div className="grid grid-cols-8 gap-0 w-full max-w-[500px] mx-auto aspect-square border-2 border-border">
+              {board.map((row, rowIndex) =>
+                row.map((piece, colIndex) => {
+                  const isLight = (rowIndex + colIndex) % 2 === 0;
+                  const isSelected = selectedSquare?.[0] === rowIndex && selectedSquare?.[1] === colIndex;
+                  
+                  return (
+                    <button
+                      key={`${rowIndex}-${colIndex}`}
+                      onClick={() => handleSquareClick(rowIndex, colIndex)}
+                      disabled={puzzleSolved}
+                      className={`
+                        relative flex items-center justify-center text-4xl transition-all
+                        ${isLight ? 'bg-stone-300' : 'bg-stone-600'}
+                        ${isSelected ? 'ring-4 ring-primary' : ''}
+                        ${!puzzleSolved ? 'hover:opacity-80 cursor-pointer' : 'cursor-default'}
+                        ${puzzleSolved ? 'opacity-60' : ''}
+                      `}
+                    >
+                      {piece !== '.' && PIECES[piece]}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          {/* Puzzle Info */}
+          <div className="flex-1 space-y-4">
+            <div>
+              <h4 className="text-lg font-medium mb-2">Themes</h4>
+              <div className="flex flex-wrap gap-2">
+                {puzzleThemes.map((theme: string) => (
+                  <Badge key={theme} variant="secondary" className="text-xs">
+                    {theme}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <h4 className="text-lg font-medium mb-2">Progress</h4>
+              <p className="text-sm text-muted-foreground">
+                Moves: {movesMade.length} / {currentPuzzle.puzzle.solution.length}
+              </p>
+            </div>
+
+            {puzzleSolved && (
+              <motion.div
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className="p-4 bg-primary/10 border border-primary rounded-lg"
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <Trophy className="w-5 h-5 text-primary" />
+                  <h4 className="font-medium">Puzzle Solved!</h4>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Great job! Ready for another challenge?
+                </p>
+              </motion.div>
+            )}
+
+            <div className="flex flex-col gap-2">
+              <Button
+                variant="outline"
+                onClick={handleShowHint}
+                disabled={puzzleSolved || showHint}
+                className="w-full gap-2"
+              >
+                <Lightbulb className="w-4 h-4" />
+                Show Hint
+              </Button>
+
+              <Button
+                variant="outline"
+                onClick={handleReset}
+                disabled={movesMade.length === 0}
+                className="w-full gap-2"
+              >
+                <RotateCcw className="w-4 h-4" />
+                Reset
+              </Button>
+
+              <Button
+                onClick={handleNewPuzzle}
+                className="w-full gap-2"
+              >
+                <ChevronRight className="w-4 h-4" />
+                New Puzzle
+              </Button>
+            </div>
+
+            <p className="text-xs text-muted-foreground text-center">
+              Puzzles powered by{" "}
+              <a
+                href="https://lichess.org"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline hover:text-foreground"
+              >
+                Lichess
+              </a>
+            </p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

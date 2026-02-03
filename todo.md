@@ -67,3 +67,24 @@
 - [x] Implement favicon across website
 - [x] Update Open Graph meta tags
 - [x] Update Twitter Card meta tags
+
+
+## Lichess Puzzle API Integration (In Progress)
+- [x] Research Lichess Puzzle API endpoints and authentication
+- [x] Create backend API route for fetching puzzles
+- [x] Update PuzzleDemo component to use real Lichess puzzles
+- [x] Add puzzle difficulty filtering
+- [x] Add puzzle rating display
+- [x] Test puzzle solving flow with real data
+
+## Website Polish (In Progress)
+- [x] Identify areas needing improvement
+- [x] Create polish improvement plan
+- [x] Phase 1: Improve hero copy for clarity
+- [x] Phase 1: Add urgency messaging to waitlist
+- [x] Phase 1: Enhance typography hierarchy
+- [x] Phase 1: Fix spacing consistency
+- [x] Phase 1: Strengthen coach value proposition
+- [ ] Phase 2: Create dedicated /coaches landing page
+- [ ] Phase 2: Expand payment protection with examples
+- [ ] Phase 2: Add "How It Works" for coaches
