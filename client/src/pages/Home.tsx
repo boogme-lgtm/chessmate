@@ -316,11 +316,11 @@ function PaymentProtectionSection() {
 // For Coaches Section
 function ForCoachesSection() {
   const coachBenefits = [
-    "Lower commission rates than Chess.com (15% vs 30%)",
-    "Delayed onboarding - payment details only required after $100 earned",
-    "Stripe Connect Express - seamless 3-minute setup",
-    "Global payment support in 135+ currencies",
-    "Automated scheduling and calendar management",
+    "Payment protection with escrow system - get paid for every completed lesson",
+    "AI-powered student matching based on teaching style and expertise",
+    "No payment details needed until you earn $100",
+    "Keep 80-85% of your earnings with transparent 15-20% platform fee",
+    "Automated scheduling, payments, and calendar management",
     "Built-in video conferencing and analysis tools"
   ];
 
@@ -339,7 +339,7 @@ function ForCoachesSection() {
               For Chess Coaches
             </h2>
             <p className="text-xl md:text-2xl font-light text-muted-foreground max-w-3xl mx-auto leading-relaxed">
-              Earn more, keep more. Lower fees than Chess.com. Payment protection for both sides.
+              Full-service marketplace with payment protection, AI matching, and escrow. Not just a listing board.
             </p>
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20">
               <span className="text-sm font-light text-foreground">Limited spots for founding coaches</span>

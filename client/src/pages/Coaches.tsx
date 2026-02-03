@@ -488,7 +488,7 @@ function BenefitsSection() {
       icon: DollarSign,
       title: "Keep 80-85% of Earnings",
       description:
-        "Industry-leading commission rate. Most platforms take 30-50%. We only take 15-20%.",
+        "Transparent 15-20% platform fee covers payment processing, AI matching, escrow protection, and customer support. You keep 80-85% of every lesson.",
     },
     {
       icon: Shield,
@@ -576,7 +576,7 @@ function FAQSection() {
     {
       question: "What's the platform commission?",
       answer:
-        "We take 15-20% depending on your lesson volume. This is significantly lower than competitors (30-50%) and covers payment processing, AI matching, customer support, and platform maintenance.",
+        "We take 15-20% depending on your lesson volume. This covers payment processing, AI matching, escrow protection, customer support, and platform maintenance. Unlike listing-only services, we handle the entire transaction flow.",
     },
     {
       question: "How does the escrow system work?",

@@ -105,3 +105,8 @@
 - [x] Implement multi-step questionnaire with progress tracking
 - [x] Add AI-powered analysis and coach matching logic
 - [x] Update "Find Your Coach" CTA to launch questionnaire
+
+## Messaging Corrections
+- [x] Remove Chess.com fee comparison claims from coaches page
+- [x] Remove Chess.com fee comparison claims from homepage
+- [x] Replace with accurate value props focusing on unique services (payment protection, AI matching, escrow)
