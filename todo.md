@@ -194,3 +194,37 @@
 - [x] Show confidence score, red flags, and score breakdown
 - [x] Display human review reason when flagged
 - [ ] Test AI vetting with various application scenarios
+
+
+## Coach Onboarding Wizard
+- [ ] Design onboarding wizard flow (5-7 steps)
+- [ ] Define completion requirements for each step
+- [x] Implement Stripe Connect account creation for coaches
+- [x] Add onboarding fields to coach profiles database schema
+- [x] Create Stripe Connect service with account creation and linking
+- [ ] Build onboarding wizard component with progress tracking
+- [ ] Create Step 1: Welcome and orientation
+- [ ] Create Step 2: Stripe Connect setup
+- [ ] Create Step 3: Profile completion (bio, photo, video)
+- [ ] Create Step 4: Availability calendar setup
+- [ ] Create Step 5: Pricing and lesson formats
+- [ ] Create Step 6: Platform guidelines and best practices
+- [ ] Create Step 7: Review and go live
+- [ ] Add onboarding progress tracking to database
+- [ ] Create coach dashboard showing onboarding status
+- [ ] Test complete onboarding flow
+
+
+## Student Booking Flow (Priority)
+- [x] Design complete booking flow (discovery → scheduling → payment → confirmation)
+- [ ] Create bookings database schema
+- [ ] Implement Stripe payment intent creation for lesson bookings
+- [ ] Build coach detail page with full profile and booking CTA
+- [ ] Create availability calendar component showing coach's open slots
+- [ ] Implement lesson booking form (date/time selection, duration, notes)
+- [ ] Add Stripe checkout integration for lesson payment
+- [ ] Create booking confirmation page
+- [ ] Build student dashboard showing upcoming/past lessons
+- [ ] Add booking cancellation flow (48-hour policy)
+- [ ] Implement booking status tracking (pending, confirmed, completed, cancelled)
+- [ ] Test complete booking flow end-to-end

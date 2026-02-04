@@ -70,6 +70,34 @@ export const coachProfiles = mysqlTable("coach_profiles", {
   isAvailable: boolean("isAvailable").default(true),
   availabilitySchedule: text("availabilitySchedule"), // JSON schedule object
   
+  // Onboarding progress
+  onboardingStep: int("onboardingStep").default(1), // Current step (1-7)
+  onboardingCompleted: boolean("onboardingCompleted").default(false),
+  onboardingCompletedAt: timestamp("onboardingCompletedAt"),
+  
+  // Profile completion
+  profilePhotoUrl: text("profilePhotoUrl"),
+  videoIntroUrl: text("videoIntroUrl"),
+  
+  // Availability settings
+  minAdvanceHours: int("minAdvanceHours").default(24),
+  maxAdvanceDays: int("maxAdvanceDays").default(30),
+  bufferMinutes: int("bufferMinutes").default(15),
+  
+  // Lesson settings
+  lessonDurations: text("lessonDurations"), // JSON array [30, 60, 90]
+  lessonFormats: text("lessonFormats"), // JSON array
+  packageDiscountEnabled: boolean("packageDiscountEnabled").default(false),
+  packageDiscountPercent: int("packageDiscountPercent").default(0),
+  
+  // Guidelines
+  guidelinesAgreed: boolean("guidelinesAgreed").default(false),
+  guidelinesAgreedAt: timestamp("guidelinesAgreedAt"),
+  
+  // Profile activation
+  profileActive: boolean("profileActive").default(false),
+  profileActivatedAt: timestamp("profileActivatedAt"),
+  
   // Verification
   isVerified: boolean("isVerified").default(false),
   verifiedAt: timestamp("verifiedAt"),
