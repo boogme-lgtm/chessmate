@@ -9,6 +9,8 @@ import Coaches from "./pages/Coaches";
 import CoachDashboard from "./pages/CoachDashboard";
 import CoachApplicationPage from "./pages/CoachApplicationPage";
 import AdminApplications from "./pages/AdminApplications";
+import Privacy from "./pages/Privacy";
+import Terms from "./pages/Terms";
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
@@ -19,6 +21,8 @@ function Router() {
       <Route path={"/coach/apply"} component={CoachApplicationPage} />
       <Route path={"/coach/dashboard"} component={CoachDashboard} />
       <Route path={"/admin/applications"} component={AdminApplications} />
+      <Route path={"/privacy"} component={Privacy} />
+      <Route path={"/terms"} component={Terms} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
     </Switch>

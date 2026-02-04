@@ -672,6 +672,14 @@ function Footer() {
           <div className="flex items-center gap-4">
             <img src="https://files.manuscdn.com/user_upload_by_module/session_file/310519663188415081/xRYfqyUGHSJUlDcu.png" alt="BooGMe" className="h-6 w-auto" />
           </div>
+          <div className="flex items-center gap-6">
+            <a href="/privacy" className="text-sm font-light text-muted-foreground hover:text-foreground transition-colors">
+              Privacy Policy
+            </a>
+            <a href="/terms" className="text-sm font-light text-muted-foreground hover:text-foreground transition-colors">
+              Terms of Service
+            </a>
+          </div>
           <p className="text-sm font-light text-muted-foreground">
             © 2026 BooGMe. All rights reserved.
           </p>

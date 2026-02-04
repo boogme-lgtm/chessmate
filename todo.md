@@ -234,3 +234,12 @@
 - [x] Remove fictional coach profiles from homepage
 - [x] Show empty state message when no coaches are available
 - [x] Keep coach filtering and layout components for future use
+
+
+## Legal Pages
+- [x] Draft Privacy Policy content covering data collection and usage
+- [x] Draft Terms of Service covering marketplace rules and obligations
+- [x] Create Privacy Policy page component at /privacy
+- [x] Create Terms of Service page component at /terms
+- [x] Add legal page links to footer
+- [x] Test legal pages display and formatting
