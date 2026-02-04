@@ -634,6 +634,175 @@ export const appRouter = router({
       }),
   }),
 
+  // ============ ADMIN OPERATIONS ============
+  admin: router({
+    // List all coach applications
+    applications: router({
+      list: protectedProcedure
+        .input(z.object({
+          status: z.enum(["pending", "under_review", "approved", "rejected", "withdrawn"]).optional(),
+        }).optional())
+        .use(({ ctx, next }) => {
+          // Admin authorization middleware
+          if (ctx.user.role !== "admin") {
+            throw new TRPCError({
+              code: "FORBIDDEN",
+              message: "Admin access required",
+            });
+          }
+          return next({ ctx });
+        })
+        .query(async ({ input }) => {
+          return await db.getCoachApplications(input?.status);
+        }),
+
+      getById: protectedProcedure
+        .input(z.object({ id: z.number() }))
+        .use(({ ctx, next }) => {
+          if (ctx.user.role !== "admin") {
+            throw new TRPCError({
+              code: "FORBIDDEN",
+              message: "Admin access required",
+            });
+          }
+          return next({ ctx });
+        })
+        .query(async ({ input }) => {
+          const application = await db.getCoachApplicationById(input.id);
+          if (!application) {
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Application not found",
+            });
+          }
+          return application;
+        }),
+
+      updateStatus: protectedProcedure
+        .input(z.object({
+          id: z.number(),
+          status: z.enum(["pending", "under_review", "approved", "rejected", "withdrawn"]),
+          reviewNotes: z.string().optional(),
+        }))
+        .use(({ ctx, next }) => {
+          if (ctx.user.role !== "admin") {
+            throw new TRPCError({
+              code: "FORBIDDEN",
+              message: "Admin access required",
+            });
+          }
+          return next({ ctx });
+        })
+        .mutation(async ({ ctx, input }) => {
+          await db.updateCoachApplicationStatus(
+            input.id,
+            input.status,
+            ctx.user.id,
+            input.reviewNotes
+          );
+          return { success: true };
+        }),
+
+      approve: protectedProcedure
+        .input(z.object({
+          id: z.number(),
+          reviewNotes: z.string().optional(),
+        }))
+        .use(({ ctx, next }) => {
+          if (ctx.user.role !== "admin") {
+            throw new TRPCError({
+              code: "FORBIDDEN",
+              message: "Admin access required",
+            });
+          }
+          return next({ ctx });
+        })
+        .mutation(async ({ ctx, input }) => {
+          // Get application details
+          const application = await db.getCoachApplicationById(input.id);
+          if (!application) {
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Application not found",
+            });
+          }
+
+          // Check if already approved
+          if (application.status === "approved") {
+            throw new TRPCError({
+              code: "CONFLICT",
+              message: "Application already approved",
+            });
+          }
+
+          // TODO: Create user account if doesn't exist
+          // TODO: Create coach profile
+          // TODO: Send approval email
+
+          // Update application status
+          await db.updateCoachApplicationStatus(
+            input.id,
+            "approved",
+            ctx.user.id,
+            input.reviewNotes
+          );
+
+          return { success: true };
+        }),
+
+      reject: protectedProcedure
+        .input(z.object({
+          id: z.number(),
+          reviewNotes: z.string().min(10, "Please provide a reason for rejection"),
+        }))
+        .use(({ ctx, next }) => {
+          if (ctx.user.role !== "admin") {
+            throw new TRPCError({
+              code: "FORBIDDEN",
+              message: "Admin access required",
+            });
+          }
+          return next({ ctx });
+        })
+        .mutation(async ({ ctx, input }) => {
+          // Get application details
+          const application = await db.getCoachApplicationById(input.id);
+          if (!application) {
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Application not found",
+            });
+          }
+
+          // TODO: Send rejection email with feedback
+
+          // Update application status
+          await db.updateCoachApplicationStatus(
+            input.id,
+            "rejected",
+            ctx.user.id,
+            input.reviewNotes
+          );
+
+          return { success: true };
+        }),
+
+      stats: protectedProcedure
+        .use(({ ctx, next }) => {
+          if (ctx.user.role !== "admin") {
+            throw new TRPCError({
+              code: "FORBIDDEN",
+              message: "Admin access required",
+            });
+          }
+          return next({ ctx });
+        })
+        .query(async () => {
+          return await db.getCoachApplicationStats();
+        }),
+    }),
+  }),
+
   // ============ GAMIFICATION ============
   gamification: router({
     // Get all achievements

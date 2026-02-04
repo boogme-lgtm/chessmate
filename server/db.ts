@@ -608,3 +608,73 @@ export async function updateCoachApplicationStatus(
     })
     .where(eq(coachApplications.id, id));
 }
+
+export async function getCoachApplications(status?: "pending" | "under_review" | "approved" | "rejected" | "withdrawn") {
+  const db = await getDb();
+  if (!db) return [];
+
+  if (status) {
+    return await db
+      .select()
+      .from(coachApplications)
+      .where(eq(coachApplications.status, status))
+      .orderBy(desc(coachApplications.createdAt));
+  }
+
+  return await db
+    .select()
+    .from(coachApplications)
+    .orderBy(desc(coachApplications.createdAt));
+}
+
+export async function getCoachApplicationStats() {
+  const db = await getDb();
+  if (!db) {
+    return {
+      pending: 0,
+      underReview: 0,
+      approvedLast30Days: 0,
+      rejectedLast30Days: 0,
+    };
+  }
+
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+  const [pendingResult] = await db
+    .select({ count: sql<number>`COUNT(*)` })
+    .from(coachApplications)
+    .where(eq(coachApplications.status, "pending"));
+
+  const [underReviewResult] = await db
+    .select({ count: sql<number>`COUNT(*)` })
+    .from(coachApplications)
+    .where(eq(coachApplications.status, "under_review"));
+
+  const [approvedResult] = await db
+    .select({ count: sql<number>`COUNT(*)` })
+    .from(coachApplications)
+    .where(
+      and(
+        eq(coachApplications.status, "approved"),
+        sql`${coachApplications.reviewedAt} >= ${thirtyDaysAgo}`
+      )
+    );
+
+  const [rejectedResult] = await db
+    .select({ count: sql<number>`COUNT(*)` })
+    .from(coachApplications)
+    .where(
+      and(
+        eq(coachApplications.status, "rejected"),
+        sql`${coachApplications.reviewedAt} >= ${thirtyDaysAgo}`
+      )
+    );
+
+  return {
+    pending: pendingResult?.count || 0,
+    underReview: underReviewResult?.count || 0,
+    approvedLast30Days: approvedResult?.count || 0,
+    rejectedLast30Days: rejectedResult?.count || 0,
+  };
+}

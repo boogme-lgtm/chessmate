@@ -8,6 +8,7 @@ import Home from "./pages/Home";
 import Coaches from "./pages/Coaches";
 import CoachDashboard from "./pages/CoachDashboard";
 import CoachApplicationPage from "./pages/CoachApplicationPage";
+import AdminApplications from "./pages/AdminApplications";
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
@@ -17,6 +18,7 @@ function Router() {
       <Route path={"/coaches"} component={Coaches} />
       <Route path={"/coach/apply"} component={CoachApplicationPage} />
       <Route path={"/coach/dashboard"} component={CoachDashboard} />
+      <Route path={"/admin/applications"} component={AdminApplications} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
     </Switch>

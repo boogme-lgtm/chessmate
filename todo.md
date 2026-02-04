@@ -163,3 +163,18 @@
 - [x] Build backend API for application submission
 - [ ] Add application review/approval workflow
 - [ ] Create confirmation email and next steps communication
+
+## Admin Dashboard for Coach Applications
+- [ ] Design admin dashboard layout and navigation
+- [x] Create backend API endpoints for listing applications
+- [x] Create backend API endpoint for getting application details
+- [x] Create backend API endpoint for approving applications
+- [x] Create backend API endpoint for rejecting applications
+- [x] Implement admin authentication middleware
+- [x] Create AdminApplicationsList component
+- [x] Create ApplicationDetailView component
+- [x] Create approval/rejection modal with review notes
+- [x] Add status filtering (pending, under_review, approved, rejected)
+- [x] Add search functionality by name/email
+- [x] Create admin route at /admin/applications
+- [x] Test admin dashboard functionality
