@@ -178,3 +178,19 @@
 - [x] Add search functionality by name/email
 - [x] Create admin route at /admin/applications
 - [x] Test admin dashboard functionality
+
+
+## AI-Powered Instant Coach Vetting
+- [x] Design AI vetting criteria (auto-approve vs human review)
+- [x] Define confidence scoring system (0-100)
+- [x] Create red flag detection logic (incomplete info, suspicious patterns)
+- [x] Implement AI vetting service using LLM
+- [x] Add structured output for vetting decisions
+- [x] Update coach application submission to trigger AI vetting
+- [x] Implement auto-approval flow for high-confidence applications
+- [x] Route low-confidence applications to human review queue
+- [x] Add vetting results to application record
+- [x] Add AI vetting results display to admin dashboard
+- [x] Show confidence score, red flags, and score breakdown
+- [x] Display human review reason when flagged
+- [ ] Test AI vetting with various application scenarios

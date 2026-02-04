@@ -349,11 +349,12 @@ export default function AdminApplications() {
               </DialogHeader>
 
               <Tabs defaultValue="overview" className="mt-4">
-                <TabsList className="grid w-full grid-cols-5">
+                <TabsList className="grid w-full grid-cols-6">
                   <TabsTrigger value="overview">Overview</TabsTrigger>
                   <TabsTrigger value="expertise">Expertise</TabsTrigger>
                   <TabsTrigger value="availability">Availability</TabsTrigger>
                   <TabsTrigger value="teaching">Teaching</TabsTrigger>
+                  <TabsTrigger value="ai-vetting">AI Vetting</TabsTrigger>
                   <TabsTrigger value="review">Review</TabsTrigger>
                 </TabsList>
 
@@ -472,6 +473,150 @@ export default function AdminApplications() {
                     <h3 className="font-semibold mb-2">Sample Lesson</h3>
                     <p className="text-sm whitespace-pre-wrap">{applicationDetails.sampleLesson}</p>
                   </div>
+                </TabsContent>
+
+                <TabsContent value="ai-vetting" className="space-y-4">
+                  {applicationDetails.aiVettingScore !== null && applicationDetails.aiVettingScore !== undefined ? (
+                    <>
+                      <div className="bg-muted/50 p-4 rounded-lg">
+                        <h3 className="font-semibold mb-3 flex items-center gap-2">
+                          <span className="text-2xl">{applicationDetails.autoApproved ? '✅' : '⚠️'}</span>
+                          AI Vetting Result
+                        </h3>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <span className="text-sm text-muted-foreground">Confidence Score</span>
+                            <div className="flex items-center gap-2 mt-1">
+                              <div className="text-3xl font-bold">{applicationDetails.aiVettingScore}/100</div>
+                              <Badge variant={applicationDetails.aiVettingScore >= 85 ? 'default' : applicationDetails.aiVettingScore >= 70 ? 'secondary' : 'destructive'}>
+                                {applicationDetails.aiVettingScore >= 85 ? 'High' : applicationDetails.aiVettingScore >= 70 ? 'Medium' : 'Low'}
+                              </Badge>
+                            </div>
+                          </div>
+                          <div>
+                            <span className="text-sm text-muted-foreground">Auto-Approved</span>
+                            <div className="text-2xl font-bold mt-1">
+                              {applicationDetails.autoApproved ? 'Yes ✓' : 'No'}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {applicationDetails.humanReviewReason && (
+                        <div>
+                          <h3 className="font-semibold mb-2">Human Review Reason</h3>
+                          <p className="text-sm bg-yellow-50 dark:bg-yellow-900/20 p-3 rounded border border-yellow-200 dark:border-yellow-800">
+                            {applicationDetails.humanReviewReason}
+                          </p>
+                        </div>
+                      )}
+
+                      {applicationDetails.aiVettingDetails && (() => {
+                        try {
+                          const details = JSON.parse(applicationDetails.aiVettingDetails);
+                          return (
+                            <>
+                              {details.redFlags && details.redFlags.length > 0 && (
+                                <div>
+                                  <h3 className="font-semibold mb-2 text-red-600 dark:text-red-400">Red Flags ({details.redFlags.length})</h3>
+                                  <ul className="space-y-1">
+                                    {details.redFlags.map((flag: string, idx: number) => (
+                                      <li key={idx} className="text-sm flex items-start gap-2">
+                                        <span className="text-red-500 mt-0.5">⚠</span>
+                                        <span>{flag}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+
+                              {details.scoreBreakdown && (
+                                <div>
+                                  <h3 className="font-semibold mb-3">Score Breakdown</h3>
+                                  <div className="space-y-2">
+                                    <div className="flex justify-between items-center">
+                                      <span className="text-sm">Credentials</span>
+                                      <div className="flex items-center gap-2">
+                                        <div className="w-32 bg-muted rounded-full h-2">
+                                          <div className="bg-primary rounded-full h-2" style={{ width: `${(details.scoreBreakdown.credentialScore / 30) * 100}%` }}></div>
+                                        </div>
+                                        <span className="text-sm font-semibold w-12 text-right">{details.scoreBreakdown.credentialScore}/30</span>
+                                      </div>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                      <span className="text-sm">Teaching</span>
+                                      <div className="flex items-center gap-2">
+                                        <div className="w-32 bg-muted rounded-full h-2">
+                                          <div className="bg-primary rounded-full h-2" style={{ width: `${(details.scoreBreakdown.teachingScore / 25) * 100}%` }}></div>
+                                        </div>
+                                        <span className="text-sm font-semibold w-12 text-right">{details.scoreBreakdown.teachingScore}/25</span>
+                                      </div>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                      <span className="text-sm">Professionalism</span>
+                                      <div className="flex items-center gap-2">
+                                        <div className="w-32 bg-muted rounded-full h-2">
+                                          <div className="bg-primary rounded-full h-2" style={{ width: `${(details.scoreBreakdown.professionalismScore / 20) * 100}%` }}></div>
+                                        </div>
+                                        <span className="text-sm font-semibold w-12 text-right">{details.scoreBreakdown.professionalismScore}/20</span>
+                                      </div>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                      <span className="text-sm">Pricing</span>
+                                      <div className="flex items-center gap-2">
+                                        <div className="w-32 bg-muted rounded-full h-2">
+                                          <div className="bg-primary rounded-full h-2" style={{ width: `${(details.scoreBreakdown.pricingScore / 10) * 100}%` }}></div>
+                                        </div>
+                                        <span className="text-sm font-semibold w-12 text-right">{details.scoreBreakdown.pricingScore}/10</span>
+                                      </div>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                      <span className="text-sm">Completion</span>
+                                      <div className="flex items-center gap-2">
+                                        <div className="w-32 bg-muted rounded-full h-2">
+                                          <div className="bg-primary rounded-full h-2" style={{ width: `${(details.scoreBreakdown.completionScore / 10) * 100}%` }}></div>
+                                        </div>
+                                        <span className="text-sm font-semibold w-12 text-right">{details.scoreBreakdown.completionScore}/10</span>
+                                      </div>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                      <span className="text-sm">Platform Fit</span>
+                                      <div className="flex items-center gap-2">
+                                        <div className="w-32 bg-muted rounded-full h-2">
+                                          <div className="bg-primary rounded-full h-2" style={{ width: `${(details.scoreBreakdown.platformFitScore / 5) * 100}%` }}></div>
+                                        </div>
+                                        <span className="text-sm font-semibold w-12 text-right">{details.scoreBreakdown.platformFitScore}/5</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+
+                              {details.reasoning && (
+                                <div>
+                                  <h3 className="font-semibold mb-2">AI Reasoning</h3>
+                                  <p className="text-sm bg-muted/50 p-3 rounded">{details.reasoning}</p>
+                                </div>
+                              )}
+
+                              {applicationDetails.aiVettingTimestamp && (
+                                <div className="text-xs text-muted-foreground">
+                                  Vetted on {format(new Date(applicationDetails.aiVettingTimestamp), "MMM d, yyyy 'at' h:mm a")}
+                                </div>
+                              )}
+                            </>
+                          );
+                        } catch (e) {
+                          return <p className="text-sm text-muted-foreground">Unable to parse vetting details</p>;
+                        }
+                      })()}
+                    </>
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <p>No AI vetting data available for this application.</p>
+                      <p className="text-sm mt-2">This application was submitted before AI vetting was implemented.</p>
+                    </div>
+                  )}
                 </TabsContent>
 
                 <TabsContent value="review" className="space-y-4">

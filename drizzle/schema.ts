@@ -332,6 +332,13 @@ export const coachApplications = mysqlTable("coach_applications", {
   reviewedAt: timestamp("reviewedAt"),
   reviewNotes: text("reviewNotes"),
   
+  // AI Vetting Results
+  aiVettingScore: int("aiVettingScore"), // 0-100 confidence score
+  aiVettingDetails: text("aiVettingDetails"), // JSON with full vetting breakdown
+  aiVettingTimestamp: timestamp("aiVettingTimestamp"),
+  autoApproved: boolean("autoApproved").default(false),
+  humanReviewReason: text("humanReviewReason"), // Why flagged for human review
+  
   // Link to created coach profile (after approval)
   coachProfileId: int("coachProfileId"),
   

@@ -1,7 +1,8 @@
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
+import { router, publicProcedure, protectedProcedure } from "./_core/trpc";
+import { vetCoachApplication } from "./aiVettingService";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import * as db from "./db";
@@ -162,8 +163,8 @@ export const appRouter = router({
           });
         }
 
-        // Create application
-        const application = await db.createCoachApplication({
+        // Prepare application data for AI vetting
+        const applicationData = {
           fullName: input.fullName,
           email: input.email,
           phone: input.phone,
@@ -192,15 +193,67 @@ export const appRouter = router({
           backgroundCheckConsent: input.backgroundCheckConsent,
           termsAgreed: input.termsAgreed,
           status: "pending",
+        };
+
+        // Run AI vetting (exclude availability as it's not needed for vetting)
+        const vettingResult = await vetCoachApplication({
+          fullName: input.fullName,
+          email: input.email,
+          phone: input.phone,
+          country: input.country,
+          timezone: input.timezone,
+          chessTitle: input.chessTitle,
+          currentRating: input.currentRating,
+          ratingOrg: input.ratingOrg,
+          yearsExperience: input.yearsExperience,
+          totalStudents: input.totalStudents,
+          certifications: input.certifications,
+          achievements: input.achievements,
+          specializations: JSON.stringify(input.specializations),
+          targetLevels: JSON.stringify(input.targetLevels),
+          teachingPhilosophy: input.teachingPhilosophy,
+          hourlyRateCents: input.hourlyRate * 100,
+          lessonFormats: JSON.stringify(input.lessonFormats),
+          languages: JSON.stringify(input.languages),
+          bio: input.bio,
+          whyBoogme: input.whyBoogme,
+          sampleLesson: input.sampleLesson,
         });
 
-        // TODO: Send confirmation email
-        // TODO: Notify admin team
+        // Update application with vetting results
+        const finalStatus = vettingResult.approved ? "approved" : 
+                           vettingResult.recommendation === "REJECT" ? "rejected" : "under_review";
+
+        const application = await db.createCoachApplication({
+          ...applicationData,
+          status: finalStatus,
+          aiVettingScore: vettingResult.confidenceScore,
+          aiVettingDetails: JSON.stringify(vettingResult),
+          aiVettingTimestamp: new Date(),
+          autoApproved: vettingResult.approved,
+          humanReviewReason: vettingResult.humanReviewReason,
+        });
+
+        // TODO: If auto-approved, create coach profile
+        // TODO: Send appropriate email based on status
+        // TODO: If under_review, notify admin team
+
+        let message: string;
+        if (vettingResult.approved) {
+          message = "Congratulations! Your application has been approved. Check your email for next steps.";
+        } else if (finalStatus === "under_review") {
+          message = "Application submitted successfully! We'll review it and get back to you within 12 hours.";
+        } else {
+          message = "Thank you for applying. Unfortunately, we're unable to approve your application at this time. Check your email for details.";
+        }
 
         return {
           success: true,
           applicationId: application.id,
-          message: "Application submitted successfully! You'll hear from us within 24-48 hours.",
+          status: finalStatus,
+          autoApproved: vettingResult.approved,
+          confidenceScore: vettingResult.confidenceScore,
+          message,
         };
       }),
 
