@@ -30,6 +30,7 @@ import {
 import React, { useState } from "react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
+import { useLocation } from "wouter";
 
 const fadeIn = {
   hidden: { opacity: 0, y: 10 },
@@ -198,13 +199,12 @@ function CoachHeroSection() {
           >
             <Button
               onClick={() => {
-                const element = document.getElementById("waitlist");
-                element?.scrollIntoView({ behavior: "smooth" });
+                window.location.href = "/coach/apply";
               }}
               size="lg"
               className="btn-primary group"
             >
-              Join as a Coach
+              Apply Now
               <ChevronRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
             </Button>
             <Button

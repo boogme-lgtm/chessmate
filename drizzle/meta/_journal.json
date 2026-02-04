@@ -15,6 +15,13 @@
       "when": 1770071999321,
       "tag": "0001_chilly_tattoo",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1770237264712,
+      "tag": "0002_overrated_hercules",
+      "breakpoints": true
     }
   ]
 }

@@ -11,12 +11,14 @@ import {
   userAchievements,
   coachMatches,
   waitlist,
+  coachApplications,
   InsertCoachProfile,
   InsertStudentProfile,
   InsertLesson,
   InsertReview,
   InsertWaitlist,
-  InsertCoachMatch
+  InsertCoachMatch,
+  InsertCoachApplication
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -532,4 +534,77 @@ export async function getWaitlistCount() {
     .from(waitlist);
 
   return result[0]?.count || 0;
+}
+
+// ============ COACH APPLICATION OPERATIONS ============
+
+export async function createCoachApplication(application: InsertCoachApplication) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const result = await db.insert(coachApplications).values(application);
+  
+  // Return the created application with ID
+  return {
+    id: Number(result[0].insertId),
+    ...application,
+  };
+}
+
+export async function getCoachApplicationByEmail(email: string) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const result = await db
+    .select()
+    .from(coachApplications)
+    .where(eq(coachApplications.email, email))
+    .orderBy(desc(coachApplications.createdAt))
+    .limit(1);
+
+  return result[0] || null;
+}
+
+export async function getCoachApplicationById(id: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const result = await db
+    .select()
+    .from(coachApplications)
+    .where(eq(coachApplications.id, id))
+    .limit(1);
+
+  return result[0] || null;
+}
+
+export async function getPendingCoachApplications() {
+  const db = await getDb();
+  if (!db) return [];
+
+  return await db
+    .select()
+    .from(coachApplications)
+    .where(eq(coachApplications.status, "pending"))
+    .orderBy(desc(coachApplications.createdAt));
+}
+
+export async function updateCoachApplicationStatus(
+  id: number,
+  status: "pending" | "under_review" | "approved" | "rejected" | "withdrawn",
+  reviewedBy?: number,
+  reviewNotes?: string
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db
+    .update(coachApplications)
+    .set({
+      status,
+      reviewedBy,
+      reviewedAt: new Date(),
+      reviewNotes,
+    })
+    .where(eq(coachApplications.id, id));
 }

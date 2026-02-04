@@ -7,6 +7,7 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
 import Coaches from "./pages/Coaches";
 import CoachDashboard from "./pages/CoachDashboard";
+import CoachApplicationPage from "./pages/CoachApplicationPage";
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
@@ -14,6 +15,7 @@ function Router() {
     <Switch>
       <Route path={"/"} component={Home} />
       <Route path={"/coaches"} component={Coaches} />
+      <Route path={"/coach/apply"} component={CoachApplicationPage} />
       <Route path={"/coach/dashboard"} component={CoachDashboard} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />

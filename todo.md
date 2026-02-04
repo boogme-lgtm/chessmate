@@ -151,3 +151,15 @@
 - [x] Implement time slot filtering logic for availability matching
 - [x] Update coach data with detailed availability schedules
 - [ ] Test timezone filtering with different user timezones
+
+## Coach Application Process
+- [x] Research coaching marketplace application best practices
+- [x] Design 8-10 minute application flow with clear sections
+- [x] Define required fields and validation rules
+- [x] Create multi-step coach application component
+- [x] Add value proposition messaging throughout application
+- [x] Implement progress tracking and save/resume functionality
+- [x] Create database schema for coach applications
+- [x] Build backend API for application submission
+- [ ] Add application review/approval workflow
+- [ ] Create confirmation email and next steps communication

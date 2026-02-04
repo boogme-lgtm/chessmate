@@ -101,6 +101,126 @@ export const appRouter = router({
     }),
   }),
 
+  // ============ COACH APPLICATION ============
+  coachApplication: router({
+    submit: publicProcedure
+      .input(z.object({
+        // Personal Information
+        fullName: z.string().min(2),
+        email: z.string().email(),
+        phone: z.string().optional(),
+        country: z.string().min(2),
+        city: z.string().min(2),
+        timezone: z.string(),
+        
+        // Chess Credentials
+        chessTitle: z.string(),
+        currentRating: z.number().min(1000).max(3000),
+        ratingOrg: z.string(),
+        yearsExperience: z.string(),
+        totalStudents: z.number().optional(),
+        profilePhotoUrl: z.string().optional(),
+        
+        // Expertise
+        certifications: z.string().optional(),
+        achievements: z.string().min(100),
+        specializations: z.array(z.string()).min(3),
+        targetLevels: z.array(z.string()).min(1),
+        teachingPhilosophy: z.string().min(200),
+        
+        // Availability & Pricing
+        hourlyRate: z.number().min(25).max(200),
+        availability: z.record(z.string(), z.boolean()),
+        lessonFormats: z.array(z.string()).min(1),
+        languages: z.array(z.string()).min(1),
+        
+        // Teaching Approach
+        bio: z.string().min(500),
+        whyBoogme: z.string().min(200),
+        sampleLesson: z.string().min(300),
+        videoIntroUrl: z.string().optional(),
+        
+        // Agreements
+        backgroundCheckConsent: z.boolean(),
+        termsAgreed: z.boolean(),
+      }))
+      .mutation(async ({ input }) => {
+        // Validate agreements
+        if (!input.backgroundCheckConsent || !input.termsAgreed) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "You must agree to all terms to submit your application",
+          });
+        }
+
+        // Check if email already has pending/approved application
+        const existing = await db.getCoachApplicationByEmail(input.email);
+        if (existing && ["pending", "under_review", "approved"].includes(existing.status)) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "An application with this email already exists",
+          });
+        }
+
+        // Create application
+        const application = await db.createCoachApplication({
+          fullName: input.fullName,
+          email: input.email,
+          phone: input.phone,
+          country: input.country,
+          city: input.city,
+          timezone: input.timezone,
+          chessTitle: input.chessTitle,
+          currentRating: input.currentRating,
+          ratingOrg: input.ratingOrg,
+          yearsExperience: input.yearsExperience,
+          totalStudents: input.totalStudents,
+          profilePhotoUrl: input.profilePhotoUrl,
+          certifications: input.certifications,
+          achievements: input.achievements,
+          specializations: JSON.stringify(input.specializations),
+          targetLevels: JSON.stringify(input.targetLevels),
+          teachingPhilosophy: input.teachingPhilosophy,
+          hourlyRateCents: input.hourlyRate * 100, // Convert to cents
+          availability: JSON.stringify(input.availability),
+          lessonFormats: JSON.stringify(input.lessonFormats),
+          languages: JSON.stringify(input.languages),
+          bio: input.bio,
+          whyBoogme: input.whyBoogme,
+          sampleLesson: input.sampleLesson,
+          videoIntroUrl: input.videoIntroUrl,
+          backgroundCheckConsent: input.backgroundCheckConsent,
+          termsAgreed: input.termsAgreed,
+          status: "pending",
+        });
+
+        // TODO: Send confirmation email
+        // TODO: Notify admin team
+
+        return {
+          success: true,
+          applicationId: application.id,
+          message: "Application submitted successfully! You'll hear from us within 24-48 hours.",
+        };
+      }),
+
+    // Check application status by email
+    checkStatus: publicProcedure
+      .input(z.object({ email: z.string().email() }))
+      .query(async ({ input }) => {
+        const application = await db.getCoachApplicationByEmail(input.email);
+        if (!application) {
+          return { found: false };
+        }
+        return {
+          found: true,
+          status: application.status,
+          submittedAt: application.createdAt,
+          reviewedAt: application.reviewedAt,
+        };
+      }),
+  }),
+
   // ============ COACH OPERATIONS ============
   coach: router({
     // Get available coaches for browsing

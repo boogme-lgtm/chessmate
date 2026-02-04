@@ -273,3 +273,71 @@ export const waitlist = mysqlTable("waitlist", {
 
 export type Waitlist = typeof waitlist.$inferSelect;
 export type InsertWaitlist = typeof waitlist.$inferInsert;
+
+/**
+ * Coach applications - stores application data before approval
+ */
+export const coachApplications = mysqlTable("coach_applications", {
+  id: int("id").autoincrement().primaryKey(),
+  
+  // Personal Information
+  fullName: varchar("fullName", { length: 255 }).notNull(),
+  email: varchar("email", { length: 320 }).notNull(),
+  phone: varchar("phone", { length: 32 }),
+  country: varchar("country", { length: 64 }).notNull(),
+  city: varchar("city", { length: 128 }).notNull(),
+  timezone: varchar("timezone", { length: 64 }).notNull(),
+  
+  // Chess Credentials
+  chessTitle: varchar("chessTitle", { length: 32 }).notNull(),
+  currentRating: int("currentRating").notNull(),
+  ratingOrg: varchar("ratingOrg", { length: 32 }).notNull(),
+  yearsExperience: varchar("yearsExperience", { length: 32 }).notNull(),
+  totalStudents: int("totalStudents"),
+  profilePhotoUrl: text("profilePhotoUrl"),
+  
+  // Expertise
+  certifications: text("certifications"),
+  achievements: text("achievements").notNull(),
+  specializations: text("specializations").notNull(), // JSON array
+  targetLevels: text("targetLevels").notNull(), // JSON array
+  teachingPhilosophy: text("teachingPhilosophy").notNull(),
+  
+  // Availability & Pricing
+  hourlyRateCents: int("hourlyRateCents").notNull(), // Store in cents
+  availability: text("availability").notNull(), // JSON object
+  lessonFormats: text("lessonFormats").notNull(), // JSON array
+  languages: text("languages").notNull(), // JSON array
+  
+  // Teaching Approach
+  bio: text("bio").notNull(),
+  whyBoogme: text("whyBoogme").notNull(),
+  sampleLesson: text("sampleLesson").notNull(),
+  videoIntroUrl: text("videoIntroUrl"),
+  
+  // Agreements
+  backgroundCheckConsent: boolean("backgroundCheckConsent").notNull().default(false),
+  termsAgreed: boolean("termsAgreed").notNull().default(false),
+  
+  // Application Status
+  status: mysqlEnum("status", [
+    "pending",      // Submitted, awaiting review
+    "under_review", // Being reviewed by team
+    "approved",     // Approved, coach profile created
+    "rejected",     // Rejected
+    "withdrawn"     // Applicant withdrew
+  ]).default("pending").notNull(),
+  
+  reviewedBy: int("reviewedBy"), // Admin user ID who reviewed
+  reviewedAt: timestamp("reviewedAt"),
+  reviewNotes: text("reviewNotes"),
+  
+  // Link to created coach profile (after approval)
+  coachProfileId: int("coachProfileId"),
+  
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type CoachApplication = typeof coachApplications.$inferSelect;
+export type InsertCoachApplication = typeof coachApplications.$inferInsert;
