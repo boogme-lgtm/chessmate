@@ -499,6 +499,8 @@ function MeetOurCoachesSection() {
     priceRange: [0, 200],
     minRating: null,
     specializations: [],
+    preferredTimeSlots: [],
+    timezoneOffset: null,
   });
 
   const coaches: CoachProfile[] = [
@@ -516,6 +518,11 @@ function MeetOurCoachesSection() {
       teachingStyle: "The Strategist",
       targetRating: "1800-2400",
       availability: "Mon-Fri",
+      detailedAvailability: {
+        days: ["monday", "tuesday", "wednesday", "thursday", "friday"],
+        timeSlots: ["afternoon", "evening"],
+        timezoneOffset: 1 // UTC+1 (Barcelona)
+      },
       studentCount: 47,
       reviewRating: 4.9,
       bio: "Former Women's World Championship quarterfinalist with a psychology degree. Specializes in tournament preparation and mental game development for serious competitors."
@@ -534,6 +541,11 @@ function MeetOurCoachesSection() {
       teachingStyle: "The Technician",
       targetRating: "1200-2000",
       availability: "Evenings & Weekends",
+      detailedAvailability: {
+        days: ["tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"],
+        timeSlots: ["evening", "weekend"],
+        timezoneOffset: -8 // UTC-8 (San Francisco)
+      },
       studentCount: 203,
       reviewRating: 4.8,
       bio: "Software engineer and chess coach using data-driven methods. Known for structured curriculum and modern technology integration. Average student rating gain: 150 points in 6 months."
@@ -552,6 +564,11 @@ function MeetOurCoachesSection() {
       teachingStyle: "The Mentor",
       targetRating: "0-1600",
       availability: "Flexible, Same-day",
+      detailedAvailability: {
+        days: ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday"],
+        timeSlots: ["morning", "afternoon"],
+        timezoneOffset: -3 // UTC-3 (Buenos Aires)
+      },
       studentCount: 512,
       reviewRating: 5.0,
       bio: "18 years of teaching experience specializing in beginners and juniors. Patient, encouraging approach that makes chess fun. Runs a free chess club for 150+ underprivileged kids."
@@ -584,6 +601,16 @@ function MeetOurCoachesSection() {
         coach.specializations.includes(spec)
       );
       if (!hasMatchingSpec) {
+        return false;
+      }
+    }
+
+    // Time slot availability filter
+    if (filters.preferredTimeSlots.length > 0) {
+      const hasMatchingTimeSlot = filters.preferredTimeSlots.some((slot) =>
+        coach.detailedAvailability.timeSlots.includes(slot)
+      );
+      if (!hasMatchingTimeSlot) {
         return false;
       }
     }
@@ -660,6 +687,8 @@ function MeetOurCoachesSection() {
                     priceRange: [0, 200],
                     minRating: null,
                     specializations: [],
+                    preferredTimeSlots: [],
+                    timezoneOffset: null,
                   })
                 }
                 className="font-light"

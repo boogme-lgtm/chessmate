@@ -144,3 +144,10 @@
 - [x] Integrate filtering logic with coach profiles display
 - [x] Add filter reset functionality
 - [ ] Test filtering on mobile devices
+
+## Timezone & Availability Filtering
+- [x] Enhance CoachProfile interface with detailed availability data structure
+- [x] Add time slot filters (morning/afternoon/evening/weekend)
+- [x] Implement time slot filtering logic for availability matching
+- [x] Update coach data with detailed availability schedules
+- [ ] Test timezone filtering with different user timezones

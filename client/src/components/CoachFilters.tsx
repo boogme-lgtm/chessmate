@@ -2,13 +2,16 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { X } from "lucide-react";
+import { X, Clock } from "lucide-react";
 import { motion } from "framer-motion";
+import type { TimeSlot } from "./CoachProfileCard";
 
 export interface FilterState {
   priceRange: [number, number];
   minRating: number | null;
   specializations: string[];
+  preferredTimeSlots: TimeSlot[];
+  timezoneOffset: number | null; // User's timezone offset
 }
 
 interface CoachFiltersProps {
@@ -47,11 +50,24 @@ export function CoachFilters({
     });
   };
 
+  const handleTimeSlotToggle = (timeSlot: TimeSlot) => {
+    const newTimeSlots = filters.preferredTimeSlots.includes(timeSlot)
+      ? filters.preferredTimeSlots.filter((t) => t !== timeSlot)
+      : [...filters.preferredTimeSlots, timeSlot];
+
+    onFiltersChange({
+      ...filters,
+      preferredTimeSlots: newTimeSlots,
+    });
+  };
+
   const handleReset = () => {
     onFiltersChange({
       priceRange: [0, 200],
       minRating: null,
       specializations: [],
+      preferredTimeSlots: [],
+      timezoneOffset: null,
     });
   };
 
@@ -59,7 +75,8 @@ export function CoachFilters({
     filters.priceRange[0] !== 0 ||
     filters.priceRange[1] !== 200 ||
     filters.minRating !== null ||
-    filters.specializations.length > 0;
+    filters.specializations.length > 0 ||
+    filters.preferredTimeSlots.length > 0;
 
   const ratingOptions = [
     { value: null, label: "All Ratings" },
@@ -161,6 +178,42 @@ export function CoachFilters({
                     {spec}
                     {isSelected && <X className="w-3 h-3 ml-1" />}
                   </Badge>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Availability Time Slots */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4 text-muted-foreground" />
+              <label className="text-sm font-light text-muted-foreground">
+                Preferred Time Slots
+              </label>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { value: "morning" as TimeSlot, label: "Morning", desc: "6am-12pm" },
+                { value: "afternoon" as TimeSlot, label: "Afternoon", desc: "12pm-6pm" },
+                { value: "evening" as TimeSlot, label: "Evening", desc: "6pm-12am" },
+                { value: "weekend" as TimeSlot, label: "Weekend", desc: "Sat-Sun" },
+              ].map((slot) => {
+                const isSelected = filters.preferredTimeSlots.includes(slot.value);
+                return (
+                  <Button
+                    key={slot.value}
+                    variant={isSelected ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => handleTimeSlotToggle(slot.value)}
+                    className={`font-light text-xs flex flex-col items-start h-auto py-2 ${
+                      isSelected
+                        ? "bg-foreground text-background hover:bg-foreground/90"
+                        : "bg-transparent"
+                    }`}
+                  >
+                    <span>{slot.label}</span>
+                    <span className="text-[10px] opacity-70">{slot.desc}</span>
+                  </Button>
                 );
               })}
             </div>

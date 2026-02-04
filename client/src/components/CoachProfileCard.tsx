@@ -4,6 +4,15 @@ import { Button } from "@/components/ui/button";
 import { MapPin, Globe, Star, Clock } from "lucide-react";
 import { motion } from "framer-motion";
 
+export type TimeSlot = "morning" | "afternoon" | "evening" | "weekend";
+export type DayOfWeek = "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday";
+
+export interface DetailedAvailability {
+  days: DayOfWeek[];
+  timeSlots: TimeSlot[];
+  timezoneOffset: number; // UTC offset in hours (e.g., -8 for PST, +1 for CET)
+}
+
 export interface CoachProfile {
   id: string;
   name: string;
@@ -17,7 +26,8 @@ export interface CoachProfile {
   specializations: string[];
   teachingStyle: string;
   targetRating: string;
-  availability: string;
+  availability: string; // Human-readable summary
+  detailedAvailability: DetailedAvailability;
   studentCount?: number;
   reviewRating?: number;
   bio: string;
