@@ -503,77 +503,8 @@ function MeetOurCoachesSection() {
     timezoneOffset: null,
   });
 
-  const coaches: CoachProfile[] = [
-    {
-      id: "elena-volkov",
-      name: "GM Elena Volkov",
-      title: "Grandmaster",
-      rating: 2587,
-      location: "Barcelona, Spain",
-      timezone: "UTC+1",
-      languages: ["English", "Spanish", "Russian"],
-      hourlyRate: 120,
-      imageUrl: "https://files.manuscdn.com/user_upload_by_module/session_file/310519663188415081/CAVrGslodptDhLEN.png",
-      specializations: ["Tournament Prep", "Strategic Mastery", "Psychological Training"],
-      teachingStyle: "The Strategist",
-      targetRating: "1800-2400",
-      availability: "Mon-Fri",
-      detailedAvailability: {
-        days: ["monday", "tuesday", "wednesday", "thursday", "friday"],
-        timeSlots: ["afternoon", "evening"],
-        timezoneOffset: 1 // UTC+1 (Barcelona)
-      },
-      studentCount: 47,
-      reviewRating: 4.9,
-      bio: "Former Women's World Championship quarterfinalist with a psychology degree. Specializes in tournament preparation and mental game development for serious competitors."
-    },
-    {
-      id: "david-chen",
-      name: "IM David Chen",
-      title: "International Master",
-      rating: 2421,
-      location: "San Francisco, USA",
-      timezone: "UTC-8",
-      languages: ["English", "Mandarin"],
-      hourlyRate: 65,
-      imageUrl: "https://files.manuscdn.com/user_upload_by_module/session_file/310519663188415081/CLNgdiGFAHqfVhnZ.png",
-      specializations: ["Tactical Training", "Endgame Technique", "Opening Repertoire"],
-      teachingStyle: "The Technician",
-      targetRating: "1200-2000",
-      availability: "Evenings & Weekends",
-      detailedAvailability: {
-        days: ["tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"],
-        timeSlots: ["evening", "weekend"],
-        timezoneOffset: -8 // UTC-8 (San Francisco)
-      },
-      studentCount: 203,
-      reviewRating: 4.8,
-      bio: "Software engineer and chess coach using data-driven methods. Known for structured curriculum and modern technology integration. Average student rating gain: 150 points in 6 months."
-    },
-    {
-      id: "maria-santos",
-      name: "FM Maria Santos",
-      title: "FIDE Master, WGM",
-      rating: 2312,
-      location: "Buenos Aires, Argentina",
-      timezone: "UTC-3",
-      languages: ["Spanish", "English", "Portuguese"],
-      hourlyRate: 45,
-      imageUrl: "https://files.manuscdn.com/user_upload_by_module/session_file/310519663188415081/PVcuRjYIFiiBHaDK.png",
-      specializations: ["Beginner Foundations", "Junior Development", "Women's Chess"],
-      teachingStyle: "The Mentor",
-      targetRating: "0-1600",
-      availability: "Flexible, Same-day",
-      detailedAvailability: {
-        days: ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday"],
-        timeSlots: ["morning", "afternoon"],
-        timezoneOffset: -3 // UTC-3 (Buenos Aires)
-      },
-      studentCount: 512,
-      reviewRating: 5.0,
-      bio: "18 years of teaching experience specializing in beginners and juniors. Patient, encouraging approach that makes chess fun. Runs a free chess club for 150+ underprivileged kids."
-    }
-  ];
+  // TODO: Fetch real coaches from database when they sign up
+  const coaches: CoachProfile[] = [];
 
   // Extract all unique specializations from coaches
   const allSpecializations = Array.from(
@@ -638,10 +569,10 @@ function MeetOurCoachesSection() {
         >
           <motion.div variants={fadeIn} className="text-center space-y-6 max-w-3xl mx-auto">
             <h2 className="text-5xl md:text-6xl font-thin tracking-tighter leading-tight">
-              Meet Our Founding Coaches
+              Our Coach Community
             </h2>
             <p className="text-xl md:text-2xl font-light text-muted-foreground leading-relaxed">
-              Elite coaches with diverse specializations and teaching styles. From beginners to advanced players, we have the perfect match for your goals.
+              We're building a curated network of elite chess coaches. Join the waitlist to be notified when our founding coaches launch.
             </p>
           </motion.div>
 
@@ -654,15 +585,44 @@ function MeetOurCoachesSection() {
             />
           </motion.div>
 
-          {/* Results Count */}
-          <motion.div variants={fadeIn} className="text-center">
-            <p className="text-sm font-light text-muted-foreground">
-              Showing {filteredCoaches.length} of {coaches.length} coaches
-            </p>
-          </motion.div>
+          {/* Results Count - Only show if coaches exist */}
+          {coaches.length > 0 && (
+            <motion.div variants={fadeIn} className="text-center">
+              <p className="text-sm font-light text-muted-foreground">
+                Showing {filteredCoaches.length} of {coaches.length} coaches
+              </p>
+            </motion.div>
+          )}
 
-          {/* Coach Grid */}
-          {filteredCoaches.length > 0 ? (
+          {/* Coach Grid or Empty State */}
+          {coaches.length === 0 ? (
+            <motion.div
+              variants={fadeIn}
+              className="text-center py-24 space-y-6"
+            >
+              <div className="space-y-4">
+                <p className="text-2xl font-light text-foreground">
+                  Our founding coaches are coming soon.
+                </p>
+                <p className="text-lg font-light text-muted-foreground max-w-2xl mx-auto">
+                  We're currently vetting applications from elite chess coaches. Join the waitlist below to be notified when they launch.
+                </p>
+              </div>
+              <Button
+                size="lg"
+                onClick={() => {
+                  const element = document.getElementById("waitlist");
+                  if (element) {
+                    element.scrollIntoView({ behavior: "smooth" });
+                  }
+                }}
+                className="font-light"
+              >
+                Join Waitlist
+                <ChevronRight className="ml-2 h-4 w-4" />
+              </Button>
+            </motion.div>
+          ) : filteredCoaches.length > 0 ? (
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
               {filteredCoaches.map((coach) => (
                 <CoachProfileCard

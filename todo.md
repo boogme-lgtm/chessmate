@@ -228,3 +228,9 @@
 - [ ] Add booking cancellation flow (48-hour policy)
 - [ ] Implement booking status tracking (pending, confirmed, completed, cancelled)
 - [ ] Test complete booking flow end-to-end
+
+
+## Homepage Updates
+- [x] Remove fictional coach profiles from homepage
+- [x] Show empty state message when no coaches are available
+- [x] Keep coach filtering and layout components for future use
