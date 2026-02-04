@@ -67,7 +67,7 @@ function Navigation() {
     >
       <div className="container flex items-center justify-between h-20">
         <div className="flex items-center gap-4">
-          <img src="/logo.png" alt="BooGMe" className="h-8 w-auto" />
+          <img src="https://files.manuscdn.com/user_upload_by_module/session_file/310519663188415081/xRYfqyUGHSJUlDcu.png" alt="BooGMe" className="h-10 w-auto drop-shadow-[0_2px_8px_rgba(255,255,255,0.15)]" />
         </div>
         
         <div className="hidden md:flex items-center gap-12">
@@ -319,7 +319,7 @@ function ForCoachesSection() {
     "Payment protection with escrow system - get paid for every completed lesson",
     "AI-powered student matching based on teaching style and expertise",
     "No payment details needed until you earn $100",
-    "Keep 80-85% of your earnings with transparent 15-20% platform fee",
+    "Keep more of your earnings with minimal platform fees",
     "Automated scheduling, payments, and calendar management",
     "Built-in video conferencing and analysis tools"
   ];
@@ -498,7 +498,7 @@ function Footer() {
       <div className="container">
         <div className="flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-4">
-            <img src="/logo.png" alt="BooGMe" className="h-6 w-auto" />
+            <img src="https://files.manuscdn.com/user_upload_by_module/session_file/310519663188415081/xRYfqyUGHSJUlDcu.png" alt="BooGMe" className="h-6 w-auto" />
           </div>
           <p className="text-sm font-light text-muted-foreground">
             © 2026 BooGMe. All rights reserved.

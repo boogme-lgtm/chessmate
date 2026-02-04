@@ -110,3 +110,21 @@
 - [x] Remove Chess.com fee comparison claims from coaches page
 - [x] Remove Chess.com fee comparison claims from homepage
 - [x] Replace with accurate value props focusing on unique services (payment protection, AI matching, escrow)
+
+## Cost Analysis & Financial Planning
+- [ ] Research infrastructure and hosting costs for marketplace platforms
+- [ ] Research video hosting and streaming costs (live lessons + content library)
+- [ ] Research payment processing fees (Stripe, escrow, international)
+- [ ] Research chess-specific tool costs (engines, databases, PGN processing)
+- [ ] Calculate customer acquisition costs and marketing budget
+- [ ] Create comprehensive cost structure document
+- [ ] Perform break-even analysis for Year 1 and Year 2
+- [ ] Identify cost optimization strategies
+
+## Messaging Consistency & Branding Polish
+- [x] Remove all "80-85%" or specific percentage claims from homepage
+- [x] Remove all specific percentage claims from coaches page
+- [x] Replace with vague "keep more of your earnings" messaging
+- [x] Enhance logo visibility (increase size, improve contrast)
+- [ ] Audit all pages for consistent messaging about fees
+- [ ] Create comprehensive website polish checklist

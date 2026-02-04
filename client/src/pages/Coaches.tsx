@@ -73,7 +73,7 @@ function Navigation() {
       <div className="container flex items-center justify-between h-20">
         <div className="flex items-center gap-4">
           <a href="/">
-            <img src="/logo.png" alt="BooGMe" className="h-8 w-auto" />
+            <img src="https://files.manuscdn.com/user_upload_by_module/session_file/310519663188415081/xRYfqyUGHSJUlDcu.png" alt="BooGMe" className="h-10 w-auto drop-shadow-[0_2px_8px_rgba(255,255,255,0.15)]" />
           </a>
         </div>
 
@@ -183,7 +183,7 @@ function CoachHeroSection() {
               Build Your Coaching Business.
               <br />
               <span className="text-muted-foreground">
-                Keep 80-85% of Every Lesson.
+                Keep More of Your Earnings.
               </span>
             </h1>
             <p className="text-xl md:text-2xl font-light text-muted-foreground max-w-3xl mx-auto leading-relaxed">
@@ -486,9 +486,9 @@ function BenefitsSection() {
   const benefits = [
     {
       icon: DollarSign,
-      title: "Keep 80-85% of Earnings",
+      title: "Keep More of Your Earnings",
       description:
-        "Transparent 15-20% platform fee covers payment processing, AI matching, escrow protection, and customer support. You keep 80-85% of every lesson.",
+        "Minimal platform fees cover payment processing, AI matching, escrow protection, and customer support. Keep more of your earnings compared to traditional academies.",
     },
     {
       icon: Shield,
@@ -783,7 +783,7 @@ function CoachWaitlistSection() {
               </div>
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 text-[#8B4513]" />
-                <span>Keep 80-85% of earnings</span>
+                <span>Keep more of your earnings</span>
               </div>
             </div>
           </motion.div>
