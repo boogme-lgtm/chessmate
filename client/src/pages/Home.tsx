@@ -23,6 +23,7 @@ import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { CoachMatchingAssessment } from "@/components/CoachMatchingAssessment";
 import { CoachProfileCard, type CoachProfile } from "@/components/CoachProfileCard";
+import { CoachFilters, type FilterState } from "@/components/CoachFilters";
 
 // Minimal animation variants
 const fadeIn = {
@@ -494,6 +495,12 @@ function WaitlistSection() {
 
 // Meet Our Coaches Section
 function MeetOurCoachesSection() {
+  const [filters, setFilters] = useState<FilterState>({
+    priceRange: [0, 200],
+    minRating: null,
+    specializations: [],
+  });
+
   const coaches: CoachProfile[] = [
     {
       id: "elena-volkov",
@@ -551,6 +558,39 @@ function MeetOurCoachesSection() {
     }
   ];
 
+  // Extract all unique specializations from coaches
+  const allSpecializations = Array.from(
+    new Set(coaches.flatMap((coach) => coach.specializations))
+  ).sort();
+
+  // Filter coaches based on current filters
+  const filteredCoaches = coaches.filter((coach) => {
+    // Price filter
+    if (
+      coach.hourlyRate < filters.priceRange[0] ||
+      coach.hourlyRate > filters.priceRange[1]
+    ) {
+      return false;
+    }
+
+    // Rating filter
+    if (filters.minRating && coach.reviewRating && coach.reviewRating < filters.minRating) {
+      return false;
+    }
+
+    // Specialization filter
+    if (filters.specializations.length > 0) {
+      const hasMatchingSpec = filters.specializations.some((spec) =>
+        coach.specializations.includes(spec)
+      );
+      if (!hasMatchingSpec) {
+        return false;
+      }
+    }
+
+    return true;
+  });
+
   const handleBookClick = () => {
     const element = document.getElementById("waitlist");
     if (element) {
@@ -578,15 +618,56 @@ function MeetOurCoachesSection() {
             </p>
           </motion.div>
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {coaches.map((coach) => (
-              <CoachProfileCard
-                key={coach.id}
-                coach={coach}
-                onBookClick={handleBookClick}
-              />
-            ))}
-          </div>
+          {/* Filters */}
+          <motion.div variants={fadeIn}>
+            <CoachFilters
+              filters={filters}
+              onFiltersChange={setFilters}
+              availableSpecializations={allSpecializations}
+            />
+          </motion.div>
+
+          {/* Results Count */}
+          <motion.div variants={fadeIn} className="text-center">
+            <p className="text-sm font-light text-muted-foreground">
+              Showing {filteredCoaches.length} of {coaches.length} coaches
+            </p>
+          </motion.div>
+
+          {/* Coach Grid */}
+          {filteredCoaches.length > 0 ? (
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {filteredCoaches.map((coach) => (
+                <CoachProfileCard
+                  key={coach.id}
+                  coach={coach}
+                  onBookClick={handleBookClick}
+                />
+              ))}
+            </div>
+          ) : (
+            <motion.div
+              variants={fadeIn}
+              className="text-center py-16 space-y-4"
+            >
+              <p className="text-xl font-light text-muted-foreground">
+                No coaches match your current filters.
+              </p>
+              <Button
+                variant="outline"
+                onClick={() =>
+                  setFilters({
+                    priceRange: [0, 200],
+                    minRating: null,
+                    specializations: [],
+                  })
+                }
+                className="font-light"
+              >
+                Reset Filters
+              </Button>
+            </motion.div>
+          )}
         </motion.div>
       </div>
     </section>

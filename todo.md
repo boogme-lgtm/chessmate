@@ -135,3 +135,12 @@
 - [x] Create coach profile card component
 - [x] Add coach profiles section to homepage
 - [ ] Test coach profile display on all devices
+
+## Coach Filtering System
+- [x] Create CoachFilters component with price, rating, and specialization controls
+- [x] Implement price range slider (dual-handle for min/max)
+- [x] Add rating level dropdown filter
+- [x] Add specialization tag filters
+- [x] Integrate filtering logic with coach profiles display
+- [x] Add filter reset functionality
+- [ ] Test filtering on mobile devices
