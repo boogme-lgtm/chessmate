@@ -128,3 +128,10 @@
 - [x] Enhance logo visibility (increase size, improve contrast)
 - [ ] Audit all pages for consistent messaging about fees
 - [ ] Create comprehensive website polish checklist
+
+## Coach Profile Design
+- [x] Design three fictional coach profiles with diverse backgrounds
+- [x] Generate professional headshots for each coach
+- [x] Create coach profile card component
+- [x] Add coach profiles section to homepage
+- [ ] Test coach profile display on all devices

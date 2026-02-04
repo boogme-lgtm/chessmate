@@ -22,6 +22,7 @@ import React, { useState } from "react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { CoachMatchingAssessment } from "@/components/CoachMatchingAssessment";
+import { CoachProfileCard, type CoachProfile } from "@/components/CoachProfileCard";
 
 // Minimal animation variants
 const fadeIn = {
@@ -491,6 +492,107 @@ function WaitlistSection() {
   );
 }
 
+// Meet Our Coaches Section
+function MeetOurCoachesSection() {
+  const coaches: CoachProfile[] = [
+    {
+      id: "elena-volkov",
+      name: "GM Elena Volkov",
+      title: "Grandmaster",
+      rating: 2587,
+      location: "Barcelona, Spain",
+      timezone: "UTC+1",
+      languages: ["English", "Spanish", "Russian"],
+      hourlyRate: 120,
+      imageUrl: "https://files.manuscdn.com/user_upload_by_module/session_file/310519663188415081/CAVrGslodptDhLEN.png",
+      specializations: ["Tournament Prep", "Strategic Mastery", "Psychological Training"],
+      teachingStyle: "The Strategist",
+      targetRating: "1800-2400",
+      availability: "Mon-Fri",
+      studentCount: 47,
+      reviewRating: 4.9,
+      bio: "Former Women's World Championship quarterfinalist with a psychology degree. Specializes in tournament preparation and mental game development for serious competitors."
+    },
+    {
+      id: "david-chen",
+      name: "IM David Chen",
+      title: "International Master",
+      rating: 2421,
+      location: "San Francisco, USA",
+      timezone: "UTC-8",
+      languages: ["English", "Mandarin"],
+      hourlyRate: 65,
+      imageUrl: "https://files.manuscdn.com/user_upload_by_module/session_file/310519663188415081/CLNgdiGFAHqfVhnZ.png",
+      specializations: ["Tactical Training", "Endgame Technique", "Opening Repertoire"],
+      teachingStyle: "The Technician",
+      targetRating: "1200-2000",
+      availability: "Evenings & Weekends",
+      studentCount: 203,
+      reviewRating: 4.8,
+      bio: "Software engineer and chess coach using data-driven methods. Known for structured curriculum and modern technology integration. Average student rating gain: 150 points in 6 months."
+    },
+    {
+      id: "maria-santos",
+      name: "FM Maria Santos",
+      title: "FIDE Master, WGM",
+      rating: 2312,
+      location: "Buenos Aires, Argentina",
+      timezone: "UTC-3",
+      languages: ["Spanish", "English", "Portuguese"],
+      hourlyRate: 45,
+      imageUrl: "https://files.manuscdn.com/user_upload_by_module/session_file/310519663188415081/PVcuRjYIFiiBHaDK.png",
+      specializations: ["Beginner Foundations", "Junior Development", "Women's Chess"],
+      teachingStyle: "The Mentor",
+      targetRating: "0-1600",
+      availability: "Flexible, Same-day",
+      studentCount: 512,
+      reviewRating: 5.0,
+      bio: "18 years of teaching experience specializing in beginners and juniors. Patient, encouraging approach that makes chess fun. Runs a free chess club for 150+ underprivileged kids."
+    }
+  ];
+
+  const handleBookClick = () => {
+    const element = document.getElementById("waitlist");
+    if (element) {
+      element.scrollIntoView({ behavior: "smooth" });
+    }
+    toast.info("Join the waitlist to book lessons with our founding coaches!");
+  };
+
+  return (
+    <section className="section">
+      <div className="container">
+        <motion.div
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, margin: "-100px" }}
+          variants={staggerContainer}
+          className="space-y-16"
+        >
+          <motion.div variants={fadeIn} className="text-center space-y-6 max-w-3xl mx-auto">
+            <h2 className="text-5xl md:text-6xl font-thin tracking-tighter leading-tight">
+              Meet Our Founding Coaches
+            </h2>
+            <p className="text-xl md:text-2xl font-light text-muted-foreground leading-relaxed">
+              Elite coaches with diverse specializations and teaching styles. From beginners to advanced players, we have the perfect match for your goals.
+            </p>
+          </motion.div>
+
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {coaches.map((coach) => (
+              <CoachProfileCard
+                key={coach.id}
+                coach={coach}
+                onBookClick={handleBookClick}
+              />
+            ))}
+          </div>
+        </motion.div>
+      </div>
+    </section>
+  );
+}
+
 // Footer - Minimal
 function Footer() {
   return (
@@ -517,6 +619,7 @@ export default function Home() {
       <HeroSection />
       <FeaturesSection />
       <PaymentProtectionSection />
+      <MeetOurCoachesSection />
       <ForCoachesSection />
       <WaitlistSection />
       <Footer />
