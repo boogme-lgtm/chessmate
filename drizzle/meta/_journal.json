@@ -36,6 +36,13 @@
       "when": 1770239123769,
       "tag": "0004_perfect_manta",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1770320210656,
+      "tag": "0005_flowery_firelord",
+      "breakpoints": true
     }
   ]
 }

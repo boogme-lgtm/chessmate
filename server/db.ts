@@ -1,4 +1,4 @@
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, and, desc, sql, gte, lte } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { 
   InsertUser, 
@@ -534,6 +534,100 @@ export async function getWaitlistCount() {
     .from(waitlist);
 
   return result[0]?.count || 0;
+}
+
+export async function updateWaitlistEmailStatus(
+  email: string,
+  updates: {
+    confirmationEmailSent?: boolean;
+    nurtureEmail1Sent?: boolean;
+    nurtureEmail2Sent?: boolean;
+    nurtureEmail3Sent?: boolean;
+    nurtureEmail4Sent?: boolean;
+    nurtureEmail5Sent?: boolean;
+    lastEmailSentAt?: Date;
+  }
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db
+    .update(waitlist)
+    .set(updates)
+    .where(eq(waitlist.email, email));
+}
+
+export async function getWaitlistEntriesForNurture(emailNumber: 1 | 2 | 3 | 4 | 5) {
+  const db = await getDb();
+  if (!db) return [];
+
+  // Calculate the days since signup based on email number
+  // Email 1: 5 days, Email 2: 10 days, Email 3: 15 days, Email 4: 22 days, Email 5: 30 days
+  const daysMap = { 1: 5, 2: 10, 3: 15, 4: 22, 5: 30 };
+  const targetDays = daysMap[emailNumber];
+  
+  // Get entries that:
+  // 1. Have confirmation email sent
+  // 2. Haven't received this nurture email yet
+  // 3. Were created targetDays ago (within a 1-day window)
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - targetDays);
+  const windowStart = new Date(cutoffDate);
+  windowStart.setHours(0, 0, 0, 0);
+  const windowEnd = new Date(cutoffDate);
+  windowEnd.setHours(23, 59, 59, 999);
+
+  // Build the where clause based on which email we're checking
+  let whereClause;
+  switch (emailNumber) {
+    case 1:
+      whereClause = and(
+        eq(waitlist.confirmationEmailSent, true),
+        eq(waitlist.nurtureEmail1Sent, false),
+        gte(waitlist.createdAt, windowStart),
+        lte(waitlist.createdAt, windowEnd)
+      );
+      break;
+    case 2:
+      whereClause = and(
+        eq(waitlist.confirmationEmailSent, true),
+        eq(waitlist.nurtureEmail2Sent, false),
+        gte(waitlist.createdAt, windowStart),
+        lte(waitlist.createdAt, windowEnd)
+      );
+      break;
+    case 3:
+      whereClause = and(
+        eq(waitlist.confirmationEmailSent, true),
+        eq(waitlist.nurtureEmail3Sent, false),
+        gte(waitlist.createdAt, windowStart),
+        lte(waitlist.createdAt, windowEnd)
+      );
+      break;
+    case 4:
+      whereClause = and(
+        eq(waitlist.confirmationEmailSent, true),
+        eq(waitlist.nurtureEmail4Sent, false),
+        gte(waitlist.createdAt, windowStart),
+        lte(waitlist.createdAt, windowEnd)
+      );
+      break;
+    case 5:
+      whereClause = and(
+        eq(waitlist.confirmationEmailSent, true),
+        eq(waitlist.nurtureEmail5Sent, false),
+        gte(waitlist.createdAt, windowStart),
+        lte(waitlist.createdAt, windowEnd)
+      );
+      break;
+  }
+  
+  const entries = await db
+    .select()
+    .from(waitlist)
+    .where(whereClause);
+
+  return entries;
 }
 
 // ============ COACH APPLICATION OPERATIONS ============

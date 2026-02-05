@@ -296,6 +296,15 @@ export const waitlist = mysqlTable("waitlist", {
   userType: mysqlEnum("userType", ["student", "coach", "both"]).default("student"),
   referralSource: varchar("referralSource", { length: 128 }),
   
+  // Email nurture sequence tracking
+  confirmationEmailSent: boolean("confirmationEmailSent").default(false),
+  nurtureEmail1Sent: boolean("nurtureEmail1Sent").default(false),
+  nurtureEmail2Sent: boolean("nurtureEmail2Sent").default(false),
+  nurtureEmail3Sent: boolean("nurtureEmail3Sent").default(false),
+  nurtureEmail4Sent: boolean("nurtureEmail4Sent").default(false),
+  nurtureEmail5Sent: boolean("nurtureEmail5Sent").default(false),
+  lastEmailSentAt: timestamp("lastEmailSentAt"),
+  
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 

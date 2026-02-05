@@ -261,3 +261,19 @@
 - [ ] Build student bookings dashboard at /my-bookings
 - [ ] Add booking cancellation and refund logic
 - [ ] Test complete booking flow end-to-end
+
+
+## Email Nurture Sequence for Waitlist
+- [x] Design 5-email nurture sequence strategy (30-day timeline)
+- [x] Write email content for immediate confirmation (Day 0)
+- [x] Write email content for Email 1: Welcome & Platform Vision (Day 2)
+- [x] Write email content for Email 2: Meet the Founder & C-Squared (Day 7)
+- [x] Write email content for Email 3: How AI Matching Works (Day 14)
+- [x] Write email content for Email 4: Payment Protection Deep Dive (Day 21)
+- [x] Write email content for Email 5: Launch Countdown & Early Access (Day 28)
+- [ ] Implement email service integration using built-in notification system
+- [ ] Create automated email scheduling system
+- [ ] Add email templates to database
+- [ ] Trigger confirmation email on waitlist signup
+- [ ] Schedule nurture sequence emails automatically
+- [ ] Test complete email flow end-to-end

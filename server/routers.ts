@@ -9,6 +9,8 @@ import * as db from "./db";
 import * as stripeService from "./stripe";
 import { ENV } from "./_core/env";
 import { Chess } from "chess.js";
+import { sendEmail, getWaitlistConfirmationEmail } from "./emailService";
+import { sendNurtureEmails, sendNurtureEmailsManual } from "./nurtureEmailScheduler";
 
 export const appRouter = router({
   system: systemRouter,
@@ -93,6 +95,36 @@ export const appRouter = router({
             message: result.error || "Failed to join waitlist",
           });
         }
+        
+        // Send confirmation email
+        try {
+          const userType = input.userType === 'both' ? 'coach' : input.userType;
+          const emailHtml = getWaitlistConfirmationEmail(
+            input.name || input.email.split('@')[0],
+            userType
+          );
+          
+          const emailResult = await sendEmail({
+            to: input.email,
+            subject: userType === 'coach' 
+              ? 'Welcome to BooGMe - Coach Waitlist' 
+              : 'Welcome to BooGMe - Student Waitlist',
+            html: emailHtml,
+          });
+          
+          if (emailResult.success) {
+            // Mark confirmation email as sent
+            await db.updateWaitlistEmailStatus(input.email, {
+              confirmationEmailSent: true,
+              lastEmailSentAt: new Date(),
+            });
+            console.log(`[Waitlist] Confirmation email sent to ${input.email}`);
+          }
+        } catch (emailError) {
+          // Log error but don't fail the waitlist signup
+          console.error('[Waitlist] Failed to send confirmation email:', emailError);
+        }
+        
         return { success: true, message: "Successfully joined the waitlist!" };
       }),
     
@@ -852,6 +884,48 @@ export const appRouter = router({
         })
         .query(async () => {
           return await db.getCoachApplicationStats();
+        }),
+    }),
+    
+    // Nurture email management
+    emails: router({
+      // Trigger nurture email batch manually
+      sendNurtureBatch: protectedProcedure
+        .use(({ ctx, next }) => {
+          if (ctx.user.role !== "admin") {
+            throw new TRPCError({
+              code: "FORBIDDEN",
+              message: "Admin access required",
+            });
+          }
+          return next({ ctx });
+        })
+        .mutation(async () => {
+          const result = await sendNurtureEmails();
+          return result;
+        }),
+      
+      // Send test nurture email
+      sendTestEmail: protectedProcedure
+        .input(z.object({
+          emailNumber: z.number().min(1).max(5),
+          testEmail: z.string().email(),
+        }))
+        .use(({ ctx, next }) => {
+          if (ctx.user.role !== "admin") {
+            throw new TRPCError({
+              code: "FORBIDDEN",
+              message: "Admin access required",
+            });
+          }
+          return next({ ctx });
+        })
+        .mutation(async ({ input }) => {
+          const result = await sendNurtureEmailsManual(
+            input.emailNumber as 1 | 2 | 3 | 4 | 5,
+            input.testEmail
+          );
+          return result;
         }),
     }),
   }),
