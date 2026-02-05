@@ -28,7 +28,7 @@ export async function sendNurtureEmails() {
       
       for (const entry of entries) {
         try {
-          const emailHtml = getEmail(entry.name || entry.email.split('@')[0]);
+          const emailHtml = getEmail(entry.name || entry.email.split('@')[0], entry.email);
           
           const result = await sendEmail({
             to: entry.email,
@@ -87,7 +87,7 @@ export async function sendNurtureEmailsManual(emailNumber: 1 | 2 | 3 | 4 | 5, te
     const emailConfig = emailFunctions.find(e => e.number === emailNumber);
     if (!emailConfig) throw new Error(`Invalid email number: ${emailNumber}`);
     
-    const emailHtml = emailConfig.getEmail('Test User');
+    const emailHtml = emailConfig.getEmail('Test User', testEmail);
     
     const result = await sendEmail({
       to: testEmail,

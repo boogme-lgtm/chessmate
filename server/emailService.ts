@@ -40,7 +40,7 @@ export async function sendEmail(options: EmailOptions) {
  * Email Templates
  */
 
-export function getWaitlistConfirmationEmail(name: string, userType: 'student' | 'coach'): string {
+export function getWaitlistConfirmationEmail(name: string, userType: 'student' | 'coach', email: string): string {
   const isCoach = userType === 'coach';
   
   return `
@@ -138,6 +138,9 @@ export function getWaitlistConfirmationEmail(name: string, userType: 'student' |
               <p style="margin: 0; font-size: 12px; color: #606060;">
                 You're receiving this because you joined our waitlist.
               </p>
+              <p style="margin: 10px 0 0 0; font-size: 11px; color: #505050;">
+                <a href="${process.env.VITE_FRONTEND_URL || 'http://localhost:3000'}/unsubscribe?email=${encodeURIComponent(email)}" style="color: #808080; text-decoration: underline;">Unsubscribe</a>
+              </p>
             </td>
           </tr>
         </table>
@@ -149,7 +152,7 @@ export function getWaitlistConfirmationEmail(name: string, userType: 'student' |
   `;
 }
 
-export function getNurtureEmail1(name: string): string {
+export function getNurtureEmail1(name: string, email: string): string {
   return `
 <!DOCTYPE html>
 <html>
@@ -257,6 +260,9 @@ export function getNurtureEmail1(name: string): string {
               <p style="margin: 0; font-size: 12px; color: #606060;">
                 You're receiving this because you joined our waitlist.
               </p>
+              <p style="margin: 10px 0 0 0; font-size: 11px; color: #505050;">
+                <a href="${process.env.VITE_FRONTEND_URL || 'http://localhost:3000'}/unsubscribe?email=${encodeURIComponent(email)}" style="color: #808080; text-decoration: underline;">Unsubscribe</a>
+              </p>
             </td>
           </tr>
         </table>
@@ -271,7 +277,7 @@ export function getNurtureEmail1(name: string): string {
 // Additional email templates would go here (nurture emails 2-5)
 // For brevity, I'm showing the pattern - you can expand these similarly
 
-export function getNurtureEmail2(name: string): string {
+export function getNurtureEmail2(name: string, email: string): string {
   return `
 <!DOCTYPE html>
 <html>
@@ -369,6 +375,9 @@ export function getNurtureEmail2(name: string): string {
               <p style="margin: 0; font-size: 12px; color: #606060;">
                 You're receiving this because you joined our waitlist.
               </p>
+              <p style="margin: 10px 0 0 0; font-size: 11px; color: #505050;">
+                <a href="${process.env.VITE_FRONTEND_URL || 'http://localhost:3000'}/unsubscribe?email=${encodeURIComponent(email)}" style="color: #808080; text-decoration: underline;">Unsubscribe</a>
+              </p>
             </td>
           </tr>
         </table>
@@ -380,7 +389,7 @@ export function getNurtureEmail2(name: string): string {
   `;
 }
 
-export function getNurtureEmail3(name: string): string {
+export function getNurtureEmail3(name: string, email: string): string {
   return `
 <!DOCTYPE html>
 <html>
@@ -493,6 +502,9 @@ export function getNurtureEmail3(name: string): string {
               <p style="margin: 0; font-size: 12px; color: #606060;">
                 You're receiving this because you joined our waitlist.
               </p>
+              <p style="margin: 10px 0 0 0; font-size: 11px; color: #505050;">
+                <a href="${process.env.VITE_FRONTEND_URL || 'http://localhost:3000'}/unsubscribe?email=${encodeURIComponent(email)}" style="color: #808080; text-decoration: underline;">Unsubscribe</a>
+              </p>
             </td>
           </tr>
         </table>
@@ -504,7 +516,7 @@ export function getNurtureEmail3(name: string): string {
   `;
 }
 
-export function getNurtureEmail4(name: string): string {
+export function getNurtureEmail4(name: string, email: string): string {
   return `
 <!DOCTYPE html>
 <html>
@@ -610,6 +622,9 @@ export function getNurtureEmail4(name: string): string {
               <p style="margin: 0; font-size: 12px; color: #606060;">
                 You're receiving this because you joined our waitlist.
               </p>
+              <p style="margin: 10px 0 0 0; font-size: 11px; color: #505050;">
+                <a href="${process.env.VITE_FRONTEND_URL || 'http://localhost:3000'}/unsubscribe?email=${encodeURIComponent(email)}" style="color: #808080; text-decoration: underline;">Unsubscribe</a>
+              </p>
             </td>
           </tr>
         </table>
@@ -621,7 +636,7 @@ export function getNurtureEmail4(name: string): string {
   `;
 }
 
-export function getNurtureEmail5(name: string): string {
+export function getNurtureEmail5(name: string, email: string): string {
   return `
 <!DOCTYPE html>
 <html>
@@ -738,6 +753,9 @@ export function getNurtureEmail5(name: string): string {
               </p>
               <p style="margin: 0; font-size: 12px; color: #606060;">
                 You're receiving this because you joined our waitlist.
+              </p>
+              <p style="margin: 10px 0 0 0; font-size: 11px; color: #505050;">
+                <a href="${process.env.VITE_FRONTEND_URL || 'http://localhost:3000'}/unsubscribe?email=${encodeURIComponent(email)}" style="color: #808080; text-decoration: underline;">Unsubscribe</a>
               </p>
             </td>
           </tr>

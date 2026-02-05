@@ -101,7 +101,8 @@ export const appRouter = router({
           const userType = input.userType === 'both' ? 'coach' : input.userType;
           const emailHtml = getWaitlistConfirmationEmail(
             input.name || input.email.split('@')[0],
-            userType
+            userType,
+            input.email
           );
           
           const emailResult = await sendEmail({
@@ -126,6 +127,15 @@ export const appRouter = router({
         }
         
         return { success: true, message: "Successfully joined the waitlist!" };
+      }),
+    
+    unsubscribe: publicProcedure
+      .input(z.object({
+        email: z.string().email(),
+      }))
+      .mutation(async ({ input }) => {
+        const result = await db.unsubscribeFromWaitlist(input.email);
+        return result;
       }),
     
     count: publicProcedure.query(async () => {

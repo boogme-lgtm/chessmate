@@ -43,6 +43,13 @@
       "when": 1770320210656,
       "tag": "0005_flowery_firelord",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1770324643207,
+      "tag": "0006_redundant_titania",
+      "breakpoints": true
     }
   ]
 }

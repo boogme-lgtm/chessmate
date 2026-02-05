@@ -577,6 +577,21 @@ export async function updateWaitlistEmailStatus(
     .where(eq(waitlist.email, email));
 }
 
+export async function unsubscribeFromWaitlist(email: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db
+    .update(waitlist)
+    .set({
+      unsubscribed: true,
+      unsubscribedAt: new Date(),
+    })
+    .where(eq(waitlist.email, email));
+
+  return { success: true };
+}
+
 export async function getWaitlistEntriesForNurture(emailNumber: 1 | 2 | 3 | 4 | 5) {
   const db = await getDb();
   if (!db) return [];
@@ -604,6 +619,7 @@ export async function getWaitlistEntriesForNurture(emailNumber: 1 | 2 | 3 | 4 | 
       whereClause = and(
         eq(waitlist.confirmationEmailSent, true),
         eq(waitlist.nurtureEmail1Sent, false),
+        eq(waitlist.unsubscribed, false),
         gte(waitlist.createdAt, windowStart),
         lte(waitlist.createdAt, windowEnd)
       );
@@ -612,6 +628,7 @@ export async function getWaitlistEntriesForNurture(emailNumber: 1 | 2 | 3 | 4 | 
       whereClause = and(
         eq(waitlist.confirmationEmailSent, true),
         eq(waitlist.nurtureEmail2Sent, false),
+        eq(waitlist.unsubscribed, false),
         gte(waitlist.createdAt, windowStart),
         lte(waitlist.createdAt, windowEnd)
       );
@@ -620,6 +637,7 @@ export async function getWaitlistEntriesForNurture(emailNumber: 1 | 2 | 3 | 4 | 
       whereClause = and(
         eq(waitlist.confirmationEmailSent, true),
         eq(waitlist.nurtureEmail3Sent, false),
+        eq(waitlist.unsubscribed, false),
         gte(waitlist.createdAt, windowStart),
         lte(waitlist.createdAt, windowEnd)
       );
@@ -628,6 +646,7 @@ export async function getWaitlistEntriesForNurture(emailNumber: 1 | 2 | 3 | 4 | 
       whereClause = and(
         eq(waitlist.confirmationEmailSent, true),
         eq(waitlist.nurtureEmail4Sent, false),
+        eq(waitlist.unsubscribed, false),
         gte(waitlist.createdAt, windowStart),
         lte(waitlist.createdAt, windowEnd)
       );
@@ -636,6 +655,7 @@ export async function getWaitlistEntriesForNurture(emailNumber: 1 | 2 | 3 | 4 | 
       whereClause = and(
         eq(waitlist.confirmationEmailSent, true),
         eq(waitlist.nurtureEmail5Sent, false),
+        eq(waitlist.unsubscribed, false),
         gte(waitlist.createdAt, windowStart),
         lte(waitlist.createdAt, windowEnd)
       );

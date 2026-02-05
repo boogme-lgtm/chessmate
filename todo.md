@@ -288,3 +288,11 @@
 - [x] Create admin waitlist management page at /admin/waitlist
 - [x] Add CSV export functionality
 - [x] Add admin authentication check
+
+## Email Unsubscribe System
+- [x] Add unsubscribed field to waitlist database schema
+- [x] Create backend unsubscribe endpoint
+- [x] Add unsubscribe links to all email templates
+- [x] Create unsubscribe confirmation page
+- [x] Update email scheduler to skip unsubscribed users
+- [x] Test complete unsubscribe flow

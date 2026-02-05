@@ -305,6 +305,10 @@ export const waitlist = mysqlTable("waitlist", {
   nurtureEmail5Sent: boolean("nurtureEmail5Sent").default(false),
   lastEmailSentAt: timestamp("lastEmailSentAt"),
   
+  // Unsubscribe tracking
+  unsubscribed: boolean("unsubscribed").default(false),
+  unsubscribedAt: timestamp("unsubscribedAt"),
+  
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 

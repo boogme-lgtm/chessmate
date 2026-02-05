@@ -10,6 +10,7 @@ import CoachDashboard from "./pages/CoachDashboard";
 import CoachApplicationPage from "./pages/CoachApplicationPage";
 import AdminApplications from "./pages/AdminApplications";
 import AdminWaitlist from "./pages/AdminWaitlist";
+import Unsubscribe from "./pages/Unsubscribe";
 import Privacy from "./pages/Privacy";
 import Terms from "./pages/Terms";
 
@@ -23,6 +24,7 @@ function Router() {
       <Route path={"/coach/dashboard"} component={CoachDashboard} />
       <Route path={"/admin/applications"} component={AdminApplications} />
       <Route path={"/admin/waitlist"} component={AdminWaitlist} />
+      <Route path={"/unsubscribe"} component={Unsubscribe} />
       <Route path={"/privacy"} component={Privacy} />
       <Route path={"/terms"} component={Terms} />
       <Route path={"/404"} component={NotFound} />
