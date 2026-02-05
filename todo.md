@@ -277,3 +277,7 @@
 - [ ] Trigger confirmation email on waitlist signup
 - [ ] Schedule nurture sequence emails automatically
 - [ ] Test complete email flow end-to-end
+
+
+## Waitlist UX Improvements
+- [x] Improve duplicate email error handling with friendly toast notification

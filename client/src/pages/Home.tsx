@@ -396,9 +396,17 @@ function WaitlistSection() {
     },
     onError: (error: unknown) => {
       const errorMessage = error instanceof Error ? error.message : "Failed to join waitlist";
-      toast.error("Something went wrong", {
-        description: errorMessage
-      });
+      
+      // Check if it's a duplicate email error
+      if (errorMessage.includes("already") || errorMessage.includes("duplicate") || errorMessage.includes("exists")) {
+        toast.info("You're already on the list!", {
+          description: "We'll notify you when we launch. No need to sign up again."
+        });
+      } else {
+        toast.error("Something went wrong", {
+          description: errorMessage
+        });
+      }
     }
   });
 

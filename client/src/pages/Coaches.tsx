@@ -660,7 +660,16 @@ function CoachWaitlistSection() {
       setRating("");
     },
     onError: (error) => {
-      toast.error(error.message || "Something went wrong. Please try again.");
+      const errorMessage = error.message || "Something went wrong. Please try again.";
+      
+      // Check if it's a duplicate email error
+      if (errorMessage.includes("already") || errorMessage.includes("duplicate") || errorMessage.includes("exists")) {
+        toast.info("You're already on the list!", {
+          description: "We'll be in touch soon. No need to sign up again."
+        });
+      } else {
+        toast.error(errorMessage);
+      }
     },
   });
 
