@@ -296,3 +296,8 @@
 - [x] Create unsubscribe confirmation page
 - [x] Update email scheduler to skip unsubscribed users
 - [x] Test complete unsubscribe flow
+
+## Email Template Updates
+- [x] Replace pawn emoji with BooGMe logo in all email templates
+- [x] Create test email broadcast functionality for all subscribers
+- [x] Send test email to verify logo appears correctly

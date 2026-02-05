@@ -59,8 +59,9 @@ export function getWaitlistConfirmationEmail(name: string, userType: 'student' |
           <!-- Header -->
           <tr>
             <td style="padding: 40px 40px 20px 40px; text-align: center;">
+              <img src="https://files.manuscdn.com/user_upload_by_module/session_file/310519663188415081/xRYfqyUGHSJUlDcu.png" alt="BooGMe" style="height: 48px; width: auto; margin-bottom: 20px;" />
               <h1 style="margin: 0; font-size: 32px; font-weight: 300; color: #ffffff; letter-spacing: -0.5px;">
-                Welcome to BooGMe ♟️
+                Welcome to BooGMe
               </h1>
             </td>
           </tr>

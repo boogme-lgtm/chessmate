@@ -11,6 +11,7 @@ import { ENV } from "./_core/env";
 import { Chess } from "chess.js";
 import { sendEmail, getWaitlistConfirmationEmail } from "./emailService";
 import { sendNurtureEmails, sendNurtureEmailsManual } from "./nurtureEmailScheduler";
+import { resendWelcomeEmails } from "./resendWelcomeEmails";
 
 export const appRouter = router({
   system: systemRouter,
@@ -936,6 +937,134 @@ export const appRouter = router({
             input.testEmail
           );
           return result;
+        }),
+      
+      // Resend welcome emails to all subscribers
+      resendWelcome: protectedProcedure
+        .use(({ ctx, next }) => {
+          if (ctx.user.role !== "admin") {
+            throw new TRPCError({
+              code: "FORBIDDEN",
+              message: "Admin access required",
+            });
+          }
+          return next({ ctx });
+        })
+        .mutation(async () => {
+          const result = await resendWelcomeEmails();
+          return result;
+        }),
+      
+      // Broadcast test email to all subscribers
+      broadcastTest: protectedProcedure
+        .input(z.object({
+          subject: z.string().min(1),
+          message: z.string().min(1),
+        }))
+        .use(({ ctx, next }) => {
+          if (ctx.user.role !== "admin") {
+            throw new TRPCError({
+              code: "FORBIDDEN",
+              message: "Admin access required",
+            });
+          }
+          return next({ ctx });
+        })
+        .mutation(async ({ input }) => {
+          const entries = await db.getAllWaitlistEntries();
+          const activeSubscribers = entries.filter(e => !e.unsubscribed);
+          
+          let successCount = 0;
+          let failCount = 0;
+          
+          for (const entry of activeSubscribers) {
+            try {
+              const emailHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${input.subject}</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #0a0a0a;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #0a0a0a;">
+    <tr>
+      <td align="center" style="padding: 40px 20px;">
+        <table width="600" cellpadding="0" cellspacing="0" style="background-color: #1a1a1a; border-radius: 8px; overflow: hidden;">
+          <!-- Header -->
+          <tr>
+            <td style="padding: 40px 40px 20px 40px; text-align: center;">
+              <img src="https://files.manuscdn.com/user_upload_by_module/session_file/310519663188415081/xRYfqyUGHSJUlDcu.png" alt="BooGMe" style="height: 48px; width: auto; margin-bottom: 20px;" />
+              <h1 style="margin: 0; font-size: 32px; font-weight: 300; color: #ffffff; letter-spacing: -0.5px;">
+                ${input.subject}
+              </h1>
+            </td>
+          </tr>
+          
+          <!-- Content -->
+          <tr>
+            <td style="padding: 0 40px 40px 40px;">
+              <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">
+                Hi ${entry.name || entry.email.split('@')[0]},
+              </p>
+              
+              <div style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">
+                ${input.message.replace(/\n/g, '<br>')}
+              </div>
+              
+              <p style="margin: 20px 0 0 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">
+                Best regards,<br>
+                The BooGMe Team
+              </p>
+            </td>
+          </tr>
+          
+          <!-- Footer -->
+          <tr>
+            <td style="padding: 30px 40px; background-color: #0f0f0f; text-align: center;">
+              <p style="margin: 0 0 10px 0; font-size: 14px; color: #808080;">
+                BooGMe - AI-Powered Chess Coaching Marketplace
+              </p>
+              <p style="margin: 0; font-size: 12px; color: #606060;">
+                You're receiving this because you joined our waitlist.
+              </p>
+              <p style="margin: 10px 0 0 0; font-size: 11px; color: #505050;">
+                <a href="${process.env.VITE_FRONTEND_URL || 'http://localhost:3000'}/unsubscribe?email=${encodeURIComponent(entry.email)}" style="color: #808080; text-decoration: underline;">Unsubscribe</a>
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+              `;
+              
+              const result = await sendEmail({
+                to: entry.email,
+                subject: input.subject,
+                html: emailHtml,
+              });
+              
+              if (result.success) {
+                successCount++;
+              } else {
+                failCount++;
+              }
+            } catch (error) {
+              console.error(`[Broadcast] Failed to send to ${entry.email}:`, error);
+              failCount++;
+            }
+          }
+          
+          return {
+            success: true,
+            totalSubscribers: activeSubscribers.length,
+            successCount,
+            failCount,
+          };
         }),
     }),
     
