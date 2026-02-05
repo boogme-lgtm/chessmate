@@ -301,3 +301,15 @@
 - [x] Replace pawn emoji with BooGMe logo in all email templates
 - [x] Create test email broadcast functionality for all subscribers
 - [x] Send test email to verify logo appears correctly
+
+## Unsubscribe Link Fix
+- [ ] Fix unsubscribe URLs to use correct domain instead of localhost
+- [ ] Test unsubscribe functionality with correct URL
+
+## Publishing Preparation
+- [x] Verify all features are working correctly
+- [ ] Create final pre-publish checkpoint
+- [ ] Guide user through Manus publish process
+- [ ] Configure boogme.com domain with GoDaddy DNS
+- [ ] Set VITE_FRONTEND_URL environment variable
+- [ ] Test published website and email links
