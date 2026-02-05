@@ -518,9 +518,17 @@ export async function addToWaitlist(entry: InsertWaitlist) {
     await db.insert(waitlist).values(entry);
     return { success: true };
   } catch (error: any) {
-    if (error.code === 'ER_DUP_ENTRY') {
-      return { success: false, error: "Email already registered" };
+    // Check for duplicate entry errors (MySQL error codes)
+    if (error.code === 'ER_DUP_ENTRY' || error.errno === 1062) {
+      return { success: false, error: "This email is already on the waitlist" };
     }
+    // Check if error message contains duplicate-related keywords
+    const errorMsg = error.message || String(error);
+    if (errorMsg.includes('Duplicate') || errorMsg.includes('duplicate') || errorMsg.includes('unique constraint')) {
+      return { success: false, error: "This email is already on the waitlist" };
+    }
+    // Log unexpected errors for debugging
+    console.error('[Waitlist] Unexpected error:', error);
     throw error;
   }
 }

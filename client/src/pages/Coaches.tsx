@@ -663,7 +663,7 @@ function CoachWaitlistSection() {
       const errorMessage = error.message || "Something went wrong. Please try again.";
       
       // Check if it's a duplicate email error
-      if (errorMessage.includes("already") || errorMessage.includes("duplicate") || errorMessage.includes("exists")) {
+      if (errorMessage.includes("already") || errorMessage.includes("duplicate") || errorMessage.includes("exists") || errorMessage.includes("waitlist")) {
         toast.info("You're already on the list!", {
           description: "We'll be in touch soon. No need to sign up again."
         });

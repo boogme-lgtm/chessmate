@@ -280,4 +280,5 @@
 
 
 ## Waitlist UX Improvements
-- [x] Improve duplicate email error handling with friendly toast notification
+- [x] Fix backend duplicate email error handling to send proper error message
+- [x] Update frontend to show friendly toast for duplicate emails
