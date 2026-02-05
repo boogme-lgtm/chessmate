@@ -313,3 +313,7 @@
 - [ ] Configure boogme.com domain with GoDaddy DNS
 - [ ] Set VITE_FRONTEND_URL environment variable
 - [ ] Test published website and email links
+
+## Domain Configuration
+- [x] Set VITE_FRONTEND_URL environment variable to https://boogme.com
+- [x] Verify unsubscribe links work with published domain
