@@ -678,3 +678,4 @@ export async function getCoachApplicationStats() {
     rejectedLast30Days: rejectedResult?.count || 0,
   };
 }
+

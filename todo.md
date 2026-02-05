@@ -243,3 +243,21 @@
 - [x] Create Terms of Service page component at /terms
 - [x] Add legal page links to footer
 - [x] Test legal pages display and formatting
+
+
+## Student Booking Flow Implementation
+- [x] Design bookings database schema (lessons, time slots, payments)
+- [x] Create bookings table with Stripe payment tracking
+- [x] Add coach availability slots table
+- [x] Build backend API for creating bookings
+- [x] Build backend API for Stripe payment intent creation
+- [x] Build backend API for fetching coach availability
+- [ ] Create coach detail page at /coach/[id]
+- [ ] Display full coach bio, credentials, and specializations
+- [ ] Build availability calendar component
+- [ ] Implement time slot selection interface
+- [ ] Integrate Stripe payment form
+- [ ] Create booking confirmation flow
+- [ ] Build student bookings dashboard at /my-bookings
+- [ ] Add booking cancellation and refund logic
+- [ ] Test complete booking flow end-to-end

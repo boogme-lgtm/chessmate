@@ -856,6 +856,91 @@ export const appRouter = router({
     }),
   }),
 
+  // ============ BOOKING OPERATIONS ============
+  booking: router({
+    // Get coach availability
+    getCoachAvailability: publicProcedure
+      .input(z.object({
+        coachId: z.number(),
+        startDate: z.string(), // ISO date string
+        endDate: z.string(),
+      }))
+      .query(async ({ input }) => {
+        const { getCoachAvailability } = await import("./bookingService");
+        return await getCoachAvailability(
+          input.coachId,
+          new Date(input.startDate),
+          new Date(input.endDate)
+        );
+      }),
+
+    // Create a booking
+    createBooking: protectedProcedure
+      .input(z.object({
+        coachId: z.number(),
+        scheduledAt: z.string(), // ISO datetime string
+        durationMinutes: z.number(),
+        timezone: z.string(),
+        topic: z.string().optional(),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { createBooking } = await import("./bookingService");
+        const booking = await createBooking({
+          studentId: ctx.user.id,
+          coachId: input.coachId,
+          scheduledAt: new Date(input.scheduledAt),
+          durationMinutes: input.durationMinutes,
+          timezone: input.timezone,
+          topic: input.topic,
+          notes: input.notes,
+        });
+        return booking;
+      }),
+
+    // Get student's bookings
+    getMyBookings: protectedProcedure.query(async ({ ctx }) => {
+      return await db.getLessonsByStudent(ctx.user.id);
+    }),
+
+    // Get coach's bookings
+    getCoachBookings: protectedProcedure.query(async ({ ctx }) => {
+      return await db.getLessonsByCoach(ctx.user.id);
+    }),
+
+    // Get booking by ID
+    getBookingById: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ ctx, input }) => {
+        const lesson = await db.getLessonById(input.id);
+        if (!lesson) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Booking not found",
+          });
+        }
+        // Verify user is student or coach
+        if (lesson.studentId !== ctx.user.id && lesson.coachId !== ctx.user.id) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Not authorized to view this booking",
+          });
+        }
+        return lesson;
+      }),
+
+    // Calculate pricing for a lesson
+    calculatePricing: publicProcedure
+      .input(z.object({
+        coachId: z.number(),
+        durationMinutes: z.number(),
+      }))
+      .query(async ({ input }) => {
+        const { calculateLessonPricing } = await import("./bookingService");
+        return await calculateLessonPricing(input.coachId, input.durationMinutes);
+      }),
+  }),
+
   // ============ GAMIFICATION ============
   gamification: router({
     // Get all achievements
