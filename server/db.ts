@@ -544,6 +544,18 @@ export async function getWaitlistCount() {
   return result[0]?.count || 0;
 }
 
+export async function getAllWaitlistEntries() {
+  const db = await getDb();
+  if (!db) return [];
+
+  const entries = await db
+    .select()
+    .from(waitlist)
+    .orderBy(desc(waitlist.createdAt));
+
+  return entries;
+}
+
 export async function updateWaitlistEmailStatus(
   email: string,
   updates: {

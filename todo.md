@@ -282,3 +282,9 @@
 ## Waitlist UX Improvements
 - [x] Fix backend duplicate email error handling to send proper error message
 - [x] Update frontend to show friendly toast for duplicate emails
+
+## Admin Waitlist Management
+- [x] Create backend API endpoint to fetch all waitlist entries
+- [x] Create admin waitlist management page at /admin/waitlist
+- [x] Add CSV export functionality
+- [x] Add admin authentication check

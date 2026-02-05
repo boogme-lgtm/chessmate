@@ -928,6 +928,24 @@ export const appRouter = router({
           return result;
         }),
     }),
+    
+    // Waitlist management
+    waitlist: router({
+      // Get all waitlist entries
+      list: protectedProcedure
+        .use(({ ctx, next }) => {
+          if (ctx.user.role !== "admin") {
+            throw new TRPCError({
+              code: "FORBIDDEN",
+              message: "Admin access required",
+            });
+          }
+          return next({ ctx });
+        })
+        .query(async () => {
+          return await db.getAllWaitlistEntries();
+        }),
+    }),
   }),
 
   // ============ BOOKING OPERATIONS ============
