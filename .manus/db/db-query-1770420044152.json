@@ -1,0 +1,16 @@
+{
+  "query": "SELECT email, name, userType, referralSource FROM waitlist WHERE email = 'simplifiedtest@example.com';",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user o7gqiRJAqhDK5GQ.9c38f5a63e4d --database Xkyng35xnYFybYAdmyVo96 --execute SELECT email, name, userType, referralSource FROM waitlist WHERE email = 'simplifiedtest@example.com';",
+  "rows": [
+    {
+      "email": "simplifiedtest@example.com",
+      "name": "NULL",
+      "userType": "student",
+      "referralSource": "student-quiz"
+    }
+  ],
+  "messages": [],
+  "stdout": "email\tname\tuserType\treferralSource\nsimplifiedtest@example.com\tNULL\tstudent\tstudent-quiz\n",
+  "stderr": "",
+  "execution_time_ms": 197
+}

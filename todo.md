@@ -339,3 +339,6 @@
 - [ ] Add email capture form to quiz completion/results page
 - [ ] Connect email to waitlist signup endpoint
 - [ ] Test complete quiz flow with email capture
+
+## Recent Changes (In Progress)
+- [x] Simplify student quiz email capture to only require email (remove name field)

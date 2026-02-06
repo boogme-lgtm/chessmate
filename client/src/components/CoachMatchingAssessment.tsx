@@ -73,7 +73,6 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStep, setProcessingStep] = useState(0);
   const [email, setEmail] = useState("");
-  const [name, setName] = useState("");
   const [isSubmittingWaitlist, setIsSubmittingWaitlist] = useState(false);
 
   const addToWaitlistMutation = trpc.waitlist.join.useMutation();
@@ -1383,20 +1382,6 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
 
                 <div className="max-w-md mx-auto space-y-4">
                   <div>
-                    <Label htmlFor="waitlist-name" className="text-sm text-neutral-300 mb-2 block">
-                      Your Name
-                    </Label>
-                    <input
-                      id="waitlist-name"
-                      type="text"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      placeholder="Enter your name"
-                      className="w-full px-4 py-3 bg-black/20 border border-neutral-700 rounded-lg text-white placeholder:text-neutral-500 focus:outline-none focus:border-[#8B4513] transition-colors"
-                    />
-                  </div>
-
-                  <div>
                     <Label htmlFor="waitlist-email" className="text-sm text-neutral-300 mb-2 block">
                       Email Address
                     </Label>
@@ -1413,10 +1398,10 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
                   <Button
                     size="lg"
                     className="w-full bg-[#8B4513] hover:bg-[#A0522D] text-white"
-                    disabled={!email || !name || isSubmittingWaitlist}
+                    disabled={!email || isSubmittingWaitlist}
                     onClick={async () => {
-                      if (!email || !name) {
-                        toast.error("Please enter your name and email");
+                      if (!email) {
+                        toast.error("Please enter your email address");
                         return;
                       }
 
@@ -1424,7 +1409,6 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
                       try {
                         await addToWaitlistMutation.mutateAsync({
                           email: email.trim(),
-                          name: name.trim(),
                           userType: "student",
                           referralSource: "student-quiz",
                         });
