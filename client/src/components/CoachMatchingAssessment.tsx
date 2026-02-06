@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -71,6 +72,11 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
   const [showResults, setShowResults] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStep, setProcessingStep] = useState(0);
+  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
+  const [isSubmittingWaitlist, setIsSubmittingWaitlist] = useState(false);
+
+  const addToWaitlistMutation = trpc.waitlist.join.useMutation();
 
   const [data, setData] = useState<Partial<AssessmentData>>({
     rating: 1200,
@@ -1363,25 +1369,93 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
               </CardContent>
             </Card>
 
-            <div className="text-center py-8">
-              <p className="text-neutral-400 mb-4">
-                We're currently in stealth mode building our coach network.
-              </p>
-              <p className="text-neutral-300 mb-6">
-                Join the waitlist to be notified when coaches matching your
-                profile are available.
-              </p>
-              <Button
-                size="lg"
-                className="bg-[#8B4513] hover:bg-[#A0522D] text-white"
-                onClick={() => {
-                  toast.success("Added to waitlist! We'll notify you soon.");
-                  onClose();
-                }}
-              >
-                Join Waitlist
-              </Button>
-            </div>
+            <Card className="bg-neutral-900 border-neutral-800">
+              <CardContent className="p-8">
+                <div className="text-center mb-6">
+                  <p className="text-neutral-400 mb-2">
+                    We're currently in stealth mode building our coach network.
+                  </p>
+                  <p className="text-neutral-300 mb-6">
+                    Join the waitlist to be notified when coaches matching your
+                    profile are available.
+                  </p>
+                </div>
+
+                <div className="max-w-md mx-auto space-y-4">
+                  <div>
+                    <Label htmlFor="waitlist-name" className="text-sm text-neutral-300 mb-2 block">
+                      Your Name
+                    </Label>
+                    <input
+                      id="waitlist-name"
+                      type="text"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="Enter your name"
+                      className="w-full px-4 py-3 bg-black/20 border border-neutral-700 rounded-lg text-white placeholder:text-neutral-500 focus:outline-none focus:border-[#8B4513] transition-colors"
+                    />
+                  </div>
+
+                  <div>
+                    <Label htmlFor="waitlist-email" className="text-sm text-neutral-300 mb-2 block">
+                      Email Address
+                    </Label>
+                    <input
+                      id="waitlist-email"
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="your@email.com"
+                      className="w-full px-4 py-3 bg-black/20 border border-neutral-700 rounded-lg text-white placeholder:text-neutral-500 focus:outline-none focus:border-[#8B4513] transition-colors"
+                    />
+                  </div>
+
+                  <Button
+                    size="lg"
+                    className="w-full bg-[#8B4513] hover:bg-[#A0522D] text-white"
+                    disabled={!email || !name || isSubmittingWaitlist}
+                    onClick={async () => {
+                      if (!email || !name) {
+                        toast.error("Please enter your name and email");
+                        return;
+                      }
+
+                      setIsSubmittingWaitlist(true);
+                      try {
+                        await addToWaitlistMutation.mutateAsync({
+                          email: email.trim(),
+                          name: name.trim(),
+                          userType: "student",
+                          referralSource: "student-quiz",
+                        });
+                        toast.success(
+                          "🎉 You're on the list! Check your email for confirmation."
+                        );
+                        onClose();
+                      } catch (error: any) {
+                        if (
+                          error.message?.toLowerCase().includes("already") ||
+                          error.message?.toLowerCase().includes("duplicate") ||
+                          error.message?.toLowerCase().includes("exists") ||
+                          error.message?.toLowerCase().includes("waitlist")
+                        ) {
+                          toast.info("You're already on the list! We'll be in touch soon.");
+                          onClose();
+                        } else {
+                          toast.error(
+                            "Failed to join waitlist. Please try again."
+                          );
+                        }
+                      } finally {
+                        setIsSubmittingWaitlist(false);
+                      }
+                    }}
+                  >
+                    {isSubmittingWaitlist ? "Joining..." : "Join Waitlist"}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </div>
       </div>

@@ -96,6 +96,7 @@
 
 ## Bug Fixes (In Progress)
 - [x] Fix puzzle FEN parsing error causing crash when opening puzzle demo
+- [x] Fix student quiz flow to capture email for waitlist signup (was showing stealth mode message without email form)
 
 ## Questionnaire Enhancement (New)
 - [x] Research best practices from questionnaire-based matching platforms
@@ -333,3 +334,8 @@
 - [ ] Add payment processing fee handling by tier
 - [ ] Create coach payout dashboard
 - [ ] Test complete payment flow end-to-end
+
+## Student Quiz Flow Fix
+- [ ] Add email capture form to quiz completion/results page
+- [ ] Connect email to waitlist signup endpoint
+- [ ] Test complete quiz flow with email capture
