@@ -317,3 +317,19 @@
 ## Domain Configuration
 - [x] Set VITE_FRONTEND_URL environment variable to https://boogme.com
 - [x] Verify unsubscribe links work with published domain
+
+## Payment System Development
+- [x] Design database schema for bookings, payments, and escrow
+- [x] Implement Stripe Connect for coach payouts
+- [ ] Create coach onboarding flow with Stripe Connect
+- [ ] Build booking system with time slot selection
+- [ ] Implement Stripe checkout for lesson payments
+- [ ] Create escrow hold and release system
+- [ ] Add lesson confirmation flow (both parties confirm)
+- [ ] Implement 24-hour dispute window
+- [ ] Build package deal system with per-lesson escrow release
+- [ ] Add cancellation policy logic (>24hrs, <24hrs, no-show)
+- [ ] Implement tiered platform fees (15%, 10%, 5%)
+- [ ] Add payment processing fee handling by tier
+- [ ] Create coach payout dashboard
+- [ ] Test complete payment flow end-to-end

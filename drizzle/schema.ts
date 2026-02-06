@@ -57,7 +57,11 @@ export const coachProfiles = mysqlTable("coach_profiles", {
   hourlyRateCents: int("hourlyRateCents").default(5000), // $50 default
   currency: varchar("currency", { length: 3 }).default("USD"),
   
+  // Coach subscription tier determines platform fee
+  subscriptionTier: mysqlEnum("subscriptionTier", ["free", "growth", "business"]).default("free"),
+  
   // Platform commission rate (percentage, e.g., 15 = 15%)
+  // Free: 15%, Growth: 10%, Business: 5%
   commissionRate: int("commissionRate").default(15),
   
   // Stats
@@ -389,3 +393,169 @@ export const coachApplications = mysqlTable("coach_applications", {
 
 export type CoachApplication = typeof coachApplications.$inferSelect;
 export type InsertCoachApplication = typeof coachApplications.$inferInsert;
+
+/**
+ * Lesson Packages - Multi-lesson bundles with per-lesson escrow release
+ */
+export const lessonPackages = mysqlTable("lesson_packages", {
+  id: int("id").autoincrement().primaryKey(),
+  
+  // Participants
+  studentId: int("studentId").notNull(),
+  coachId: int("coachId").notNull(),
+  
+  // Package details
+  totalLessons: int("totalLessons").notNull(), // e.g., 5 lessons
+  completedLessons: int("completedLessons").default(0),
+  remainingLessons: int("remainingLessons").notNull(),
+  
+  // Pricing
+  totalAmountCents: int("totalAmountCents").notNull(), // Total package price
+  perLessonAmountCents: int("perLessonAmountCents").notNull(), // Amount per lesson
+  discountPercent: int("discountPercent").default(0),
+  currency: varchar("currency", { length: 3 }).default("USD"),
+  
+  // Stripe tracking
+  stripePaymentIntentId: varchar("stripePaymentIntentId", { length: 64 }),
+  
+  // Status
+  status: mysqlEnum("status", [
+    "active",      // Package in use
+    "completed",   // All lessons completed
+    "cancelled",   // Package cancelled
+    "expired"      // Expired without completion
+  ]).default("active"),
+  
+  // Expiration
+  expiresAt: timestamp("expiresAt"), // Packages expire after X months
+  
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type LessonPackage = typeof lessonPackages.$inferSelect;
+export type InsertLessonPackage = typeof lessonPackages.$inferInsert;
+
+/**
+ * Cancellations - Track lesson cancellations and refund calculations
+ */
+export const cancellations = mysqlTable("cancellations", {
+  id: int("id").autoincrement().primaryKey(),
+  lessonId: int("lessonId").notNull(),
+  
+  // Who cancelled
+  cancelledBy: mysqlEnum("cancelledBy", ["student", "coach"]).notNull(),
+  cancelledByUserId: int("cancelledByUserId").notNull(),
+  
+  // Timing
+  lessonScheduledAt: timestamp("lessonScheduledAt").notNull(),
+  cancelledAt: timestamp("cancelledAt").defaultNow().notNull(),
+  hoursBeforeLesson: int("hoursBeforeLesson").notNull(),
+  
+  // Refund calculation
+  refundPercent: int("refundPercent").notNull(), // 0, 50, or 100
+  refundAmountCents: int("refundAmountCents").notNull(),
+  coachCompensationCents: int("coachCompensationCents").notNull(),
+  
+  // Reason
+  reason: text("reason"),
+  
+  // Stripe refund tracking
+  stripeRefundId: varchar("stripeRefundId", { length: 64 }),
+  refundProcessedAt: timestamp("refundProcessedAt"),
+  
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type Cancellation = typeof cancellations.$inferSelect;
+export type InsertCancellation = typeof cancellations.$inferInsert;
+
+/**
+ * Disputes - Track refund requests during 24-hour window
+ */
+export const disputes = mysqlTable("disputes", {
+  id: int("id").autoincrement().primaryKey(),
+  lessonId: int("lessonId").notNull(),
+  
+  // Disputer
+  studentId: int("studentId").notNull(),
+  coachId: int("coachId").notNull(),
+  
+  // Dispute details
+  reason: mysqlEnum("reason", [
+    "coach_no_show",
+    "poor_quality",
+    "technical_issues",
+    "inappropriate_behavior",
+    "other"
+  ]).notNull(),
+  description: text("description").notNull(),
+  
+  // Evidence
+  evidence: text("evidence"), // JSON array of URLs/notes
+  
+  // Status
+  status: mysqlEnum("status", [
+    "pending",     // Awaiting review
+    "investigating", // Under review
+    "resolved_refund", // Refund issued
+    "resolved_no_refund", // No refund issued
+    "escalated"    // Needs manual intervention
+  ]).default("pending"),
+  
+  // Resolution
+  resolvedBy: int("resolvedBy"), // Admin user ID
+  resolvedAt: timestamp("resolvedAt"),
+  resolutionNotes: text("resolutionNotes"),
+  refundAmountCents: int("refundAmountCents"),
+  
+  // Stripe refund tracking
+  stripeRefundId: varchar("stripeRefundId", { length: 64 }),
+  
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type Dispute = typeof disputes.$inferSelect;
+export type InsertDispute = typeof disputes.$inferInsert;
+
+/**
+ * Payouts - Track all transfers to coaches
+ */
+export const payouts = mysqlTable("payouts", {
+  id: int("id").autoincrement().primaryKey(),
+  
+  // Coach
+  coachId: int("coachId").notNull(),
+  lessonId: int("lessonId"), // Null for package payouts
+  packageId: int("packageId"), // Null for single lesson payouts
+  
+  // Amount
+  amountCents: int("amountCents").notNull(),
+  platformFeeCents: int("platformFeeCents").notNull(),
+  processingFeeCents: int("processingFeeCents").default(0), // Only for Business tier
+  netAmountCents: int("netAmountCents").notNull(), // What coach actually receives
+  currency: varchar("currency", { length: 3 }).default("USD"),
+  
+  // Stripe tracking
+  stripeTransferId: varchar("stripeTransferId", { length: 64 }),
+  stripePayoutId: varchar("stripePayoutId", { length: 64 }),
+  
+  // Status
+  status: mysqlEnum("status", [
+    "pending",     // Awaiting release
+    "processing",  // Being transferred
+    "completed",   // Successfully paid out
+    "failed"       // Transfer failed
+  ]).default("pending"),
+  
+  // Timing
+  releasedAt: timestamp("releasedAt"),
+  completedAt: timestamp("completedAt"),
+  failureReason: text("failureReason"),
+  
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type Payout = typeof payouts.$inferSelect;
+export type InsertPayout = typeof payouts.$inferInsert;
