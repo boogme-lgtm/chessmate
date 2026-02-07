@@ -412,3 +412,10 @@
 ## Stripe Checkout Redirect Fix
 - [x] Update success_url and cancel_url to use production domain instead of localhost
 - [ ] Test payment flow with corrected redirect URLs
+
+
+## Payment Success/Cancel Pages
+- [x] Create LessonPaymentSuccess page component
+- [x] Create LessonPaymentCancel page component  
+- [x] Add routes for /lessons/:id with payment query params
+- [ ] Test complete booking flow with success/cancel redirects

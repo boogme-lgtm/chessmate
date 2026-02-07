@@ -1216,7 +1216,14 @@ export const appRouter = router({
             message: "Not authorized to view this booking",
           });
         }
-        return lesson;
+        
+        // Get coach name
+        const coach = await db.getUserById(lesson.coachId);
+        
+        return {
+          ...lesson,
+          coachName: coach?.name || "Coach",
+        };
       }),
 
     // Calculate pricing for a lesson

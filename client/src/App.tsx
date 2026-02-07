@@ -16,6 +16,8 @@ import Privacy from "./pages/Privacy";
 import Terms from "./pages/Terms";
 import CoachDetail from "./pages/CoachDetail";
 import StudentDashboard from "./pages/StudentDashboard";
+import LessonPaymentSuccess from "./pages/LessonPaymentSuccess";
+import LessonPaymentCancel from "./pages/LessonPaymentCancel";
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
@@ -28,6 +30,7 @@ function Router() {
       <Route path={"/coach/dashboard"} component={CoachDashboard} />
       <Route path={"/coach/:id"} component={CoachDetail} />
       <Route path={"/dashboard"} component={StudentDashboard} />
+      <Route path={"/lessons/:id"} component={LessonPaymentSuccess} />
       <Route path={"/admin/applications"} component={AdminApplications} />
       <Route path={"/admin/waitlist"} component={AdminWaitlist} />
       <Route path={"/unsubscribe"} component={Unsubscribe} />
