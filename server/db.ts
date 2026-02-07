@@ -284,7 +284,7 @@ export async function createLesson(lesson: InsertLesson) {
   if (!db) throw new Error("Database not available");
 
   const result = await db.insert(lessons).values(lesson);
-  return result;
+  return { id: Number(result[0].insertId) };
 }
 
 export async function getLessonById(id: number) {

@@ -253,7 +253,13 @@
 - [x] Build backend API for creating bookings
 - [x] Build backend API for Stripe payment intent creation
 - [x] Build backend API for fetching coach availability
-- [ ] Create coach detail page at /coach/[id]
+- [x] Create coach detail page at /coach/[id]
+- [x] Create coach browse page at /coaches
+- [x] Build availability calendar component
+- [x] Build booking modal with time slot selection
+- [x] Integrate Stripe checkout flow
+- [x] Create student dashboard at /dashboard
+- [x] Write vitest tests for booking API endpoints (8 tests passing)
 - [ ] Display full coach bio, credentials, and specializations
 - [ ] Build availability calendar component
 - [ ] Implement time slot selection interface

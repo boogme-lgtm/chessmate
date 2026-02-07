@@ -6,6 +6,7 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
 import Coaches from "./pages/Coaches";
+import CoachBrowse from "./pages/CoachBrowse";
 import CoachDashboard from "./pages/CoachDashboard";
 import CoachApplicationPage from "./pages/CoachApplicationPage";
 import AdminApplications from "./pages/AdminApplications";
@@ -13,15 +14,20 @@ import AdminWaitlist from "./pages/AdminWaitlist";
 import Unsubscribe from "./pages/Unsubscribe";
 import Privacy from "./pages/Privacy";
 import Terms from "./pages/Terms";
+import CoachDetail from "./pages/CoachDetail";
+import StudentDashboard from "./pages/StudentDashboard";
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
   return (
     <Switch>
       <Route path={"/"} component={Home} />
-      <Route path={"/coaches"} component={Coaches} />
+      <Route path={"/coaches"} component={CoachBrowse} />
+      <Route path={"/for-coaches"} component={Coaches} />
       <Route path={"/coach/apply"} component={CoachApplicationPage} />
       <Route path={"/coach/dashboard"} component={CoachDashboard} />
+      <Route path={"/coach/:id"} component={CoachDetail} />
+      <Route path={"/dashboard"} component={StudentDashboard} />
       <Route path={"/admin/applications"} component={AdminApplications} />
       <Route path={"/admin/waitlist"} component={AdminWaitlist} />
       <Route path={"/unsubscribe"} component={Unsubscribe} />

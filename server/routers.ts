@@ -356,7 +356,7 @@ export const appRouter = router({
       .query(async ({ input }) => {
         const coach = await db.getUserById(input.id);
         if (!coach) {
-          throw new TRPCError({ code: "NOT_FOUND", message: "Coach not found" });
+          return null;
         }
         const profile = await db.getCoachProfileByUserId(input.id);
         return { ...coach, profile };
@@ -366,8 +366,8 @@ export const appRouter = router({
     getAvailability: publicProcedure
       .input(z.object({
         coachId: z.number(),
-        startDate: z.date(),
-        endDate: z.date(),
+        startDate: z.string().datetime(),
+        endDate: z.string().datetime(),
       }))
       .query(async ({ input }) => {
         const profile = await db.getCoachProfileByUserId(input.coachId);
@@ -610,7 +610,7 @@ export const appRouter = router({
         const coachPayoutCents = amountCents - commissionCents;
 
         // Create lesson
-        await db.createLesson({
+        const lesson = await db.createLesson({
           studentId: ctx.user.id,
           coachId: input.coachId,
           scheduledAt: input.scheduledAt,
@@ -623,7 +623,7 @@ export const appRouter = router({
           status: "pending",
         });
 
-        return { success: true };
+        return { success: true, lessonId: lesson.id };
       }),
 
     // Get student's lessons

@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import BookingModal from "@/components/BookingModal";
 
 /**
  * Coach Detail Page - Shows coach profile and booking CTA
@@ -25,6 +26,7 @@ export default function CoachDetail() {
   const params = useParams();
   const [, setLocation] = useLocation();
   const coachId = parseInt(params.id || "0");
+  const [bookingModalOpen, setBookingModalOpen] = useState(false);
 
   const { data: coach, isLoading } = trpc.coach.getById.useQuery({ id: coachId });
   const { data: reviews } = trpc.coach.getReviews.useQuery({ coachId, limit: 5 });
@@ -218,10 +220,7 @@ export default function CoachDetail() {
                   <Button
                     size="lg"
                     className="w-full gap-2"
-                    onClick={() => {
-                      // TODO: Open booking modal
-                      toast.info("Booking calendar opening soon!");
-                    }}
+                    onClick={() => setBookingModalOpen(true)}
                   >
                     <Calendar className="h-5 w-5" />
                     Book a Lesson
@@ -257,6 +256,13 @@ export default function CoachDetail() {
           </div>
         </div>
       </div>
+
+      {/* Booking Modal */}
+      <BookingModal
+        open={bookingModalOpen}
+        onOpenChange={setBookingModalOpen}
+        coach={coach}
+      />
     </div>
   );
 }
