@@ -30,14 +30,7 @@ export default function LessonPaymentSuccess() {
     { enabled: !!lessonId }
   );
 
-  useEffect(() => {
-    // Redirect to dashboard after 5 seconds
-    const timer = setTimeout(() => {
-      navigate("/dashboard");
-    }, 5000);
-
-    return () => clearTimeout(timer);
-  }, [navigate]);
+  // Removed auto-redirect - let users navigate manually via buttons
 
   if (isLoading) {
     return (
@@ -151,10 +144,7 @@ export default function LessonPaymentSuccess() {
               </Button>
             </div>
 
-            {/* Auto-redirect Notice */}
-            <p className="text-xs text-center text-muted-foreground font-light">
-              You'll be redirected to your dashboard in 5 seconds...
-            </p>
+
           </CardContent>
         </Card>
       </motion.div>

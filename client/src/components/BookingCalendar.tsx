@@ -6,9 +6,11 @@ import {
   ChevronLeft, 
   ChevronRight, 
   Clock, 
-  Calendar as CalendarIcon 
+  Calendar as CalendarIcon,
+  Zap
 } from "lucide-react";
 import { format, addDays, startOfWeek, isSameDay, isAfter, isBefore, addMinutes, startOfDay } from "date-fns";
+import { toast } from "sonner";
 
 interface TimeSlot {
   start: Date;
@@ -112,12 +114,45 @@ export default function BookingCalendar({
     onSelectSlot(slot, selectedDuration);
   };
 
+  // Find next available slot across all future days
+  const findNextAvailableSlot = () => {
+    const maxDaysToCheck = maxAdvanceDays || 30;
+    
+    for (let dayOffset = 0; dayOffset <= maxDaysToCheck; dayOffset++) {
+      const checkDate = addDays(new Date(), dayOffset);
+      const slots = generateMockSlots(checkDate);
+      
+      const availableSlot = slots.find(slot => slot.available);
+      if (availableSlot) {
+        // Set the week and date to show this slot
+        setCurrentWeekStart(startOfWeek(checkDate, { weekStartsOn: 1 }));
+        setSelectedDate(checkDate);
+        return;
+      }
+    }
+    
+    // No available slots found
+    toast.error("No available slots found in the next " + maxDaysToCheck + " days");
+  };
+
   const calculatePrice = (duration: number) => {
     return ((hourlyRateCents / 100) * (duration / 60)).toFixed(0);
   };
 
   return (
     <div className="space-y-6">
+      {/* Next Available Button */}
+      <div className="flex justify-end">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={findNextAvailableSlot}
+          className="gap-2 font-light"
+        >
+          <Zap className="w-4 h-4" />
+          Next Available
+        </Button>
+      </div>
       {/* Duration Selection */}
       {lessonDurations.length > 1 && (
         <div>

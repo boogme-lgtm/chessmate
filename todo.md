@@ -419,3 +419,14 @@
 - [x] Create LessonPaymentCancel page component  
 - [x] Add routes for /lessons/:id with payment query params
 - [ ] Test complete booking flow with success/cancel redirects
+
+
+## Payment Success Page UX Fixes
+- [x] Remove automatic redirect from payment success page
+- [x] Let users manually navigate via buttons instead of forced redirect
+
+
+## Booking Calendar UX Improvements
+- [x] Add "Next Available" button to jump to next open time slot
+- [x] Implement logic to find next available slot across multiple days
+- [x] Update calendar UI to highlight and scroll to next available slot
