@@ -350,6 +350,66 @@ export const appRouter = router({
         return await db.getReviewsByCoach(input.coachId, input.limit);
       }),
 
+    // Get coach profile by ID (public) - for booking flow
+    getById: publicProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input }) => {
+        const coach = await db.getUserById(input.id);
+        if (!coach) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Coach not found" });
+        }
+        const profile = await db.getCoachProfileByUserId(input.id);
+        return { ...coach, profile };
+      }),
+
+    // Get coach availability (public)
+    getAvailability: publicProcedure
+      .input(z.object({
+        coachId: z.number(),
+        startDate: z.date(),
+        endDate: z.date(),
+      }))
+      .query(async ({ input }) => {
+        const profile = await db.getCoachProfileByUserId(input.coachId);
+        if (!profile) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Coach not found" });
+        }
+
+        // Parse availability schedule (JSON)
+        const schedule = profile.availabilitySchedule 
+          ? JSON.parse(profile.availabilitySchedule as string)
+          : {};
+
+        // Get existing bookings to exclude
+        const bookings = await db.getLessonsByCoach(input.coachId, 100);
+        const bookedSlots = bookings
+          .filter(l => l.status !== "cancelled" && l.status !== "refunded")
+          .map(l => l.scheduledAt);
+
+        return {
+          schedule,
+          bookedSlots,
+          minAdvanceHours: profile.minAdvanceHours || 24,
+          maxAdvanceDays: profile.maxAdvanceDays || 30,
+          bufferMinutes: profile.bufferMinutes || 15,
+          lessonDurations: profile.lessonDurations 
+            ? JSON.parse(profile.lessonDurations as string)
+            : [60],
+        };
+      }),
+
+    // List all active coaches (public)
+    listActive: publicProcedure
+      .input(z.object({
+        limit: z.number().min(1).max(100).default(20),
+        offset: z.number().min(0).default(0),
+      }).optional())
+      .query(async ({ input }) => {
+        const limit = input?.limit || 20;
+        const offset = input?.offset || 0;
+        return await db.getActiveCoaches(limit, offset);
+      }),
+
     // Create coach profile (for logged-in users becoming coaches)
     createProfile: protectedProcedure
       .input(z.object({

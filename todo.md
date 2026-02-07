@@ -342,3 +342,19 @@
 
 ## Recent Changes (In Progress)
 - [x] Simplify student quiz email capture to only require email (remove name field)
+
+## Student Booking Flow - Complete Implementation (In Progress)
+- [x] Verify bookings database schema is complete
+- [x] Create backend API: Create booking with Stripe payment intent
+- [x] Create backend API: Get coach availability slots
+- [x] Create backend API: Get student's bookings
+- [x] Build coach detail page at /coach/[id] with full profile
+- [ ] Add route for coach detail page in App.tsx
+- [ ] Create availability calendar component showing open time slots
+- [ ] Build booking form with date/time selection and lesson details
+- [ ] Implement Stripe checkout integration for lesson payment
+- [ ] Create booking confirmation page with next steps
+- [ ] Build student dashboard at /dashboard showing upcoming/past lessons
+- [ ] Add booking cancellation flow (48-hour policy)
+- [ ] Test complete booking flow end-to-end
+- [ ] Write vitest tests for booking API endpoints

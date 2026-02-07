@@ -185,6 +185,25 @@ export async function getAvailableCoaches(limit: number = 20) {
   return result;
 }
 
+export async function getActiveCoaches(limit: number = 20, offset: number = 0) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const result = await db
+    .select()
+    .from(coachProfiles)
+    .innerJoin(users, eq(coachProfiles.userId, users.id))
+    .where(and(
+      eq(coachProfiles.profileActive, true),
+      eq(coachProfiles.isAvailable, true)
+    ))
+    .orderBy(desc(coachProfiles.averageRating))
+    .limit(limit)
+    .offset(offset);
+
+  return result;
+}
+
 export async function updateCoachStats(coachId: number) {
   const db = await getDb();
   if (!db) return;
