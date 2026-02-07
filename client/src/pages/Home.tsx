@@ -73,6 +73,12 @@ function Navigation() {
         </div>
         
         <div className="hidden md:flex items-center gap-12">
+          <a 
+            href="/coaches"
+            className="text-sm font-light text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Browse Coaches
+          </a>
           <button 
             onClick={() => handleNavClick("features")}
             className="text-sm font-light text-muted-foreground hover:text-foreground transition-colors"
@@ -80,7 +86,7 @@ function Navigation() {
             Features
           </button>
           <a 
-            href="/coaches"
+            href="/for-coaches"
             className="text-sm font-light text-muted-foreground hover:text-foreground transition-colors"
           >
             For Coaches
@@ -110,6 +116,12 @@ function Navigation() {
           className="md:hidden bg-card border-b border-border"
         >
           <div className="container py-6 space-y-4">
+            <a 
+              href="/coaches"
+              className="block text-sm font-light text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Browse Coaches
+            </a>
             <button 
               onClick={() => handleNavClick("features")}
               className="block text-sm font-light text-muted-foreground hover:text-foreground transition-colors"
@@ -117,7 +129,7 @@ function Navigation() {
               Features
             </button>
             <a 
-              href="/coaches"
+              href="/for-coaches"
               className="block text-sm font-light text-muted-foreground hover:text-foreground transition-colors"
             >
               For Coaches
@@ -159,13 +171,24 @@ function HeroSection() {
             </p>
           </motion.div>
 
-          <motion.div variants={fadeIn} className="flex justify-center">
+          <motion.div variants={fadeIn} className="flex flex-col sm:flex-row justify-center gap-4">
             <Button 
-              onClick={() => setAssessmentOpen(true)}
+              asChild
               size="lg" 
               className="btn-primary group"
             >
-              Find Your Coach
+              <a href="/coaches">
+                Browse Coaches
+                <ChevronRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
+              </a>
+            </Button>
+            <Button 
+              onClick={() => setAssessmentOpen(true)}
+              size="lg" 
+              variant="outline"
+              className="group"
+            >
+              Take AI Assessment
               <ChevronRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
             </Button>
           </motion.div>

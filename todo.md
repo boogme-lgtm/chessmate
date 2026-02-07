@@ -390,3 +390,14 @@
 - [x] Write tests for webhook endpoint (2 tests passing)
 - [ ] Configure webhook endpoint URL in Stripe Dashboard
 - [ ] Test complete payment flow with webhook confirmation
+
+## Sample Coach Setup for Testing
+- [x] Add Stripe Connect account IDs to sample coaches (GM Elena Petrov, IM Carlos Rodriguez, FM Sarah Chen)
+- [x] Mark sample coaches as having completed payment onboarding
+
+
+## UX Improvements - Coach Discovery
+- [x] Add "Browse Coaches" link to homepage hero section
+- [x] Add "Browse Coaches" to main navigation header
+- [x] Make coach browsing the primary CTA (assessment as secondary option)
+- [x] Update homepage messaging to clarify assessment is optional

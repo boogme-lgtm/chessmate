@@ -1,0 +1,9 @@
+{
+  "query": "UPDATE users \nSET stripeConnectAccountId = CONCAT('acct_test_', REPLACE(SUBSTRING_INDEX(email, '@', 1), '.', '_')),\n    stripeConnectOnboarded = true\nWHERE email IN ('elena.petrov@example.com', 'carlos.rodriguez@example.com', 'sarah.chen@example.com');",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user o7gqiRJAqhDK5GQ.9c38f5a63e4d --database Xkyng35xnYFybYAdmyVo96 --execute UPDATE users \nSET stripeConnectAccountId = CONCAT('acct_test_', REPLACE(SUBSTRING_INDEX(email, '@', 1), '.', '_')),\n    stripeConnectOnboarded = true\nWHERE email IN ('elena.petrov@example.com', 'carlos.rodriguez@example.com', 'sarah.chen@example.com');",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 58
+}

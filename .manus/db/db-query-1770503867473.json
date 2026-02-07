@@ -1,0 +1,34 @@
+{
+  "query": "SELECT cp.id, u.name, cp.title, cp.fideRating, u.stripeConnectAccountId, u.stripeConnectOnboarded \nFROM coach_profiles cp \nJOIN users u ON cp.userId = u.id \nLIMIT 5;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user o7gqiRJAqhDK5GQ.9c38f5a63e4d --database Xkyng35xnYFybYAdmyVo96 --execute SELECT cp.id, u.name, cp.title, cp.fideRating, u.stripeConnectAccountId, u.stripeConnectOnboarded \nFROM coach_profiles cp \nJOIN users u ON cp.userId = u.id \nLIMIT 5;",
+  "rows": [
+    {
+      "id": "1",
+      "name": "GM Elena Petrov",
+      "title": "GM",
+      "fideRating": "2650",
+      "stripeConnectAccountId": "acct_test_coach_120001",
+      "stripeConnectOnboarded": "1"
+    },
+    {
+      "id": "2",
+      "name": "IM Carlos Rodriguez",
+      "title": "IM",
+      "fideRating": "2480",
+      "stripeConnectAccountId": "acct_test_coach_120002",
+      "stripeConnectOnboarded": "1"
+    },
+    {
+      "id": "3",
+      "name": "FM Sarah Chen",
+      "title": "FM",
+      "fideRating": "2350",
+      "stripeConnectAccountId": "acct_test_coach_120003",
+      "stripeConnectOnboarded": "1"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tname\ttitle\tfideRating\tstripeConnectAccountId\tstripeConnectOnboarded\n1\tGM Elena Petrov\tGM\t2650\tacct_test_coach_120001\t1\n2\tIM Carlos Rodriguez\tIM\t2480\tacct_test_coach_120002\t1\n3\tFM Sarah Chen\tFM\t2350\tacct_test_coach_120003\t1\n",
+  "stderr": "",
+  "execution_time_ms": 51
+}

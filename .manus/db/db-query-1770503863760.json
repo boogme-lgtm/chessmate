@@ -1,0 +1,9 @@
+{
+  "query": "UPDATE users u\nINNER JOIN coach_profiles cp ON u.id = cp.userId\nSET u.stripeConnectAccountId = CONCAT('acct_test_coach_', u.id),\n    u.stripeConnectOnboarded = true\nWHERE cp.id IN (SELECT id FROM (SELECT id FROM coach_profiles LIMIT 3) AS tmp);",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user o7gqiRJAqhDK5GQ.9c38f5a63e4d --database Xkyng35xnYFybYAdmyVo96 --execute UPDATE users u\nINNER JOIN coach_profiles cp ON u.id = cp.userId\nSET u.stripeConnectAccountId = CONCAT('acct_test_coach_', u.id),\n    u.stripeConnectOnboarded = true\nWHERE cp.id IN (SELECT id FROM (SELECT id FROM coach_profiles LIMIT 3) AS tmp);",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 67
+}

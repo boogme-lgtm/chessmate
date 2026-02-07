@@ -1,0 +1,43 @@
+{
+  "query": "SELECT cp.id, cp.userId, u.email, u.name, cp.title, cp.fideRating, cp.hourlyRateCents, u.stripeConnectAccountId, u.stripeConnectOnboarded \nFROM coach_profiles cp \nJOIN users u ON cp.userId = u.id \nLIMIT 5;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user o7gqiRJAqhDK5GQ.9c38f5a63e4d --database Xkyng35xnYFybYAdmyVo96 --execute SELECT cp.id, cp.userId, u.email, u.name, cp.title, cp.fideRating, cp.hourlyRateCents, u.stripeConnectAccountId, u.stripeConnectOnboarded \nFROM coach_profiles cp \nJOIN users u ON cp.userId = u.id \nLIMIT 5;",
+  "rows": [
+    {
+      "id": "1",
+      "userId": "120001",
+      "email": "elena.petrov@example.com",
+      "name": "GM Elena Petrov",
+      "title": "GM",
+      "fideRating": "2650",
+      "hourlyRateCents": "12000",
+      "stripeConnectAccountId": "acct_test_elena_petrov",
+      "stripeConnectOnboarded": "1"
+    },
+    {
+      "id": "2",
+      "userId": "120002",
+      "email": "carlos.rodriguez@example.com",
+      "name": "IM Carlos Rodriguez",
+      "title": "IM",
+      "fideRating": "2480",
+      "hourlyRateCents": "6500",
+      "stripeConnectAccountId": "acct_test_carlos_rodriguez",
+      "stripeConnectOnboarded": "1"
+    },
+    {
+      "id": "3",
+      "userId": "120003",
+      "email": "sarah.chen@example.com",
+      "name": "FM Sarah Chen",
+      "title": "FM",
+      "fideRating": "2350",
+      "hourlyRateCents": "4500",
+      "stripeConnectAccountId": "acct_test_sarah_chen",
+      "stripeConnectOnboarded": "1"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tuserId\temail\tname\ttitle\tfideRating\thourlyRateCents\tstripeConnectAccountId\tstripeConnectOnboarded\n1\t120001\telena.petrov@example.com\tGM Elena Petrov\tGM\t2650\t12000\tacct_test_elena_petrov\t1\n2\t120002\tcarlos.rodriguez@example.com\tIM Carlos Rodriguez\tIM\t2480\t6500\tacct_test_carlos_rodriguez\t1\n3\t120003\tsarah.chen@example.com\tFM Sarah Chen\tFM\t2350\t4500\tacct_test_sarah_chen\t1\n",
+  "stderr": "",
+  "execution_time_ms": 54
+}

@@ -1,0 +1,34 @@
+{
+  "query": "SELECT id, name, email, userType, stripeConnectAccountId, stripeConnectOnboarded FROM users WHERE email LIKE '%example.com%' LIMIT 10;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user o7gqiRJAqhDK5GQ.9c38f5a63e4d --database Xkyng35xnYFybYAdmyVo96 --execute SELECT id, name, email, userType, stripeConnectAccountId, stripeConnectOnboarded FROM users WHERE email LIKE '%example.com%' LIMIT 10;",
+  "rows": [
+    {
+      "id": "120001",
+      "name": "GM Elena Petrov",
+      "email": "elena.petrov@example.com",
+      "userType": "coach",
+      "stripeConnectAccountId": "acct_test_elena_petrov",
+      "stripeConnectOnboarded": "1"
+    },
+    {
+      "id": "120002",
+      "name": "IM Carlos Rodriguez",
+      "email": "carlos.rodriguez@example.com",
+      "userType": "coach",
+      "stripeConnectAccountId": "acct_test_carlos_rodriguez",
+      "stripeConnectOnboarded": "1"
+    },
+    {
+      "id": "120003",
+      "name": "FM Sarah Chen",
+      "email": "sarah.chen@example.com",
+      "userType": "coach",
+      "stripeConnectAccountId": "acct_test_sarah_chen",
+      "stripeConnectOnboarded": "1"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tname\temail\tuserType\tstripeConnectAccountId\tstripeConnectOnboarded\n120001\tGM Elena Petrov\telena.petrov@example.com\tcoach\tacct_test_elena_petrov\t1\n120002\tIM Carlos Rodriguez\tcarlos.rodriguez@example.com\tcoach\tacct_test_carlos_rodriguez\t1\n120003\tFM Sarah Chen\tsarah.chen@example.com\tcoach\tacct_test_sarah_chen\t1\n",
+  "stderr": "",
+  "execution_time_ms": 50
+}
