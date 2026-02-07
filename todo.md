@@ -368,5 +368,7 @@
 ### Testing & Sample Data (Completed)
 - [x] Create three sample coach profiles with varied availability (GM Elena Petrov, IM Carlos Rodriguez, FM Sarah Chen)
 - [x] Test booking modal and calendar display
-- [ ] Complete end-to-end booking test with authenticated user
-- [ ] Verify Stripe checkout integration with real paymentt works with test payment methods
+- [x] Verify UI components render correctly (modal, calendar, time slots)
+- [x] Backend API tests passing (8/8 tests)
+- [ ] Complete end-to-end booking test with authenticated user (requires OAuth login)
+- [ ] Verify Stripe checkout with real test payment (requires authenticated session)t works with test payment methods

@@ -1,0 +1,8 @@
+{
+  "query": "INSERT INTO user (openId, name, email, role, createdAt, updatedAt)\nVALUES (\n  'test-student-001',\n  'Test Student',\n  'teststudent@boogme.com',\n  'user',\n  NOW(),\n  NOW()\n);",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user o7gqiRJAqhDK5GQ.9c38f5a63e4d --database Xkyng35xnYFybYAdmyVo96 --execute INSERT INTO user (openId, name, email, role, createdAt, updatedAt)\nVALUES (\n  'test-student-001',\n  'Test Student',\n  'teststudent@boogme.com',\n  'user',\n  NOW(),\n  NOW()\n);",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1146 (42S02) at line 1: Table 'xkyng35xnyfybyadmyvo96.user' doesn't exist"
+  ]
+}
