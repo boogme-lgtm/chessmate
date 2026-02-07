@@ -364,3 +364,9 @@
 - [ ] Add booking cancellation flow (48-hour policy)
 - [ ] Test complete booking flow end-to-end
 - [ ] Write vitest tests for booking API endpoints
+
+### Testing & Sample Data (Completed)
+- [x] Create three sample coach profiles with varied availability (GM Elena Petrov, IM Carlos Rodriguez, FM Sarah Chen)
+- [x] Test booking modal and calendar display
+- [ ] Complete end-to-end booking test with authenticated user
+- [ ] Verify Stripe checkout integration with real paymentt works with test payment methods
