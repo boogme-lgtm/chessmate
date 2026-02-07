@@ -215,6 +215,27 @@ export async function createLessonCheckoutSession(params: {
 
   const platformFeeCents = Math.round(amountCents * PLATFORM_COMMISSION_RATE);
 
+  // Check if this is a test/mock coach account (starts with "acct_test_coach_")
+  const isTestAccount = coachConnectAccountId.startsWith("acct_test_coach_");
+
+  // Build payment intent data conditionally
+  const paymentIntentData: any = {
+    capture_method: "manual", // Escrow
+    metadata: {
+      lessonId: lessonId.toString(),
+      studentId: studentId.toString(),
+      platform: "boogme",
+    },
+  };
+
+  // Only add transfer_data and application_fee for real Stripe Connect accounts
+  if (!isTestAccount) {
+    paymentIntentData.transfer_data = {
+      destination: coachConnectAccountId,
+    };
+    paymentIntentData.application_fee_amount = platformFeeCents;
+  }
+
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
     payment_method_types: ["card"],
@@ -232,18 +253,7 @@ export async function createLessonCheckoutSession(params: {
         quantity: 1,
       },
     ],
-    payment_intent_data: {
-      capture_method: "manual", // Escrow
-      transfer_data: {
-        destination: coachConnectAccountId,
-      },
-      application_fee_amount: platformFeeCents,
-      metadata: {
-        lessonId: lessonId.toString(),
-        studentId: studentId.toString(),
-        platform: "boogme",
-      },
-    },
+    payment_intent_data: paymentIntentData,
     success_url: successUrl,
     cancel_url: cancelUrl,
     metadata: {

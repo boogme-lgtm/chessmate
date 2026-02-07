@@ -401,3 +401,9 @@
 - [x] Add "Browse Coaches" to main navigation header
 - [x] Make coach browsing the primary CTA (assessment as secondary option)
 - [x] Update homepage messaging to clarify assessment is optional
+
+
+## Stripe Connect Test Fix
+- [x] Update checkout creation to handle test bookings without real Stripe Connect accounts
+- [x] Add conditional logic to skip Connect transfers for mock coach accounts
+- [ ] Test complete booking flow with fixed payment handling
