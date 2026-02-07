@@ -770,9 +770,8 @@ export const appRouter = router({
         }
 
         const student = await db.getUserById(ctx.user.id);
-        const baseUrl = ENV.isProduction
-          ? "https://boogme.com"
-          : "http://localhost:3000";
+        // Use VITE_FRONTEND_URL which works in both dev and production
+        const baseUrl = process.env.VITE_FRONTEND_URL || "http://localhost:3000";
 
         const session = await stripeService.createLessonCheckoutSession({
           amountCents: lesson.amountCents,

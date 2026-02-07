@@ -407,3 +407,8 @@
 - [x] Update checkout creation to handle test bookings without real Stripe Connect accounts
 - [x] Add conditional logic to skip Connect transfers for mock coach accounts
 - [ ] Test complete booking flow with fixed payment handling
+
+
+## Stripe Checkout Redirect Fix
+- [x] Update success_url and cancel_url to use production domain instead of localhost
+- [ ] Test payment flow with corrected redirect URLs
