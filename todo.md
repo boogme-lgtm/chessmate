@@ -372,3 +372,21 @@
 - [x] Backend API tests passing (8/8 tests)
 - [ ] Complete end-to-end booking test with authenticated user (requires OAuth login)
 - [ ] Verify Stripe checkout with real test payment (requires authenticated session)t works with test payment methods
+
+## Stripe Webhook Integration (In Progress)
+- [ ] Create webhook endpoint at /api/stripe/webhook
+- [ ] Handle checkout.session.completed event
+- [ ] Handle payment_intent.succeeded event
+- [ ] Handle payment_intent.payment_failed event
+- [ ] Update booking status when payment succeeds
+- [ ] Test webhook with Stripe CLI
+- [ ] Configure webhook in Stripe Dashboard
+
+
+## Stripe Webhook Integration
+- [x] Create webhook handler code in server/stripe.ts
+- [x] Add database helpers for booking status updates
+- [x] Register webhook endpoint in Express server (POST /api/stripe/webhook)
+- [x] Write tests for webhook endpoint (2 tests passing)
+- [ ] Configure webhook endpoint URL in Stripe Dashboard
+- [ ] Test complete payment flow with webhook confirmation

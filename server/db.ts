@@ -354,6 +354,18 @@ export async function updateLessonTransfer(lessonId: number, transferId: string)
     .where(eq(lessons.id, lessonId));
 }
 
+export async function getLessonByPaymentIntent(paymentIntentId: string) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const result = await db.select()
+    .from(lessons)
+    .where(eq(lessons.stripePaymentIntentId, paymentIntentId))
+    .limit(1);
+  
+  return result[0] || null;
+}
+
 // ============ REVIEW OPERATIONS ============
 
 export async function createReview(review: InsertReview) {
