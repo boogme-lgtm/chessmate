@@ -447,6 +447,7 @@
 - [x] Send welcome email after confirmation
 - [x] Update all auth-protected routes to use new system
 - [x] Remove Manus OAuth dependencies
+- [x] Fix email sender domain (Resend sandbox)
 - [ ] Test complete registration flow
 - [ ] Test login flow
 - [ ] Test password reset flow
