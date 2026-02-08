@@ -17,6 +17,7 @@ import {
 import { useState } from "react";
 import { toast } from "sonner";
 import BookingModal from "@/components/BookingModal";
+import { useAuth } from "@/_core/hooks/useAuth";
 
 /**
  * Coach Detail Page - Shows coach profile and booking CTA
@@ -27,6 +28,16 @@ export default function CoachDetail() {
   const [, setLocation] = useLocation();
   const coachId = parseInt(params.id || "0");
   const [bookingModalOpen, setBookingModalOpen] = useState(false);
+  const { user } = useAuth();
+
+  const handleBookLesson = () => {
+    if (!user) {
+      // Redirect to register page with return URL
+      setLocation(`/register?redirect=/coach/${coachId}`);
+      return;
+    }
+    setBookingModalOpen(true);
+  };
 
   const { data: coach, isLoading } = trpc.coach.getById.useQuery({ id: coachId });
   const { data: reviews } = trpc.coach.getReviews.useQuery({ coachId, limit: 5 });
@@ -220,7 +231,7 @@ export default function CoachDetail() {
                   <Button
                     size="lg"
                     className="w-full gap-2"
-                    onClick={() => setBookingModalOpen(true)}
+                    onClick={handleBookLesson}
                   >
                     <Calendar className="h-5 w-5" />
                     Book a Lesson

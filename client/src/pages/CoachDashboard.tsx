@@ -76,7 +76,7 @@ export default function CoachDashboard() {
             </p>
             <Button 
               className="bg-burgundy hover:bg-burgundy/90 text-white"
-              onClick={() => window.location.href = getLoginUrl()}
+              onClick={() => window.location.href = "/sign-in"}
             >
               Log In
             </Button>

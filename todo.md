@@ -440,13 +440,13 @@
 - [x] Create email verification endpoint
 - [x] Implement login endpoint with JWT session management
 - [x] Build password reset flow (forgot password)
-- [ ] Create Register page UI
-- [ ] Create Sign In page UI
-- [ ] Create email confirmation page UI
+- [x] Create Register page UI
+- [x] Create Sign In page UI
+- [x] Create email confirmation page UI
 - [x] Send verification email on registration
 - [x] Send welcome email after confirmation
-- [ ] Update all auth-protected routes to use new system
-- [ ] Remove Manus OAuth dependencies
+- [x] Update all auth-protected routes to use new system
+- [x] Remove Manus OAuth dependencies
 - [ ] Test complete registration flow
 - [ ] Test login flow
 - [ ] Test password reset flow

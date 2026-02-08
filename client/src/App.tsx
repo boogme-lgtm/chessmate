@@ -18,6 +18,11 @@ import CoachDetail from "./pages/CoachDetail";
 import StudentDashboard from "./pages/StudentDashboard";
 import LessonPaymentSuccess from "./pages/LessonPaymentSuccess";
 import LessonPaymentCancel from "./pages/LessonPaymentCancel";
+import Register from "./pages/Register";
+import SignIn from "./pages/SignIn";
+import VerifyEmail from "./pages/VerifyEmail";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
@@ -31,6 +36,11 @@ function Router() {
       <Route path={"/coach/:id"} component={CoachDetail} />
       <Route path={"/dashboard"} component={StudentDashboard} />
       <Route path={"/lessons/:id"} component={LessonPaymentSuccess} />
+      <Route path={"/register"} component={Register} />
+      <Route path={"/sign-in"} component={SignIn} />
+      <Route path={"/verify-email"} component={VerifyEmail} />
+      <Route path={"/forgot-password"} component={ForgotPassword} />
+      <Route path={"/reset-password"} component={ResetPassword} />
       <Route path={"/admin/applications"} component={AdminApplications} />
       <Route path={"/admin/waitlist"} component={AdminWaitlist} />
       <Route path={"/unsubscribe"} component={Unsubscribe} />
