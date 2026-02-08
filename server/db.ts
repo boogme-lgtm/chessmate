@@ -43,6 +43,9 @@ export async function upsertUser(user: InsertUser): Promise<void> {
   if (!user.openId) {
     throw new Error("User openId is required for upsert");
   }
+  if (!user.email) {
+    throw new Error("User email is required for upsert");
+  }
 
   const db = await getDb();
   if (!db) {
@@ -53,21 +56,28 @@ export async function upsertUser(user: InsertUser): Promise<void> {
   try {
     const values: InsertUser = {
       openId: user.openId,
+      email: user.email,
     };
     const updateSet: Record<string, unknown> = {};
 
-    const textFields = ["name", "email", "loginMethod"] as const;
-    type TextField = (typeof textFields)[number];
-
-    const assignNullable = (field: TextField) => {
-      const value = user[field];
-      if (value === undefined) return;
-      const normalized = value ?? null;
-      values[field] = normalized;
-      updateSet[field] = normalized;
-    };
-
-    textFields.forEach(assignNullable);
+    // Handle nullable text fields
+    if (user.name !== undefined) {
+      const normalized = user.name ?? null;
+      values.name = normalized;
+      updateSet.name = normalized;
+    }
+    
+    // Email is required, already set in values
+    if (user.email !== undefined && user.email !== values.email) {
+      values.email = user.email;
+      updateSet.email = user.email;
+    }
+    
+    if (user.loginMethod !== undefined) {
+      const normalized = user.loginMethod ?? null;
+      values.loginMethod = normalized;
+      updateSet.loginMethod = normalized;
+    }
 
     if (user.lastSignedIn !== undefined) {
       values.lastSignedIn = user.lastSignedIn;

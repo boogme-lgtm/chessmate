@@ -7,6 +7,7 @@ export const ENV = {
   isProduction: process.env.NODE_ENV === "production",
   forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
+  frontendUrl: process.env.VITE_FRONTEND_URL ?? "http://localhost:3000",
   
   // Stripe
   stripeSecretKey: process.env.STRIPE_SECRET_KEY ?? "",

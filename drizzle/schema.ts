@@ -6,9 +6,15 @@ import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, decimal, boolean 
  */
 export const users = mysqlTable("users", {
   id: int("id").autoincrement().primaryKey(),
-  openId: varchar("openId", { length: 64 }).notNull().unique(),
+  openId: varchar("openId", { length: 64 }).unique(), // Make nullable for email/password users
   name: text("name"),
-  email: varchar("email", { length: 320 }),
+  email: varchar("email", { length: 320 }).notNull().unique(), // Now required and unique
+  password: varchar("password", { length: 255 }), // Hashed password for email/password auth
+  emailVerified: boolean("emailVerified").default(false).notNull(),
+  emailVerificationToken: varchar("emailVerificationToken", { length: 64 }),
+  emailVerificationExpires: timestamp("emailVerificationExpires"),
+  passwordResetToken: varchar("passwordResetToken", { length: 64 }),
+  passwordResetExpires: timestamp("passwordResetExpires"),
   loginMethod: varchar("loginMethod", { length: 64 }),
   role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
   

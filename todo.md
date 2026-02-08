@@ -430,3 +430,28 @@
 - [x] Add "Next Available" button to jump to next open time slot
 - [x] Implement logic to find next available slot across multiple days
 - [x] Update calendar UI to highlight and scroll to next available slot
+
+
+## Custom Authentication System (Replace Manus OAuth)
+- [x] Design database schema for email/password authentication
+- [x] Implement password hashing with bcrypt
+- [x] Create registration endpoint with validation
+- [x] Build email confirmation token system
+- [x] Create email verification endpoint
+- [x] Implement login endpoint with JWT session management
+- [x] Build password reset flow (forgot password)
+- [ ] Create Register page UI
+- [ ] Create Sign In page UI
+- [ ] Create email confirmation page UI
+- [x] Send verification email on registration
+- [x] Send welcome email after confirmation
+- [ ] Update all auth-protected routes to use new system
+- [ ] Remove Manus OAuth dependencies
+- [ ] Test complete registration flow
+- [ ] Test login flow
+- [ ] Test password reset flow
+
+## Mobile Booking Bug Fix
+- [ ] Debug mobile booking redirect issue
+- [ ] Fix redirect to payment link on mobile
+- [ ] Test mobile booking flow end-to-end
