@@ -482,3 +482,4 @@
 
 ## Logo Fix (User Reported)
 - [x] Fix broken logo image in CoachBrowse navigation header - updated to use correct CDN URL
+- [x] Fix badge text visibility issue - "Limited spots" text invisible on some iOS devices
