@@ -44,7 +44,7 @@ export default function CoachBrowse() {
           </div>
           
           <div className="flex items-center gap-2">
-            <img src="/logo.svg" alt="BooGMe" className="h-8" />
+            <img src="https://files.manuscdn.com/user_upload_by_module/session_file/310519663188415081/xRYfqyUGHSJUlDcu.png" alt="BooGMe" className="h-8 w-auto" />
           </div>
 
           <button

@@ -479,3 +479,6 @@
 - [x] Add "Limited spots for founding members" badge to mobile waitlist page - improved visibility with whitespace-nowrap and full width on mobile
 - [x] Add back button/navigation header to coaches page
 - [x] Ensure hamburger menu is available on all pages for mobile navigation
+
+## Logo Fix (User Reported)
+- [x] Fix broken logo image in CoachBrowse navigation header - updated to use correct CDN URL
