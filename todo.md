@@ -469,3 +469,8 @@
 
 ## Email Domain Fix (Critical)
 - [x] Change email sender from noreply@boogme.com to noreply@contact.boogme.com (verified domain) - already correct in code
+
+## Email Sender Domain Investigation (Critical)
+- [x] Find where email sender is being overridden to use boogme.com instead of contact.boogme.com - Found in server/email.ts
+- [x] Check if there's an environment variable setting the email sender - Not an env var issue
+- [x] Check auth.ts registration function for hardcoded email sender - auth.ts imports from email.ts which had wrong domain

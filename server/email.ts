@@ -23,7 +23,7 @@ export async function sendEmail(params: EmailParams): Promise<void> {
         Authorization: `Bearer ${ENV.resendApiKey}`,
       },
       body: JSON.stringify({
-        from: "BooGMe <noreply@boogme.com>",
+        from: "BooGMe <noreply@contact.boogme.com>",
         to: params.to,
         subject: params.subject,
         html: params.html,
