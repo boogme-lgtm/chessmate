@@ -34,8 +34,12 @@ async function startServer() {
   // Force HTTPS redirect in production
   if (process.env.NODE_ENV === "production") {
     app.use((req, res, next) => {
-      if (req.headers['x-forwarded-proto'] !== 'https') {
-        return res.redirect(301, `https://${req.headers.host}${req.url}`);
+      const proto = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+      const isSecure = proto === 'https' || req.secure || req.headers['x-forwarded-ssl'] === 'on';
+      
+      if (!isSecure) {
+        const host = req.headers.host || req.hostname;
+        return res.redirect(301, `https://${host}${req.url}`);
       }
       next();
     });

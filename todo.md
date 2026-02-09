@@ -461,4 +461,5 @@
 - [x] Fix email "Forbidden" error on published site
 - [x] Investigate why email fix didn't deploy to production - was using sandbox domain instead of verified contact.boogme.com
 - [x] Fix "Not Secure" HTTPS warning on boogme.com - added automatic HTTPS redirect
+- [x] Improved HTTPS redirect to handle multiple protocol detection methods
 - [ ] Ensure RESEND_API_KEY is set in production environment
