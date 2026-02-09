@@ -463,3 +463,6 @@
 - [x] Fix "Not Secure" HTTPS warning on boogme.com - added automatic HTTPS redirect
 - [x] Improved HTTPS redirect to handle multiple protocol detection methods
 - [ ] Ensure RESEND_API_KEY is set in production environment
+
+## HTTPS Redirect Fix
+- [x] Add client-side HTTPS redirect as backup (server-side not working with Manus platform)

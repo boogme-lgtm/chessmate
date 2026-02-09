@@ -28,6 +28,13 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600&family=JetBrains+Mono:wght@300;400&display=swap" rel="stylesheet" />
+    
+    <!-- Force HTTPS redirect -->
+    <script>
+      if (window.location.protocol === 'http:' && window.location.hostname !== 'localhost') {
+        window.location.href = 'https://' + window.location.hostname + window.location.pathname + window.location.search + window.location.hash;
+      }
+    </script>
   </head>
 
   <body>
