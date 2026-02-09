@@ -31,6 +31,16 @@ async function startServer() {
   const app = express();
   const server = createServer(app);
   
+  // Force HTTPS redirect in production
+  if (process.env.NODE_ENV === "production") {
+    app.use((req, res, next) => {
+      if (req.headers['x-forwarded-proto'] !== 'https') {
+        return res.redirect(301, `https://${req.headers.host}${req.url}`);
+      }
+      next();
+    });
+  }
+  
   // Stripe webhook MUST come before express.json() to get raw body
   const { handleStripeWebhook } = await import("../webhooks");
   app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), handleStripeWebhook);

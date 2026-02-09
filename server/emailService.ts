@@ -17,7 +17,7 @@ export interface EmailOptions {
 export async function sendEmail(options: EmailOptions) {
   try {
     const { data, error } = await resend.emails.send({
-      from: options.from || 'BooGMe <onboarding@resend.dev>',
+      from: options.from || 'BooGMe <noreply@contact.boogme.com>',
       to: options.to,
       subject: options.subject,
       html: options.html,
