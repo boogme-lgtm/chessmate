@@ -24,6 +24,7 @@ import { trpc } from "@/lib/trpc";
 import { CoachMatchingAssessment } from "@/components/CoachMatchingAssessment";
 import { CoachProfileCard, type CoachProfile } from "@/components/CoachProfileCard";
 import { CoachFilters, type FilterState } from "@/components/CoachFilters";
+import { WelcomePopup } from "@/components/WelcomePopup";
 
 // Minimal animation variants
 const fadeIn = {
@@ -74,10 +75,10 @@ function Navigation() {
         
         <div className="hidden md:flex items-center gap-12">
           <a 
-            href="/coaches"
+            href="/assessment"
             className="text-sm font-light text-muted-foreground hover:text-foreground transition-colors"
           >
-            Browse Coaches
+            Take AI Assessment
           </a>
           <button 
             onClick={() => handleNavClick("features")}
@@ -85,6 +86,12 @@ function Navigation() {
           >
             Features
           </button>
+          <a 
+            href="/coaches"
+            className="text-sm font-light text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Browse Coaches
+          </a>
           <a 
             href="/for-coaches"
             className="text-sm font-light text-muted-foreground hover:text-foreground transition-colors"
@@ -367,7 +374,7 @@ function ForCoachesSection() {
               Full-service marketplace with payment protection, AI matching, and escrow. Not just a listing board.
             </p>
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20">
-              <span className="text-sm font-light text-white">Limited spots for founding coaches</span>
+              <span style={{ color: '#ffffff', fontWeight: 500, textShadow: '0 1px 2px rgba(0,0,0,0.5)' }} className="text-sm">Limited spots for founding coaches</span>
             </div>
           </motion.div>
 
@@ -460,7 +467,7 @@ function WaitlistSection() {
               We're launching soon. Be among the first to access elite chess coaching with payment protection.
             </p>
             <div className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 w-full sm:w-auto">
-              <span className="text-sm font-light text-white whitespace-nowrap">🔥 Limited spots for founding members</span>
+              <span style={{ color: '#ffffff', fontWeight: 500, textShadow: '0 1px 2px rgba(0,0,0,0.5)' }} className="text-sm whitespace-nowrap">🔥 Limited spots for founding members</span>
             </div>
           </motion.div>
 
@@ -724,6 +731,7 @@ function Footer() {
 export default function Home() {
   return (
     <div className="min-h-screen">
+      <WelcomePopup />
       <Navigation />
       <HeroSection />
       <FeaturesSection />

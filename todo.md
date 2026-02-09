@@ -483,3 +483,8 @@
 ## Logo Fix (User Reported)
 - [x] Fix broken logo image in CoachBrowse navigation header - updated to use correct CDN URL
 - [x] Fix badge text visibility issue - "Limited spots" text invisible on some iOS devices
+- [x] Fix badge text visibility with alternative approach (inline styles, font-weight 500, text shadow)
+- [x] Verify Android rendering compatibility for all pages
+- [x] Swap "Browse Coaches" with "Take AI Assessment" in navigation priority
+- [x] Create welcome popup on page load asking "Are you a student or coach?"
+- [x] Route popup responses to appropriate AI assessment flow
