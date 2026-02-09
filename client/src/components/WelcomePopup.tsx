@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Users, GraduationCap } from "lucide-react";
 import { useLocation } from "wouter";
 
-export function WelcomePopup() {
+export function WelcomePopup({ onOpenAssessment }: { onOpenAssessment: () => void }) {
   const [open, setOpen] = useState(false);
   const [, setLocation] = useLocation();
 
@@ -28,9 +28,10 @@ export function WelcomePopup() {
     localStorage.setItem("hasSeenWelcomePopup", "true");
     setOpen(false);
     
-    // Route to appropriate assessment
+    // Route to appropriate flow
     if (userType === "student") {
-      setLocation("/assessment");
+      // Open assessment modal instead of routing
+      onOpenAssessment();
     } else {
       setLocation("/for-coaches");
     }

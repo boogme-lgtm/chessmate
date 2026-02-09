@@ -488,3 +488,4 @@
 - [x] Swap "Browse Coaches" with "Take AI Assessment" in navigation priority
 - [x] Create welcome popup on page load asking "Are you a student or coach?"
 - [x] Route popup responses to appropriate AI assessment flow
+- [x] Fix welcome popup routing - now opens assessment modal instead of routing to 404

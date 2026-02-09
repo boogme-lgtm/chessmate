@@ -155,9 +155,7 @@ function Navigation() {
 }
 
 // Hero Section - Palantir minimalism
-function HeroSection() {
-  const [assessmentOpen, setAssessmentOpen] = useState(false);
-
+function HeroSection({ onOpenAssessment }: { onOpenAssessment: () => void }) {
   return (
     <section className="relative min-h-screen flex items-center justify-center pt-20">
       <div className="container">
@@ -190,7 +188,7 @@ function HeroSection() {
               </a>
             </Button>
             <Button 
-              onClick={() => setAssessmentOpen(true)}
+              onClick={onOpenAssessment}
               size="lg" 
               variant="outline"
               className="group"
@@ -219,7 +217,6 @@ function HeroSection() {
         </motion.div>
       </div>
 
-      {assessmentOpen && <CoachMatchingAssessment onClose={() => setAssessmentOpen(false)} />}
     </section>
   );
 }
@@ -729,17 +726,20 @@ function Footer() {
 
 // Main Home Component
 export default function Home() {
+  const [assessmentOpen, setAssessmentOpen] = useState(false);
+
   return (
     <div className="min-h-screen">
-      <WelcomePopup />
+      <WelcomePopup onOpenAssessment={() => setAssessmentOpen(true)} />
       <Navigation />
-      <HeroSection />
+      <HeroSection onOpenAssessment={() => setAssessmentOpen(true)} />
       <FeaturesSection />
       <PaymentProtectionSection />
       <MeetOurCoachesSection />
       <ForCoachesSection />
       <WaitlistSection />
       <Footer />
+      {assessmentOpen && <CoachMatchingAssessment onClose={() => setAssessmentOpen(false)} />}
     </div>
   );
 }
