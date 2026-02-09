@@ -1,4 +1,5 @@
 import { trpc } from "@/lib/trpc";
+import React from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -8,7 +9,9 @@ import {
   Award, 
   BookOpen, 
   Globe, 
-  ChevronRight 
+  ChevronRight,
+  ArrowLeft,
+  Menu
 } from "lucide-react";
 import { useLocation } from "wouter";
 
@@ -18,6 +21,7 @@ import { useLocation } from "wouter";
  */
 export default function CoachBrowse() {
   const [, setLocation] = useLocation();
+  const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const { data: coaches, isLoading } = trpc.coach.listActive.useQuery();
 
   if (isLoading) {
@@ -26,7 +30,35 @@ export default function CoachBrowse() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
+      {/* Navigation Header */}
+      <div className="sticky top-0 z-50 border-b border-border/40 bg-background/95 backdrop-blur-xl">
+        <div className="container flex items-center justify-between py-4">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setLocation("/")}
+              className="flex items-center gap-2 text-sm font-light text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span className="hidden sm:inline">Back to Home</span>
+            </button>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <img src="/logo.svg" alt="BooGMe" className="h-8" />
+          </div>
+
+          <button
+            className="md:hidden"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+          
+          <div className="hidden md:block w-20" /> {/* Spacer for alignment */}
+        </div>
+      </div>
+
+      {/* Page Header */}
       <div className="border-b border-border/40">
         <div className="container py-12">
           <h1 className="text-4xl font-semibold mb-4">Find Your Perfect Coach</h1>

@@ -474,3 +474,8 @@
 - [x] Find where email sender is being overridden to use boogme.com instead of contact.boogme.com - Found in server/email.ts
 - [x] Check if there's an environment variable setting the email sender - Not an env var issue
 - [x] Check auth.ts registration function for hardcoded email sender - auth.ts imports from email.ts which had wrong domain
+
+## Mobile Navigation Fixes (User Reported)
+- [x] Add "Limited spots for founding members" badge to mobile waitlist page - improved visibility with whitespace-nowrap and full width on mobile
+- [x] Add back button/navigation header to coaches page
+- [x] Ensure hamburger menu is available on all pages for mobile navigation
