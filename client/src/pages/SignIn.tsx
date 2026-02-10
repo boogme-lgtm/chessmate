@@ -12,6 +12,7 @@ export default function SignIn() {
   const [, setLocation] = useLocation();
   const searchParams = useSearch();
   const redirect = new URLSearchParams(searchParams).get("redirect") || "/dashboard";
+  console.log("[SignIn] Redirect target:", redirect);
   
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -26,8 +27,19 @@ export default function SignIn() {
       // Clear stored redirect from localStorage
       localStorage.removeItem("postLoginRedirect");
       // Refresh user data and WAIT for it to complete before redirecting
-      await utils.auth.me.refetch();
+      console.log("[SignIn] Refetching user data...");
+      const userData = await utils.auth.me.fetch();
+      console.log("[SignIn] User data fetched:", !!userData);
+      
+      if (!userData) {
+        console.error("[SignIn] Failed to fetch user data after login");
+        setError("Authentication succeeded but failed to load user data. Please refresh the page.");
+        setIsSigningIn(false);
+        return;
+      }
+      
       // Now redirect to intended page with fresh auth state
+      console.log("[SignIn] Redirecting to:", redirect);
       setLocation(redirect);
     },
     onError: (err) => {

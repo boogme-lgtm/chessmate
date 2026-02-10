@@ -513,3 +513,5 @@
 - [x] Improved force-logout with redirect and cache-control headers
 - [x] Fixed sign-in loop - use local_ID for email users
 - [x] Fixed render-phase navigation in StudentDashboard causing sign-in loop
+- [x] Fixed: SignIn now waits for user data fetch before redirect
+- [x] Root cause found: React Query cache not propagating

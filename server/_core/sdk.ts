@@ -258,26 +258,34 @@ class SDKServer {
 
   async authenticateRequest(req: Request): Promise<User> {
     // Regular authentication flow
+    console.log("[Auth] authenticateRequest called");
     const cookies = this.parseCookies(req.headers.cookie);
     const sessionCookie = cookies.get(COOKIE_NAME);
+    console.log("[Auth] Session cookie found:", !!sessionCookie);
+    
     const session = await this.verifySession(sessionCookie);
 
     if (!session) {
+      console.log("[Auth] Session verification failed");
       throw ForbiddenError("Invalid session cookie");
     }
 
     const sessionUserId = session.openId;
+    console.log("[Auth] Session verified, openId:", sessionUserId);
     const signedInAt = new Date();
     
     // For email/password users (openId = 'local_123'), look up by ID
     let user;
     if (sessionUserId.startsWith('local_')) {
       const userId = parseInt(sessionUserId.replace('local_', ''));
+      console.log("[Auth] Looking up email/password user by ID:", userId);
       user = await db.getUserById(userId);
     } else {
       // For OAuth users, look up by openId
+      console.log("[Auth] Looking up OAuth user by openId:", sessionUserId);
       user = await db.getUserByOpenId(sessionUserId);
     }
+    console.log("[Auth] User found:", !!user);
 
     // If user not in DB, sync from OAuth server automatically
     if (!user) {
