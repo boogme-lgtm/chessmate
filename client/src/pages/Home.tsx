@@ -116,7 +116,7 @@ function Navigation() {
             user ? (
               <UserMenu />
             ) : (
-              <a href={getLoginUrl()}>
+              <a href="/sign-in">
                 <Button 
                   variant="ghost" 
                   size="sm"
@@ -177,7 +177,7 @@ function Navigation() {
                 user ? (
                   <UserMenu />
                 ) : (
-                  <a href={getLoginUrl()} className="block">
+                  <a href="/sign-in" className="block">
                     <Button 
                       variant="ghost" 
                       size="sm"
