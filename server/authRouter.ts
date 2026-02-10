@@ -11,10 +11,9 @@ import { TRPCError } from "@trpc/server";
 import { SignJWT } from "jose";
 import { ENV } from "./_core/env";
 import { stringifySetCookie } from 'cookie/dist/index.js';
+import { COOKIE_NAME, ONE_YEAR_MS } from '@shared/const';
 
 const JWT_SECRET = new TextEncoder().encode(ENV.cookieSecret);
-const COOKIE_NAME = "session";
-const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
 
 /**
  * Create a JWT session token for a user

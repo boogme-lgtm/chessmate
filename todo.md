@@ -508,3 +508,4 @@
 - [ ] Fix logout - still not clearing session cookie properly
 - [x] Added force logout endpoint at /api/force-logout
 - [ ] Test sign-in and logout with sameSite:lax secure:true
+- [x] Fixed cookie name mismatch - authRouter used "session" but SDK expected "app_session_id"
