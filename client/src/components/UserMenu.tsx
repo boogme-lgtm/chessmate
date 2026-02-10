@@ -24,20 +24,12 @@ export function UserMenu() {
 
   const logoutMutation = trpc.auth.logout.useMutation({
     onSuccess: async () => {
-      console.log("[Logout] Success - verifying auth state cleared");
-      // Verify auth state is actually cleared before redirecting
-      const userData = await utils.auth.me.fetch();
-      console.log("[Logout] Auth state after logout:", !!userData);
-      
-      if (userData) {
-        console.error("[Logout] Auth state not cleared - user still exists");
-        toast.error("Failed to sign out properly. Please try again.");
-        return;
-      }
-      
-      console.log("[Logout] Auth state cleared - redirecting to homepage");
+      console.log("[Logout] Success - invalidating auth cache");
+      // Invalidate auth query
+      await utils.auth.me.invalidate();
       toast.success("Signed out successfully");
       // Force full page reload to clear all cached state
+      console.log("[Logout] Redirecting to homepage");
       window.location.href = "/";
     },
     onError: (error) => {

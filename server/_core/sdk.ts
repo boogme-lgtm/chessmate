@@ -320,8 +320,10 @@ class SDKServer {
       throw ForbiddenError("User not found");
     }
 
+    // Use synthetic openId for email/password users (openId is null in DB)
+    const effectiveOpenId = user.openId || `local_${user.id}`;
     await db.upsertUser({
-      openId: user.openId,
+      openId: effectiveOpenId,
       email: user.email,
       lastSignedIn: signedInAt,
     });

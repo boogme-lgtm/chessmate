@@ -48,6 +48,8 @@ function Navigation() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { user, loading } = useAuth();
+  
+
 
   React.useEffect(() => {
     const handleScroll = () => setIsScrolled(window.scrollY > 20);

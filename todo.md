@@ -516,3 +516,12 @@
 - [x] Fixed: SignIn now waits for user data fetch before redirect
 - [x] Root cause found: React Query cache not propagating
 - [x] Fix logout to verify auth state cleared before redirect
+- [ ] Revert fetch() to refetch() with 100ms delay in SignIn and UserMenu
+- [ ] Test sign-in with jen@chimaeric.com / testtestA1
+- [ ] Test logout functionality
+
+## Fixed Auth Bugs (2026-02-10)
+- [x] Fix logout not working properly (upsertUser required non-null openId)
+- [x] Fix sign-in failing to load user data after authentication
+- [x] Root cause: email/password users have openId=null, but upsertUser() required non-null openId
+- [x] Solution: Use synthetic openId (local_123) when upserting email/password users

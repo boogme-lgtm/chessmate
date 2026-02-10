@@ -23,24 +23,14 @@ export default function SignIn() {
   const loginMutation = trpc.auth.login.useMutation({
     onSuccess: async () => {
       setError("");
-      setIsSigningIn(true);
       // Clear stored redirect from localStorage
       localStorage.removeItem("postLoginRedirect");
-      // Refresh user data and WAIT for it to complete before redirecting
-      console.log("[SignIn] Refetching user data...");
-      const userData = await utils.auth.me.fetch();
-      console.log("[SignIn] User data fetched:", !!userData);
-      
-      if (!userData) {
-        console.error("[SignIn] Failed to fetch user data after login");
-        setError("Authentication succeeded but failed to load user data. Please refresh the page.");
-        setIsSigningIn(false);
-        return;
-      }
-      
-      // Now redirect to intended page with fresh auth state
+      // Invalidate auth query to force refetch on next page
+      console.log("[SignIn] Login successful, invalidating auth cache");
+      await utils.auth.me.invalidate();
+      // Redirect immediately - the next page will load fresh user data
       console.log("[SignIn] Redirecting to:", redirect);
-      setLocation(redirect);
+      window.location.href = redirect;
     },
     onError: (err) => {
       setError(err.message);
