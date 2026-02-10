@@ -36,7 +36,7 @@ function setSessionCookie(res: any, token: string) {
   const cookieStr = stringifySetCookie(COOKIE_NAME, token, {
     httpOnly: true,
     secure: true, // Always secure since preview/production are HTTPS
-    sameSite: "none", // Required for cross-site cookies with secure:true
+    sameSite: "lax", // More permissive, works better for same-site requests
     maxAge: ONE_YEAR_MS / 1000,
     path: "/",
   });
@@ -51,7 +51,7 @@ function clearSessionCookie(res: any) {
   const cookieStr = stringifySetCookie(COOKIE_NAME, "", {
     httpOnly: true,
     secure: true, // Always secure since preview/production are HTTPS
-    sameSite: "none", // Must match setSessionCookie
+    sameSite: "lax", // Must match setSessionCookie
     maxAge: 0,
     path: "/",
   });

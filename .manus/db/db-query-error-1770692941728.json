@@ -1,0 +1,8 @@
+{
+  "query": "DELETE FROM user_sessions WHERE user_id IN (SELECT id FROM user WHERE email LIKE '%chessaesthetics%');",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user o7gqiRJAqhDK5GQ.9c38f5a63e4d --database Xkyng35xnYFybYAdmyVo96 --execute DELETE FROM user_sessions WHERE user_id IN (SELECT id FROM user WHERE email LIKE '%chessaesthetics%');",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1146 (42S02) at line 1: Table 'xkyng35xnyfybyadmyvo96.user_sessions' doesn't exist"
+  ]
+}

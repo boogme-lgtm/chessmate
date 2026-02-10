@@ -54,6 +54,12 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   // OAuth callback under /api/oauth/callback
   registerOAuthRoutes(app);
+  
+  // Force logout endpoint for debugging
+  app.get("/api/force-logout", (req, res) => {
+    res.setHeader("Set-Cookie", "session=; HttpOnly; Secure; SameSite=Lax; Max-Age=0; Path=/");
+    res.send("Session cookie cleared. <a href='/'>Go to homepage</a>");
+  });
   // tRPC API
   app.use(
     "/api/trpc",

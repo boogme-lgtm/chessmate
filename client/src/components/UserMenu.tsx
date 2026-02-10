@@ -24,13 +24,19 @@ export function UserMenu() {
 
   const logoutMutation = trpc.auth.logout.useMutation({
     onSuccess: async () => {
+      console.log("[Logout] Success - redirecting to homepage");
       toast.success("Signed out successfully");
       // Force full page reload to clear all auth state
       window.location.href = "/";
     },
+    onError: (error) => {
+      console.error("[Logout] Error:", error);
+      toast.error("Failed to sign out: " + error.message);
+    },
   });
 
   const handleSignOut = () => {
+    console.log("[Logout] Button clicked - calling mutation");
     logoutMutation.mutate();
   };
 
