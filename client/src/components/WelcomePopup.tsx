@@ -3,6 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from "@/components/ui/button";
 import { Users, GraduationCap } from "lucide-react";
 import { useLocation } from "wouter";
+import { motion, AnimatePresence } from "framer-motion";
 
 export function WelcomePopup({ onOpenAssessment }: { onOpenAssessment: () => void }) {
   const [open, setOpen] = useState(false);
@@ -42,54 +43,156 @@ export function WelcomePopup({ onOpenAssessment }: { onOpenAssessment: () => voi
     setOpen(false);
   };
 
+  // Animation variants
+  const backdropVariants = {
+    hidden: { opacity: 0 },
+    visible: { 
+      opacity: 1,
+      transition: { duration: 0.3 }
+    },
+    exit: { 
+      opacity: 0,
+      transition: { duration: 0.2 }
+    }
+  };
+
+  const modalVariants = {
+    hidden: { 
+      opacity: 0,
+      scale: 0.9,
+      y: 20
+    },
+    visible: { 
+      opacity: 1,
+      scale: 1,
+      y: 0,
+      transition: {
+        type: "spring",
+        damping: 25,
+        stiffness: 300
+      } as any
+    },
+    exit: { 
+      opacity: 0,
+      scale: 0.95,
+      transition: { duration: 0.2 }
+    }
+  };
+
+  const buttonVariants = {
+    hidden: { opacity: 0, y: 20 },
+    visible: (custom: number) => ({
+      opacity: 1,
+      y: 0,
+      transition: {
+        delay: custom * 0.1,
+        duration: 0.4
+      }
+    })
+  };
+
+  const iconVariants = {
+    rest: { scale: 1 },
+    hover: { 
+      scale: 1.1,
+      transition: {
+        type: "spring",
+        stiffness: 400,
+        damping: 10
+      } as any
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="text-2xl font-light text-center">Welcome to BooGMe</DialogTitle>
-          <DialogDescription className="text-center text-muted-foreground">
-            Let's get you started. Are you here as a student or a coach?
-          </DialogDescription>
-        </DialogHeader>
-        
-        <div className="grid grid-cols-1 gap-4 py-6">
-          <Button
-            onClick={() => handleChoice("student")}
-            variant="outline"
-            className="h-auto flex flex-col items-center gap-3 p-6 hover:bg-primary/5 hover:border-primary/50 transition-all"
-          >
-            <GraduationCap className="h-12 w-12 text-primary" />
-            <div className="text-center">
-              <div className="font-medium text-lg">I'm a Student</div>
-              <div className="text-sm text-muted-foreground font-light">
-                Find the perfect chess coach for my goals
-              </div>
-            </div>
-          </Button>
+      <DialogContent className="sm:max-w-md" asChild>
+        <motion.div
+          variants={modalVariants}
+          initial="hidden"
+          animate="visible"
+          exit="exit"
+        >
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-light text-center">Welcome to BooGMe</DialogTitle>
+            <DialogDescription className="text-center text-muted-foreground">
+              Let's get you started. Are you here as a student or a coach?
+            </DialogDescription>
+          </DialogHeader>
           
-          <Button
-            onClick={() => handleChoice("coach")}
-            variant="outline"
-            className="h-auto flex flex-col items-center gap-3 p-6 hover:bg-primary/5 hover:border-primary/50 transition-all"
+          <div className="grid grid-cols-1 gap-4 py-6">
+            <motion.div
+              custom={0}
+              variants={buttonVariants}
+              initial="hidden"
+              animate="visible"
+            >
+              <motion.div
+                initial="rest"
+                whileHover="hover"
+                animate="rest"
+              >
+                <Button
+                  onClick={() => handleChoice("student")}
+                  variant="outline"
+                  className="w-full h-auto flex flex-col items-center gap-3 p-6 hover:bg-primary/5 hover:border-primary/50 transition-all"
+                >
+                  <motion.div variants={iconVariants}>
+                    <GraduationCap className="h-12 w-12 text-primary" />
+                  </motion.div>
+                  <div className="text-center">
+                    <div className="font-medium text-lg">I'm a Student</div>
+                    <div className="text-sm text-muted-foreground font-light">
+                      Find the perfect chess coach for my goals
+                    </div>
+                  </div>
+                </Button>
+              </motion.div>
+            </motion.div>
+            
+            <motion.div
+              custom={1}
+              variants={buttonVariants}
+              initial="hidden"
+              animate="visible"
+            >
+              <motion.div
+                initial="rest"
+                whileHover="hover"
+                animate="rest"
+              >
+                <Button
+                  onClick={() => handleChoice("coach")}
+                  variant="outline"
+                  className="w-full h-auto flex flex-col items-center gap-3 p-6 hover:bg-primary/5 hover:border-primary/50 transition-all"
+                >
+                  <motion.div variants={iconVariants}>
+                    <Users className="h-12 w-12 text-primary" />
+                  </motion.div>
+                  <div className="text-center">
+                    <div className="font-medium text-lg">I'm a Coach</div>
+                    <div className="text-sm text-muted-foreground font-light">
+                      Join the marketplace and grow my coaching business
+                    </div>
+                  </div>
+                </Button>
+              </motion.div>
+            </motion.div>
+          </div>
+          
+          <motion.div 
+            className="text-center"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.3, duration: 0.4 }}
           >
-            <Users className="h-12 w-12 text-primary" />
-            <div className="text-center">
-              <div className="font-medium text-lg">I'm a Coach</div>
-              <div className="text-sm text-muted-foreground font-light">
-                Join the marketplace and grow my coaching business
-              </div>
-            </div>
-          </Button>
-        </div>
-        
-        <div className="text-center">
-          <button
-            onClick={handleClose}
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            I'll decide later
-          </button>
-        </div>
+            <button
+              onClick={handleClose}
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              I'll decide later
+            </button>
+          </motion.div>
+        </motion.div>
       </DialogContent>
     </Dialog>
   );
