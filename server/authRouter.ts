@@ -32,10 +32,16 @@ async function createSessionToken(userId: number): Promise<string> {
 /**
  * Set session cookie in response
  */
-function setSessionCookie(res: any, token: string) {
+function setSessionCookie(res: any, token: string, req?: any) {
+  // Detect if request is HTTPS by checking protocol or x-forwarded-proto header
+  const isSecure = req ? (
+    req.protocol === 'https' || 
+    req.get('x-forwarded-proto') === 'https'
+  ) : ENV.isProduction;
+  
   const cookieStr = stringifySetCookie(COOKIE_NAME, token, {
     httpOnly: true,
-    secure: ENV.isProduction,
+    secure: isSecure,
     sameSite: "lax",
     maxAge: ONE_YEAR_MS / 1000,
     path: "/",
@@ -47,10 +53,16 @@ function setSessionCookie(res: any, token: string) {
 /**
  * Clear session cookie
  */
-function clearSessionCookie(res: any) {
+function clearSessionCookie(res: any, req?: any) {
+  // Detect if request is HTTPS by checking protocol or x-forwarded-proto header
+  const isSecure = req ? (
+    req.protocol === 'https' || 
+    req.get('x-forwarded-proto') === 'https'
+  ) : ENV.isProduction;
+  
   const cookieStr = stringifySetCookie(COOKIE_NAME, "", {
     httpOnly: true,
-    secure: ENV.isProduction,
+    secure: isSecure,
     sameSite: "lax",
     maxAge: 0,
     path: "/",
@@ -125,7 +137,7 @@ export const authRouter = router({
       // Create session for verified user
       if (result.userId) {
         const sessionToken = await createSessionToken(result.userId);
-        setSessionCookie(ctx.res, sessionToken);
+        setSessionCookie(ctx.res, sessionToken, ctx.req);
       }
 
       return {
@@ -159,7 +171,7 @@ export const authRouter = router({
 
       // Create session
       const sessionToken = await createSessionToken(result.user.id);
-      setSessionCookie(ctx.res, sessionToken);
+      setSessionCookie(ctx.res, sessionToken, ctx.req);
 
       return {
         success: true,
@@ -171,7 +183,7 @@ export const authRouter = router({
    * Logout user
    */
   logout: publicProcedure.mutation(async ({ ctx }) => {
-    clearSessionCookie(ctx.res);
+    clearSessionCookie(ctx.res, ctx.req);
 
     return {
       success: true,

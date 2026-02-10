@@ -501,4 +501,5 @@
 - [x] Integrate user menu into navigation - desktop and mobile
 - [x] Fix OAuth redirect URI error - changed to navigate to /sign-in page instead of direct OAuth
 - [x] Test complete sign-in flow - found logout bug, user stays logged in
-- [x] Fix logout functionality - force full page reload
+- [x] Fix logout - clearSessionCookie matches setSessionCookie HTTPS detection
+- [x] Fix session persistence - login succeeds and user stays logged in
