@@ -16,11 +16,13 @@ export default function SignIn() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [isSigningIn, setIsSigningIn] = useState(false);
 
   const utils = trpc.useUtils();
   const loginMutation = trpc.auth.login.useMutation({
     onSuccess: async () => {
       setError("");
+      setIsSigningIn(true);
       // Clear stored redirect from localStorage
       localStorage.removeItem("postLoginRedirect");
       // Refresh user data and WAIT for it to complete before redirecting
@@ -49,7 +51,26 @@ export default function SignIn() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+    <div className="min-h-screen flex items-center justify-center bg-background p-4 relative">
+      {/* Loading overlay during sign-in */}
+      {isSigningIn && (
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center">
+          <Card className="w-full max-w-sm">
+            <CardContent className="pt-6 pb-6">
+              <div className="flex flex-col items-center gap-4">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <div className="text-center">
+                  <p className="text-lg font-medium">Signing you in...</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Please wait while we verify your account
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+      
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle className="text-2xl">Welcome Back</CardTitle>
