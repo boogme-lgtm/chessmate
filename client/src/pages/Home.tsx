@@ -116,14 +116,15 @@ function Navigation() {
             user ? (
               <UserMenu />
             ) : (
-              <Button 
-                variant="ghost" 
-                size="sm"
-                className="font-light"
-                onClick={() => window.location.href = getLoginUrl()}
-              >
-                Sign In
-              </Button>
+              <a href={getLoginUrl()}>
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  className="font-light"
+                >
+                  Sign In
+                </Button>
+              </a>
             )
           )}
         </div>
@@ -176,14 +177,15 @@ function Navigation() {
                 user ? (
                   <UserMenu />
                 ) : (
-                  <Button 
-                    variant="ghost" 
-                    size="sm"
-                    className="w-full font-light"
-                    onClick={() => window.location.href = getLoginUrl()}
-                  >
-                    Sign In
-                  </Button>
+                  <a href={getLoginUrl()} className="block">
+                    <Button 
+                      variant="ghost" 
+                      size="sm"
+                      className="w-full font-light"
+                    >
+                      Sign In
+                    </Button>
+                  </a>
                 )
               )}
             </div>

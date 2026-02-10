@@ -499,3 +499,4 @@
 - [x] Add loading overlay to Register page - full screen with spinner
 - [x] Create minimal user menu component - clean dropdown with user name
 - [x] Integrate user menu into navigation - desktop and mobile
+- [x] Fix OAuth redirect URI error - changed from window.location to proper link navigation
