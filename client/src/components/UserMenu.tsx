@@ -23,10 +23,10 @@ export function UserMenu() {
   const utils = trpc.useUtils();
 
   const logoutMutation = trpc.auth.logout.useMutation({
-    onSuccess: () => {
-      utils.auth.me.invalidate();
+    onSuccess: async () => {
       toast.success("Signed out successfully");
-      setLocation("/");
+      // Force full page reload to clear all auth state
+      window.location.href = "/";
     },
   });
 
