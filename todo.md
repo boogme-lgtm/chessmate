@@ -503,3 +503,5 @@
 - [x] Test complete sign-in flow - found logout bug, user stays logged in
 - [x] Fix logout - clearSessionCookie matches setSessionCookie HTTPS detection
 - [x] Fix session persistence - login succeeds and user stays logged in
+- [x] Fix sign-in loop - changed cookie to secure:true sameSite:none
+- [x] Add Google OAuth sign-in button to sign-in page

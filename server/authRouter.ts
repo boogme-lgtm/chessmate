@@ -32,17 +32,11 @@ async function createSessionToken(userId: number): Promise<string> {
 /**
  * Set session cookie in response
  */
-function setSessionCookie(res: any, token: string, req?: any) {
-  // Detect if request is HTTPS by checking protocol or x-forwarded-proto header
-  const isSecure = req ? (
-    req.protocol === 'https' || 
-    req.get('x-forwarded-proto') === 'https'
-  ) : ENV.isProduction;
-  
+function setSessionCookie(res: any, token: string) {
   const cookieStr = stringifySetCookie(COOKIE_NAME, token, {
     httpOnly: true,
-    secure: isSecure,
-    sameSite: "lax",
+    secure: true, // Always secure since preview/production are HTTPS
+    sameSite: "none", // Required for cross-site cookies with secure:true
     maxAge: ONE_YEAR_MS / 1000,
     path: "/",
   });
@@ -53,17 +47,11 @@ function setSessionCookie(res: any, token: string, req?: any) {
 /**
  * Clear session cookie
  */
-function clearSessionCookie(res: any, req?: any) {
-  // Detect if request is HTTPS by checking protocol or x-forwarded-proto header
-  const isSecure = req ? (
-    req.protocol === 'https' || 
-    req.get('x-forwarded-proto') === 'https'
-  ) : ENV.isProduction;
-  
+function clearSessionCookie(res: any) {
   const cookieStr = stringifySetCookie(COOKIE_NAME, "", {
     httpOnly: true,
-    secure: isSecure,
-    sameSite: "lax",
+    secure: true, // Always secure since preview/production are HTTPS
+    sameSite: "none", // Must match setSessionCookie
     maxAge: 0,
     path: "/",
   });
@@ -137,7 +125,7 @@ export const authRouter = router({
       // Create session for verified user
       if (result.userId) {
         const sessionToken = await createSessionToken(result.userId);
-        setSessionCookie(ctx.res, sessionToken, ctx.req);
+        setSessionCookie(ctx.res, sessionToken);
       }
 
       return {
@@ -171,7 +159,7 @@ export const authRouter = router({
 
       // Create session
       const sessionToken = await createSessionToken(result.user.id);
-      setSessionCookie(ctx.res, sessionToken, ctx.req);
+      setSessionCookie(ctx.res, sessionToken);
 
       return {
         success: true,
@@ -183,7 +171,7 @@ export const authRouter = router({
    * Logout user
    */
   logout: publicProcedure.mutation(async ({ ctx }) => {
-    clearSessionCookie(ctx.res, ctx.req);
+    clearSessionCookie(ctx.res);
 
     return {
       success: true,
