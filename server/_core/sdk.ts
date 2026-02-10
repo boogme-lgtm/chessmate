@@ -268,10 +268,30 @@ class SDKServer {
 
     const sessionUserId = session.openId;
     const signedInAt = new Date();
-    let user = await db.getUserByOpenId(sessionUserId);
+    
+    // For email/password users (openId = 'local_123'), look up by ID
+    let user;
+    if (sessionUserId.startsWith('local_')) {
+      const userId = parseInt(sessionUserId.replace('local_', ''));
+      user = await db.getUserById(userId);
+    } else {
+      // For OAuth users, look up by openId
+      user = await db.getUserByOpenId(sessionUserId);
+    }
 
     // If user not in DB, sync from OAuth server automatically
     if (!user) {
+      // Skip OAuth verification for email/password users (openId starts with 'local_')
+      const isEmailPasswordUser = sessionUserId.startsWith('local_');
+      
+      if (isEmailPasswordUser) {
+        // For email/password users, JWT is already verified, just throw error
+        // They should already exist in DB from registration
+        console.error("[Auth] Email/password user not found in database:", sessionUserId);
+        throw ForbiddenError("User not found");
+      }
+      
+      // For OAuth users, sync from OAuth server
       try {
         const userInfo = await this.getUserInfoWithJwt(sessionCookie ?? "");
         await db.upsertUser({

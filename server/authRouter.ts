@@ -20,9 +20,9 @@ const JWT_SECRET = new TextEncoder().encode(ENV.cookieSecret);
  * Create a JWT session token for a user
  * Must match SDK's expected payload: {openId, appId, name}
  */
-async function createSessionToken(user: { openId: string | null; name: string | null }): Promise<string> {
-  // For email/password users without OAuth, use email as openId
-  const openId = user.openId || `email_${Date.now()}`;
+async function createSessionToken(user: { id: number; openId: string | null; name: string | null }): Promise<string> {
+  // For email/password users without OAuth openId, use their database ID prefixed with 'local_'
+  const openId = user.openId || `local_${user.id}`;
   
   const token = await new SignJWT({ 
     openId,

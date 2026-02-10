@@ -57,8 +57,14 @@ async function startServer() {
   
   // Force logout endpoint for debugging
   app.get("/api/force-logout", (req, res) => {
+    // Clear the session cookie
     res.setHeader("Set-Cookie", "app_session_id=; HttpOnly; Secure; SameSite=Lax; Max-Age=0; Path=/");
-    res.send("Session cookie cleared. <a href='/'>Go to homepage</a>");
+    // Prevent caching
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    // Redirect to homepage with cache-busting parameter
+    res.redirect("/?logout=" + Date.now());
   });
   // tRPC API
   app.use(
