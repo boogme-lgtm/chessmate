@@ -496,3 +496,6 @@
 - [x] Ensure session/cookies persist - auth.me.invalidate refreshes user state
 - [x] Fix auth state not refreshing - changed invalidate() to await refetch() before redirect
 - [x] Add loading indicator to SignIn page - full screen overlay with spinner and message
+- [x] Add loading overlay to Register page - full screen with spinner
+- [x] Create minimal user menu component - clean dropdown with user name
+- [x] Integrate user menu into navigation - desktop and mobile

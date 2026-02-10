@@ -25,6 +25,9 @@ import { CoachMatchingAssessment } from "@/components/CoachMatchingAssessment";
 import { CoachProfileCard, type CoachProfile } from "@/components/CoachProfileCard";
 import { CoachFilters, type FilterState } from "@/components/CoachFilters";
 import { WelcomePopup } from "@/components/WelcomePopup";
+import { UserMenu } from "@/components/UserMenu";
+import { useAuth } from "@/_core/hooks/useAuth";
+import { getLoginUrl } from "@/const";
 
 // Minimal animation variants
 const fadeIn = {
@@ -44,6 +47,7 @@ const staggerContainer = {
 function Navigation() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { user, loading } = useAuth();
 
   React.useEffect(() => {
     const handleScroll = () => setIsScrolled(window.scrollY > 20);
@@ -106,6 +110,24 @@ function Navigation() {
           </button>
         </div>
 
+        {/* User Menu or Sign In */}
+        <div className="hidden md:block">
+          {!loading && (
+            user ? (
+              <UserMenu />
+            ) : (
+              <Button 
+                variant="ghost" 
+                size="sm"
+                className="font-light"
+                onClick={() => window.location.href = getLoginUrl()}
+              >
+                Sign In
+              </Button>
+            )
+          )}
+        </div>
+
         <button
           className="md:hidden"
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -147,6 +169,24 @@ function Navigation() {
             >
               Join Waitlist
             </button>
+            
+            {/* Mobile User Menu or Sign In */}
+            <div className="pt-4 border-t border-border">
+              {!loading && (
+                user ? (
+                  <UserMenu />
+                ) : (
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    className="w-full font-light"
+                    onClick={() => window.location.href = getLoginUrl()}
+                  >
+                    Sign In
+                  </Button>
+                )
+              )}
+            </div>
           </div>
         </motion.div>
       )}

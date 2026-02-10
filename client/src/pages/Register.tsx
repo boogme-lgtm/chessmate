@@ -18,15 +18,21 @@ export default function Register() {
   const [name, setName] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
+  const [isCreatingAccount, setIsCreatingAccount] = useState(false);
 
   const registerMutation = trpc.auth.register.useMutation({
     onSuccess: () => {
-      setSuccess(true);
-      setError("");
-      // Store redirect URL for after email verification
-      if (redirect && redirect !== "/dashboard") {
-        localStorage.setItem("postLoginRedirect", redirect);
-      }
+      setIsCreatingAccount(true);
+      // Brief delay to show the loading state
+      setTimeout(() => {
+        setSuccess(true);
+        setError("");
+        setIsCreatingAccount(false);
+        // Store redirect URL for after email verification
+        if (redirect && redirect !== "/dashboard") {
+          localStorage.setItem("postLoginRedirect", redirect);
+        }
+      }, 800);
     },
     onError: (err) => {
       setError(err.message);
@@ -109,7 +115,26 @@ export default function Register() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+    <div className="min-h-screen flex items-center justify-center bg-background p-4 relative">
+      {/* Loading overlay during account creation */}
+      {isCreatingAccount && (
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center">
+          <Card className="w-full max-w-sm">
+            <CardContent className="pt-6 pb-6">
+              <div className="flex flex-col items-center gap-4">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <div className="text-center">
+                  <p className="text-lg font-medium">Creating your account...</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Please wait while we set everything up
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+      
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle className="text-2xl">Create an Account</CardTitle>
