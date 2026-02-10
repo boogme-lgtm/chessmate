@@ -509,3 +509,4 @@
 - [x] Added force logout endpoint at /api/force-logout
 - [ ] Test sign-in and logout with sameSite:lax secure:true
 - [x] Fixed cookie name mismatch - authRouter used "session" but SDK expected "app_session_id"
+- [x] Fixed JWT payload mismatch - authRouter now creates {openId, appId, name} payload

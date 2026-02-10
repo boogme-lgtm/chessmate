@@ -12,14 +12,23 @@ import { SignJWT } from "jose";
 import { ENV } from "./_core/env";
 import { stringifySetCookie } from 'cookie/dist/index.js';
 import { COOKIE_NAME, ONE_YEAR_MS } from '@shared/const';
+import * as db from './db';
 
 const JWT_SECRET = new TextEncoder().encode(ENV.cookieSecret);
 
 /**
  * Create a JWT session token for a user
+ * Must match SDK's expected payload: {openId, appId, name}
  */
-async function createSessionToken(userId: number): Promise<string> {
-  const token = await new SignJWT({ userId })
+async function createSessionToken(user: { openId: string | null; name: string | null }): Promise<string> {
+  // For email/password users without OAuth, use email as openId
+  const openId = user.openId || `email_${Date.now()}`;
+  
+  const token = await new SignJWT({ 
+    openId,
+    appId: ENV.appId,
+    name: user.name || ""
+  })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("365d")
@@ -123,8 +132,11 @@ export const authRouter = router({
 
       // Create session for verified user
       if (result.userId) {
-        const sessionToken = await createSessionToken(result.userId);
-        setSessionCookie(ctx.res, sessionToken);
+        const user = await db.getUserById(result.userId);
+        if (user) {
+          const sessionToken = await createSessionToken(user);
+          setSessionCookie(ctx.res, sessionToken);
+        }
       }
 
       return {
@@ -157,7 +169,7 @@ export const authRouter = router({
       }
 
       // Create session
-      const sessionToken = await createSessionToken(result.user.id);
+      const sessionToken = await createSessionToken(result.user);
       setSessionCookie(ctx.res, sessionToken);
 
       return {
