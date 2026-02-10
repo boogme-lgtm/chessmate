@@ -95,7 +95,15 @@ export default function VerifyEmail() {
           {status === "success" && (
             <Button
               className="w-full"
-              onClick={() => setLocation("/sign-in")}
+              onClick={() => {
+                // Check if there's a stored redirect URL
+                const storedRedirect = localStorage.getItem("postLoginRedirect");
+                if (storedRedirect) {
+                  setLocation(`/sign-in?redirect=${encodeURIComponent(storedRedirect)}`);
+                } else {
+                  setLocation("/sign-in");
+                }
+              }}
             >
               Sign In Now
             </Button>

@@ -23,6 +23,8 @@ export default function SignIn() {
       setError("");
       // Refresh user data
       utils.auth.me.invalidate();
+      // Clear stored redirect from localStorage
+      localStorage.removeItem("postLoginRedirect");
       // Redirect to intended page
       setLocation(redirect);
     },

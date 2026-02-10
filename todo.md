@@ -491,3 +491,6 @@
 - [x] Fix welcome popup routing - now opens assessment modal instead of routing to 404
 - [x] Add engaging animations to welcome popup (backdrop fade, modal scale, staggered buttons, icon hover)
 - [x] Fix React.Children.only error - removed asChild prop and wrapped content in motion.div
+- [x] Fix authentication redirect loop - now redirects back to coach page after login
+- [x] Preserve intended destination - stored in localStorage through verification flow
+- [x] Ensure session/cookies persist - auth.me.invalidate refreshes user state

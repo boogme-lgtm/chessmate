@@ -23,6 +23,10 @@ export default function Register() {
     onSuccess: () => {
       setSuccess(true);
       setError("");
+      // Store redirect URL for after email verification
+      if (redirect && redirect !== "/dashboard") {
+        localStorage.setItem("postLoginRedirect", redirect);
+      }
     },
     onError: (err) => {
       setError(err.message);

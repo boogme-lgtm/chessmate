@@ -32,8 +32,8 @@ export default function CoachDetail() {
 
   const handleBookLesson = () => {
     if (!user) {
-      // Redirect to register page with return URL
-      setLocation(`/register?redirect=/coach/${coachId}`);
+      // Redirect to sign-in page with return URL (user can navigate to register from there)
+      setLocation(`/sign-in?redirect=/coach/${coachId}`);
       return;
     }
     setBookingModalOpen(true);
