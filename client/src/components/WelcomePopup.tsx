@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from "@/components/ui/button";
 import { Users, GraduationCap } from "lucide-react";
 import { useLocation } from "wouter";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 
 export function WelcomePopup({ onOpenAssessment }: { onOpenAssessment: () => void }) {
   const [open, setOpen] = useState(false);
@@ -44,22 +44,10 @@ export function WelcomePopup({ onOpenAssessment }: { onOpenAssessment: () => voi
   };
 
   // Animation variants
-  const backdropVariants = {
-    hidden: { opacity: 0 },
-    visible: { 
-      opacity: 1,
-      transition: { duration: 0.3 }
-    },
-    exit: { 
-      opacity: 0,
-      transition: { duration: 0.2 }
-    }
-  };
-
-  const modalVariants = {
+  const containerVariants = {
     hidden: { 
       opacity: 0,
-      scale: 0.9,
+      scale: 0.95,
       y: 20
     },
     visible: { 
@@ -71,11 +59,6 @@ export function WelcomePopup({ onOpenAssessment }: { onOpenAssessment: () => voi
         damping: 25,
         stiffness: 300
       } as any
-    },
-    exit: { 
-      opacity: 0,
-      scale: 0.95,
-      transition: { duration: 0.2 }
     }
   };
 
@@ -85,7 +68,7 @@ export function WelcomePopup({ onOpenAssessment }: { onOpenAssessment: () => voi
       opacity: 1,
       y: 0,
       transition: {
-        delay: custom * 0.1,
+        delay: 0.2 + custom * 0.1,
         duration: 0.4
       }
     })
@@ -105,12 +88,11 @@ export function WelcomePopup({ onOpenAssessment }: { onOpenAssessment: () => voi
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-md" asChild>
+      <DialogContent className="sm:max-w-md">
         <motion.div
-          variants={modalVariants}
+          variants={containerVariants}
           initial="hidden"
           animate="visible"
-          exit="exit"
         >
           <DialogHeader>
             <DialogTitle className="text-2xl font-light text-center">Welcome to BooGMe</DialogTitle>
@@ -183,7 +165,7 @@ export function WelcomePopup({ onOpenAssessment }: { onOpenAssessment: () => voi
             className="text-center"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ delay: 0.3, duration: 0.4 }}
+            transition={{ delay: 0.5, duration: 0.4 }}
           >
             <button
               onClick={handleClose}

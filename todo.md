@@ -490,3 +490,4 @@
 - [x] Route popup responses to appropriate AI assessment flow
 - [x] Fix welcome popup routing - now opens assessment modal instead of routing to 404
 - [x] Add engaging animations to welcome popup (backdrop fade, modal scale, staggered buttons, icon hover)
+- [x] Fix React.Children.only error - removed asChild prop and wrapped content in motion.div
