@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { format, isPast, isFuture } from "date-fns";
 import { useLocation } from "wouter";
+import { useEffect } from "react";
 
 /**
  * Student Dashboard - Shows upcoming and past lessons
@@ -30,12 +31,18 @@ export default function StudentDashboard() {
     { enabled: !!user }
   );
 
+  // Redirect to home if not authenticated (must be in useEffect to avoid render-phase setState)
+  useEffect(() => {
+    if (!authLoading && !user) {
+      setLocation("/");
+    }
+  }, [authLoading, user, setLocation]);
+
   if (authLoading || isLoading) {
     return <DashboardSkeleton />;
   }
 
   if (!user) {
-    setLocation("/");
     return null;
   }
 

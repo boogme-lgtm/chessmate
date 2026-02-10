@@ -512,3 +512,4 @@
 - [x] Fixed JWT payload mismatch - authRouter now creates {openId, appId, name} payload
 - [x] Improved force-logout with redirect and cache-control headers
 - [x] Fixed sign-in loop - use local_ID for email users
+- [x] Fixed render-phase navigation in StudentDashboard causing sign-in loop
