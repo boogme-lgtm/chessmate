@@ -19,13 +19,13 @@ export default function SignIn() {
 
   const utils = trpc.useUtils();
   const loginMutation = trpc.auth.login.useMutation({
-    onSuccess: () => {
+    onSuccess: async () => {
       setError("");
-      // Refresh user data
-      utils.auth.me.invalidate();
       // Clear stored redirect from localStorage
       localStorage.removeItem("postLoginRedirect");
-      // Redirect to intended page
+      // Refresh user data and WAIT for it to complete before redirecting
+      await utils.auth.me.refetch();
+      // Now redirect to intended page with fresh auth state
       setLocation(redirect);
     },
     onError: (err) => {

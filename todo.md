@@ -494,3 +494,4 @@
 - [x] Fix authentication redirect loop - now redirects back to coach page after login
 - [x] Preserve intended destination - stored in localStorage through verification flow
 - [x] Ensure session/cookies persist - auth.me.invalidate refreshes user state
+- [x] Fix auth state not refreshing - changed invalidate() to await refetch() before redirect
