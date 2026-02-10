@@ -11,7 +11,7 @@ import { Loader2 } from "lucide-react";
 export default function SignIn() {
   const [, setLocation] = useLocation();
   const searchParams = useSearch();
-  const redirect = new URLSearchParams(searchParams).get("redirect") || "/dashboard";
+  const redirect = new URLSearchParams(searchParams).get("redirect") || "/";
   console.log("[SignIn] Redirect target:", redirect);
   
   const [email, setEmail] = useState("");

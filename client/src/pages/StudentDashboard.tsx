@@ -17,6 +17,7 @@ import {
 import { format, isPast, isFuture } from "date-fns";
 import { useLocation } from "wouter";
 import { useEffect } from "react";
+import DashboardLayout from "@/components/DashboardLayout";
 
 /**
  * Student Dashboard - Shows upcoming and past lessons
@@ -55,7 +56,8 @@ export default function StudentDashboard() {
   ) || [];
 
   return (
-    <div className="min-h-screen bg-background">
+    <DashboardLayout>
+      <div className="min-h-screen bg-background">
       {/* Header */}
       <div className="border-b border-border/40">
         <div className="container py-8">
@@ -117,7 +119,8 @@ export default function StudentDashboard() {
           </TabsContent>
         </Tabs>
       </div>
-    </div>
+      </div>
+    </DashboardLayout>
   );
 }
 

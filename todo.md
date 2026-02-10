@@ -525,3 +525,7 @@
 - [x] Fix sign-in failing to load user data after authentication
 - [x] Root cause: email/password users have openId=null, but upsertUser() required non-null openId
 - [x] Solution: Use synthetic openId (local_123) when upserting email/password users
+
+## Navigation Issues (2026-02-10)
+- [ ] Fix sign-in redirect - should stay on current page, not auto-redirect to dashboard
+- [ ] Add Home button to dashboard navigation to return to main page
