@@ -515,3 +515,4 @@
 - [x] Fixed render-phase navigation in StudentDashboard causing sign-in loop
 - [x] Fixed: SignIn now waits for user data fetch before redirect
 - [x] Root cause found: React Query cache not propagating
+- [x] Fix logout to verify auth state cleared before redirect
