@@ -225,7 +225,11 @@ export async function updateCoachStats(coachId: number) {
       totalReviews: sql<number>`COUNT(*)`,
     })
     .from(reviews)
-    .where(eq(reviews.coachId, coachId));
+    .where(and(
+      eq(reviews.revieweeId, coachId),
+      eq(reviews.reviewerType, 'student'),
+      eq(reviews.isVisible, true)
+    ));
 
   const lessonStats = await db
     .select({
@@ -384,8 +388,10 @@ export async function createReview(review: InsertReview) {
 
   const result = await db.insert(reviews).values(review);
   
-  // Update coach stats after new review
-  await updateCoachStats(review.coachId);
+  // Update coach stats after new review (if reviewing a coach)
+  if (review.reviewerType === 'student') {
+    await updateCoachStats(review.revieweeId);
+  }
   
   return result;
 }
@@ -397,7 +403,12 @@ export async function getReviewsByCoach(coachId: number, limit: number = 20) {
   return await db
     .select()
     .from(reviews)
-    .where(and(eq(reviews.coachId, coachId), eq(reviews.isPublic, true)))
+    .where(and(
+      eq(reviews.revieweeId, coachId),
+      eq(reviews.reviewerType, 'student'),
+      eq(reviews.isPublic, true),
+      eq(reviews.isVisible, true)
+    ))
     .orderBy(desc(reviews.createdAt))
     .limit(limit);
 }

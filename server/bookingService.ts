@@ -178,7 +178,7 @@ export async function createBooking(data: {
     commissionCents: pricing.commissionCents,
     coachPayoutCents: pricing.coachPayoutCents,
     currency: pricing.currency,
-    status: "pending",
+    status: "pending_confirmation",
   });
 
   return lesson;

@@ -229,7 +229,7 @@ export const appRouter = router({
           videoIntroUrl: input.videoIntroUrl,
           backgroundCheckConsent: input.backgroundCheckConsent,
           termsAgreed: input.termsAgreed,
-          status: "pending",
+          status: "pending_confirmation",
         };
 
         // Run AI vetting (exclude availability as it's not needed for vetting)
@@ -614,7 +614,7 @@ export const appRouter = router({
           amountCents,
           commissionCents,
           coachPayoutCents,
-          status: "pending",
+          status: "pending_confirmation",
         });
 
         return { success: true, lessonId: lesson.id };
@@ -693,10 +693,11 @@ export const appRouter = router({
         if (input.rating) {
           await db.createReview({
             lessonId: input.lessonId,
-            studentId: ctx.user.id,
-            coachId: lesson.coachId,
+            reviewerId: ctx.user.id,
+            revieweeId: lesson.coachId,
+            reviewerType: 'student',
             rating: input.rating,
-            comment: input.comment,
+            comment: input.comment || '',
           });
         }
 
