@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation, useSearch } from "wouter";
+import { getLoginUrl } from "@/const";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -154,7 +155,7 @@ export default function SignIn() {
               onClick={() => {
                 // Store redirect for after OAuth
                 localStorage.setItem("postLoginRedirect", redirect);
-                window.location.href = `${import.meta.env.VITE_OAUTH_PORTAL_URL}?app_id=${import.meta.env.VITE_APP_ID}&redirect_uri=${encodeURIComponent(window.location.origin + '/api/oauth/callback')}`;
+                window.location.href = getLoginUrl();
               }}
             >
               <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">

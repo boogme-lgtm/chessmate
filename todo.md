@@ -529,3 +529,7 @@
 ## Navigation Issues (2026-02-10)
 - [ ] Fix sign-in redirect - should stay on current page, not auto-redirect to dashboard
 - [ ] Add Home button to dashboard navigation to return to main page
+
+## Authentication Issues
+- [x] Fix Google OAuth redirect (now working correctly)
+- [ ] Consider adding additional auth methods (Apple, Magic Link, etc.)
