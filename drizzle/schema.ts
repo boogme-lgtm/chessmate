@@ -170,18 +170,20 @@ export const lessons = mysqlTable("lessons", {
   notes: text("notes"),
   meetingUrl: text("meetingUrl"),
   
-  // Status flow: pending -> confirmed -> in_progress -> completed/cancelled/disputed
+  // Status flow: pending_confirmation -> confirmed -> paid -> in_progress -> completed/cancelled/disputed
   status: mysqlEnum("status", [
-    "pending",      // Awaiting coach confirmation
+    "pending_confirmation", // Awaiting coach confirmation (Airbnb-style)
     "confirmed",    // Coach confirmed, awaiting payment
+    "declined",     // Coach declined the booking
     "paid",         // Payment held in escrow
     "in_progress",  // Lesson happening
-    "completed",    // Lesson done, awaiting student confirmation
+    "completed",    // Lesson done, awaiting reviews
     "released",     // Payment released to coach
     "cancelled",    // Cancelled before lesson
+    "no_show",      // Student or coach didn't show up
     "disputed",     // Student raised dispute
     "refunded"      // Refund processed
-  ]).default("pending"),
+  ]).default("pending_confirmation"),
   
   // Pricing snapshot (at time of booking)
   amountCents: int("amountCents").notNull(),
@@ -193,9 +195,13 @@ export const lessons = mysqlTable("lessons", {
   stripePaymentIntentId: varchar("stripePaymentIntentId", { length: 64 }),
   stripeTransferId: varchar("stripeTransferId", { length: 64 }),
   
+  // Booking confirmation tracking
+  coachConfirmedAt: timestamp("coachConfirmedAt"), // When coach accepted the booking
+  coachDeclinedAt: timestamp("coachDeclinedAt"),   // When coach declined the booking
+  confirmationDeadline: timestamp("confirmationDeadline"), // Auto-decline if not confirmed by this time
+  
   // Completion tracking
   studentConfirmedAt: timestamp("studentConfirmedAt"),
-  coachConfirmedAt: timestamp("coachConfirmedAt"),
   completedAt: timestamp("completedAt"),
   payoutAt: timestamp("payoutAt"),
   
@@ -214,17 +220,24 @@ export type InsertLesson = typeof lessons.$inferInsert;
  */
 export const reviews = mysqlTable("reviews", {
   id: int("id").autoincrement().primaryKey(),
-  lessonId: int("lessonId").notNull().unique(),
-  studentId: int("studentId").notNull(),
-  coachId: int("coachId").notNull(),
+  lessonId: int("lessonId").notNull(),
+  
+  // Who is reviewing whom (mutual reviews)
+  reviewerId: int("reviewerId").notNull(),
+  revieweeId: int("revieweeId").notNull(),
+  reviewerType: mysqlEnum("reviewerType", ["student", "coach"]).notNull(),
   
   rating: int("rating").notNull(), // 1-5 stars
-  comment: text("comment"),
+  comment: text("comment"), // Written review
   
   // Detailed ratings
   knowledgeRating: int("knowledgeRating"),
   communicationRating: int("communicationRating"),
   preparednessRating: int("preparednessRating"),
+  
+  // Airbnb-style hidden reviews until both submit
+  isVisible: boolean("isVisible").default(false),
+  visibleAt: timestamp("visibleAt"),
   
   isPublic: boolean("isPublic").default(true),
   

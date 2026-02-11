@@ -533,3 +533,37 @@
 ## Authentication Issues
 - [x] Fix Google OAuth redirect (now working correctly)
 - [ ] Consider adding additional auth methods (Apple, Magic Link, etc.)
+
+## New Features & Improvements
+- [x] Add show/hide password toggle to all password input fields (sign-in, register, reset password)
+- [ ] Improve student dashboard with real functionality and data
+- [ ] Improve coach dashboard with real functionality and data
+
+## Phase 1 - Dashboard Improvements (In Progress)
+- [x] Update database schema for lesson statuses (pending_confirmation, confirmed, completed, cancelled, declined, no_show)
+- [ ] Add booking confirmation flow (coach Accept/Decline buttons)
+- [ ] Add lesson status badges to student dashboard
+- [ ] Add cancel/reschedule buttons with 24hr countdown timer
+- [ ] Show "Pending Confirmation" state in student dashboard
+- [ ] Implement coach confirmation UI in coach dashboard
+- [ ] Add coach stats display (total lessons, avg rating)
+- [ ] Fix past lesson statuses (show Completed/Cancelled/No-show instead of Pending Payment)
+- [ ] Test all Phase 1 features in browser
+
+## Future Phases
+### Phase 2 - Reviews & Ratings
+- [ ] Airbnb-style mutual review system (hidden until both submit)
+- [ ] Written reviews with star ratings
+- [ ] Review categories (Communication, Teaching, Punctuality)
+- [ ] Display reviews on coach profiles
+
+### Phase 3 - Communication & Materials
+- [ ] In-app messaging per lesson
+- [ ] Upload/download PGN files
+- [ ] Coach notes functionality
+- [ ] Pre-lesson prep materials section
+
+### Phase 4 - Automation & Notifications
+- [ ] Auto-decline after confirmation deadline
+- [ ] Email notifications (confirmation requests, review reminders, cancellation deadline)
+- [ ] Lesson stats and analytics
