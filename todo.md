@@ -541,12 +541,12 @@
 
 ## Phase 1 - Dashboard Improvements (In Progress)
 - [x] Update database schema for lesson statuses (pending_confirmation, confirmed, completed, cancelled, declined, no_show)
-- [ ] Add booking confirmation flow (coach Accept/Decline buttons)
+- [x] Add booking confirmation flow (coach Accept/Decline buttons)
 - [ ] Add lesson status badges to student dashboard
 - [ ] Add cancel/reschedule buttons with 24hr countdown timer
 - [ ] Show "Pending Confirmation" state in student dashboard
 - [ ] Implement coach confirmation UI in coach dashboard
-- [ ] Add coach stats display (total lessons, avg rating)
+- [x] Add coach stats display (total lessons, avg rating)
 - [ ] Fix past lesson statuses (show Completed/Cancelled/No-show instead of Pending Payment)
 - [ ] Test all Phase 1 features in browser
 
@@ -567,3 +567,16 @@
 - [ ] Auto-decline after confirmation deadline
 - [ ] Email notifications (confirmation requests, review reminders, cancellation deadline)
 - [ ] Lesson stats and analytics
+
+## Phase 3: Group Lessons (Future)
+- [ ] Design group lesson database schema (groupLessons, participants tables)
+- [ ] Add "Book Group Lesson" option to coach profiles
+- [ ] Implement organizer booking flow (set participant count 2-6)
+- [ ] Create shareable invite links for group participants
+- [ ] Implement payment splitting logic (total price / participants)
+- [ ] Add participant management UI (track who joined, payment status)
+- [ ] Update coach dashboard to show group lesson bookings
+- [ ] Add coach settings for group lesson pricing tiers
+- [ ] Implement AI-compiled group reviews (aggregate all participant feedback)
+- [ ] Add "My Group Lessons" section to student dashboard (organized vs joined)
+- [ ] Handle participant dropouts >24hrs (auto-refund, recalculate splits)

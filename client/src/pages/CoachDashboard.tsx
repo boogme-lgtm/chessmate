@@ -20,7 +20,12 @@ import {
   Loader2,
   Calendar,
   Star,
-  ArrowLeft
+  ArrowLeft,
+  ThumbsUp,
+  ThumbsDown,
+  Timer,
+  XCircle,
+  Ban
 } from "lucide-react";
 import { Link } from "wouter";
 import { toast } from "sonner";
@@ -257,51 +262,158 @@ export default function CoachDashboard() {
               </Card>
             )}
 
+            {/* Pending Confirmations */}
+            {lessons && lessons.filter(l => l.status === "pending_confirmation").length > 0 && (
+              <Card className="border-yellow-600/50 bg-yellow-50/50 dark:bg-yellow-950/20">
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Timer className="w-5 h-5 text-yellow-600" />
+                    Pending Booking Confirmations ({lessons.filter(l => l.status === "pending_confirmation").length})
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {lessons.filter(l => l.status === "pending_confirmation").map((lesson) => (
+                      <div 
+                        key={lesson.id}
+                        className="flex items-center justify-between p-4 rounded-lg bg-background border border-yellow-200 dark:border-yellow-900"
+                      >
+                        <div className="flex items-center gap-4 flex-1">
+                          <div className="w-10 h-10 rounded-full bg-yellow-100 dark:bg-yellow-900/30 flex items-center justify-center">
+                            <Users className="w-5 h-5 text-yellow-600" />
+                          </div>
+                          <div className="flex-1">
+                            <div className="font-medium">
+                              {lesson.topic || "Chess Lesson"} • Student #{lesson.studentId}
+                            </div>
+                            <div className="text-sm text-muted-foreground">
+                              {lesson.durationMinutes} min • {new Date(lesson.scheduledAt).toLocaleDateString()} at {new Date(lesson.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </div>
+                            <div className="text-sm font-semibold text-burgundy mt-1">
+                              {formatCurrency(lesson.coachPayoutCents || 0)} (your payout)
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            className="gap-2 bg-green-600 hover:bg-green-700 text-white"
+                            onClick={() => toast.success("Lesson confirmed! (Backend integration pending)")}
+                          >
+                            <ThumbsUp className="w-4 h-4" />
+                            Accept
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-2 border-red-600 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20"
+                            onClick={() => toast.error("Lesson declined (Backend integration pending)")}
+                          >
+                            <ThumbsDown className="w-4 h-4" />
+                            Decline
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Recent Lessons */}
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
                   <Calendar className="w-5 h-5 text-burgundy" />
-                  Recent Lessons
+                  All Lessons
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 {lessons && lessons.length > 0 ? (
                   <div className="space-y-4">
-                    {lessons.map((lesson) => (
-                      <div 
-                        key={lesson.id}
-                        className="flex items-center justify-between p-4 rounded-lg bg-stone dark:bg-secondary/30"
-                      >
-                        <div className="flex items-center gap-4">
-                          <div className="w-10 h-10 rounded-full bg-burgundy/10 flex items-center justify-center">
-                            <Users className="w-5 h-5 text-burgundy" />
-                          </div>
-                          <div>
-                            <div className="font-medium">
-                              {lesson.topic || "Chess Lesson"}
+                    {lessons.map((lesson) => {
+                      const getStatusBadge = () => {
+                        switch (lesson.status) {
+                          case "completed":
+                            return (
+                              <div className="text-xs px-2 py-0.5 rounded-full inline-flex items-center gap-1 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                                <CheckCircle2 className="w-3 h-3" />
+                                Completed
+                              </div>
+                            );
+                          case "confirmed":
+                            return (
+                              <div className="text-xs px-2 py-0.5 rounded-full inline-flex items-center gap-1 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+                                <CheckCircle2 className="w-3 h-3" />
+                                Confirmed
+                              </div>
+                            );
+                          case "pending_confirmation":
+                            return (
+                              <div className="text-xs px-2 py-0.5 rounded-full inline-flex items-center gap-1 bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400">
+                                <Timer className="w-3 h-3" />
+                                Pending
+                              </div>
+                            );
+                          case "cancelled":
+                            return (
+                              <div className="text-xs px-2 py-0.5 rounded-full inline-flex items-center gap-1 bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                                <XCircle className="w-3 h-3" />
+                                Cancelled
+                              </div>
+                            );
+                          case "declined":
+                            return (
+                              <div className="text-xs px-2 py-0.5 rounded-full inline-flex items-center gap-1 bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                                <Ban className="w-3 h-3" />
+                                Declined
+                              </div>
+                            );
+                          case "no_show":
+                            return (
+                              <div className="text-xs px-2 py-0.5 rounded-full inline-flex items-center gap-1 bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400">
+                                <XCircle className="w-3 h-3" />
+                                No Show
+                              </div>
+                            );
+                          default:
+                            return (
+                              <div className="text-xs px-2 py-0.5 rounded-full inline-block bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400">
+                                {lesson.status}
+                              </div>
+                            );
+                        }
+                      };
+
+                      return (
+                        <div 
+                          key={lesson.id}
+                          className="flex items-center justify-between p-4 rounded-lg bg-stone dark:bg-secondary/30"
+                        >
+                          <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 rounded-full bg-burgundy/10 flex items-center justify-center">
+                              <Users className="w-5 h-5 text-burgundy" />
                             </div>
-                            <div className="text-sm text-muted-foreground">
-                              {lesson.durationMinutes} min • {new Date(lesson.scheduledAt).toLocaleDateString()}
+                            <div>
+                              <div className="font-medium">
+                                {lesson.topic || "Chess Lesson"}
+                              </div>
+                              <div className="text-sm text-muted-foreground">
+                                {lesson.durationMinutes} min • {new Date(lesson.scheduledAt).toLocaleDateString()}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="text-right flex items-center gap-3">
+                            <div>
+                              <div className="font-semibold text-burgundy">
+                                {formatCurrency(lesson.coachPayoutCents || 0)}
+                              </div>
+                              {getStatusBadge()}
                             </div>
                           </div>
                         </div>
-                        <div className="text-right">
-                          <div className="font-semibold text-burgundy">
-                            {formatCurrency(lesson.coachPayoutCents || 0)}
-                          </div>
-                          <div className={`text-xs px-2 py-0.5 rounded-full inline-block ${
-                            lesson.status === "released" 
-                              ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-                              : lesson.status === "completed"
-                              ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
-                              : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400"
-                          }`}>
-                            {lesson.status}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 ) : (
                   <div className="text-center py-8 text-muted-foreground">

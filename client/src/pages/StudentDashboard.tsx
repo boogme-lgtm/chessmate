@@ -12,11 +12,14 @@ import {
   CheckCircle2, 
   XCircle, 
   AlertCircle,
-  ChevronRight
+  ChevronRight,
+  Ban,
+  RefreshCw,
+  Timer
 } from "lucide-react";
-import { format, isPast, isFuture } from "date-fns";
+import { format, isPast, isFuture, differenceInHours, differenceInMinutes } from "date-fns";
 import { useLocation } from "wouter";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 
 /**
@@ -136,7 +139,7 @@ function LessonCard({ lesson, isPast = false }: LessonCardProps) {
     switch (lesson.status) {
       case "completed":
         return (
-          <Badge variant="default" className="gap-1">
+          <Badge variant="default" className="gap-1 bg-green-600">
             <CheckCircle2 className="h-3 w-3" />
             Completed
           </Badge>
@@ -148,23 +151,54 @@ function LessonCard({ lesson, isPast = false }: LessonCardProps) {
             Cancelled
           </Badge>
         );
-      case "pending":
+      case "pending_confirmation":
         return (
-          <Badge variant="secondary" className="gap-1">
-            <AlertCircle className="h-3 w-3" />
-            Pending Payment
+          <Badge variant="secondary" className="gap-1 bg-yellow-600 text-white">
+            <Timer className="h-3 w-3" />
+            Awaiting Coach Confirmation
           </Badge>
         );
       case "confirmed":
         return (
-          <Badge variant="default" className="gap-1 bg-green-600">
+          <Badge variant="default" className="gap-1 bg-blue-600">
             <CheckCircle2 className="h-3 w-3" />
             Confirmed
+          </Badge>
+        );
+      case "declined":
+        return (
+          <Badge variant="destructive" className="gap-1">
+            <Ban className="h-3 w-3" />
+            Declined by Coach
+          </Badge>
+        );
+      case "no_show":
+        return (
+          <Badge variant="secondary" className="gap-1">
+            <XCircle className="h-3 w-3" />
+            No Show
           </Badge>
         );
       default:
         return null;
     }
+  };
+
+  // Calculate time until lesson and check if cancellation is allowed
+  const hoursUntilLesson = differenceInHours(new Date(lesson.scheduledAt), new Date());
+  const minutesUntilLesson = differenceInMinutes(new Date(lesson.scheduledAt), new Date());
+  const canCancel = hoursUntilLesson >= 24 && lesson.status === "confirmed" && !isPast;
+  const canReschedule = hoursUntilLesson >= 24 && lesson.status === "confirmed" && !isPast;
+
+  const formatCountdown = () => {
+    if (minutesUntilLesson < 0) return null;
+    const hours = Math.floor(minutesUntilLesson / 60);
+    const minutes = minutesUntilLesson % 60;
+    if (hours >= 24) {
+      const days = Math.floor(hours / 24);
+      return `${days}d ${hours % 24}h`;
+    }
+    return `${hours}h ${minutes}m`;
   };
 
   return (
@@ -198,16 +232,47 @@ function LessonCard({ lesson, isPast = false }: LessonCardProps) {
               )}
             </div>
 
-            {lesson.meetingLink && !isPast && (
-              <div className="mt-4">
+            {/* Countdown timer for cancellation deadline */}
+            {!isPast && lesson.status === "confirmed" && hoursUntilLesson < 24 && hoursUntilLesson > 0 && (
+              <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-900 rounded-md">
+                <p className="text-sm text-yellow-800 dark:text-yellow-200 flex items-center gap-2">
+                  <Timer className="h-4 w-4" />
+                  Cancellation deadline passed · Lesson in {formatCountdown()}
+                </p>
+              </div>
+            )}
+
+            {/* Action buttons */}
+            <div className="mt-4 flex flex-wrap gap-2">
+              {lesson.meetingLink && !isPast && (
                 <Button size="sm" className="gap-2" asChild>
                   <a href={lesson.meetingLink} target="_blank" rel="noopener noreferrer">
                     <Video className="h-4 w-4" />
                     Join Video Call
                   </a>
                 </Button>
-              </div>
-            )}
+              )}
+              
+              {canCancel && (
+                <Button size="sm" variant="outline" className="gap-2">
+                  <Ban className="h-4 w-4" />
+                  Cancel Lesson
+                </Button>
+              )}
+              
+              {canReschedule && (
+                <Button size="sm" variant="outline" className="gap-2">
+                  <RefreshCw className="h-4 w-4" />
+                  Reschedule
+                </Button>
+              )}
+              
+              {canCancel && (
+                <p className="text-xs text-muted-foreground self-center ml-2">
+                  Cancel available for {formatCountdown()}
+                </p>
+              )}
+            </div>
           </div>
 
           <div className="text-right">
