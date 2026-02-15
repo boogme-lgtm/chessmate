@@ -64,7 +64,12 @@ export default function StudentDashboard() {
       {/* Header */}
       <div className="border-b border-border/40">
         <div className="container py-8">
-          <h1 className="text-3xl font-semibold mb-2">My Lessons</h1>
+          <div className="flex items-center gap-3 mb-2">
+            <h1 className="text-3xl font-semibold">My Lessons</h1>
+            <Badge variant="secondary" className="text-sm font-medium">
+              Student Dashboard
+            </Badge>
+          </div>
           <p className="text-muted-foreground">
             Manage your upcoming and past chess lessons
           </p>

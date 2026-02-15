@@ -47,6 +47,9 @@ export default function VerifyEmail() {
               </div>
               <CardTitle className="text-2xl">Verifying Your Email</CardTitle>
               <CardDescription>Please wait while we verify your account...</CardDescription>
+              <p className="text-sm text-muted-foreground mt-2">
+                Check your email inbox for the verification code
+              </p>
             </>
           )}
 

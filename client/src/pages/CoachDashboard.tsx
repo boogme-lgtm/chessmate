@@ -6,6 +6,7 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { trpc } from "@/lib/trpc";
 import { getLoginUrl } from "@/const";
@@ -114,7 +115,12 @@ export default function CoachDashboard() {
               </Button>
             </Link>
             <div>
-              <h1 className="text-xl font-semibold">Coach Dashboard</h1>
+              <div className="flex items-center gap-2 mb-1">
+                <h1 className="text-xl font-semibold">Coach Dashboard</h1>
+                <Badge variant="secondary" className="text-xs font-medium">
+                  Coach
+                </Badge>
+              </div>
               <p className="text-sm text-muted-foreground">
                 Welcome back, {user?.name || "Coach"}
               </p>

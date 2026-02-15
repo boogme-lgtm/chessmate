@@ -117,6 +117,33 @@ const LANGUAGES = [
   "Other",
 ];
 
+const COUNTRIES = [
+  "United States", "Canada", "United Kingdom", "Australia", "Germany", "France", "Spain", "Italy",
+  "Netherlands", "Belgium", "Switzerland", "Austria", "Sweden", "Norway", "Denmark", "Finland",
+  "Poland", "Czech Republic", "Hungary", "Romania", "Bulgaria", "Greece", "Portugal", "Ireland",
+  "Russia", "Ukraine", "Belarus", "Kazakhstan", "Georgia", "Armenia", "Azerbaijan",
+  "China", "Japan", "South Korea", "India", "Singapore", "Malaysia", "Thailand", "Vietnam",
+  "Philippines", "Indonesia", "Taiwan", "Hong Kong", "Israel", "Turkey", "Saudi Arabia",
+  "United Arab Emirates", "Brazil", "Argentina", "Chile", "Colombia", "Mexico", "Peru",
+  "South Africa", "Egypt", "Morocco", "Kenya", "Nigeria", "Other"
+];
+
+const TIMEZONES = [
+  "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles",
+  "America/Anchorage", "Pacific/Honolulu", "America/Toronto", "America/Vancouver",
+  "Europe/London", "Europe/Paris", "Europe/Berlin", "Europe/Madrid", "Europe/Rome",
+  "Europe/Amsterdam", "Europe/Brussels", "Europe/Vienna", "Europe/Stockholm",
+  "Europe/Oslo", "Europe/Copenhagen", "Europe/Helsinki", "Europe/Warsaw",
+  "Europe/Prague", "Europe/Budapest", "Europe/Bucharest", "Europe/Sofia",
+  "Europe/Athens", "Europe/Lisbon", "Europe/Dublin", "Europe/Moscow",
+  "Asia/Dubai", "Asia/Karachi", "Asia/Kolkata", "Asia/Dhaka", "Asia/Bangkok",
+  "Asia/Singapore", "Asia/Hong_Kong", "Asia/Shanghai", "Asia/Tokyo",
+  "Asia/Seoul", "Australia/Sydney", "Australia/Melbourne", "Australia/Brisbane",
+  "Pacific/Auckland", "America/Sao_Paulo", "America/Argentina/Buenos_Aires",
+  "America/Santiago", "America/Bogota", "America/Mexico_City", "America/Lima",
+  "Africa/Johannesburg", "Africa/Cairo", "Africa/Casablanca", "Africa/Nairobi"
+];
+
 const AVAILABILITY_SLOTS = [
   { day: "Monday", slots: ["Morning", "Afternoon", "Evening"] },
   { day: "Tuesday", slots: ["Morning", "Afternoon", "Evening"] },
@@ -215,8 +242,8 @@ export function CoachApplication() {
         return true;
 
       case 1:
-        if (!formData.achievements || formData.achievements.length < 100) {
-          toast.error("Please provide notable achievements (min 100 characters)");
+        if (!formData.achievements || formData.achievements.trim().length === 0) {
+          toast.error("Please provide notable achievements");
           return false;
         }
         if (formData.specializations.length < 3) {
@@ -227,8 +254,8 @@ export function CoachApplication() {
           toast.error("Please select at least 1 target student level");
           return false;
         }
-        if (!formData.teachingPhilosophy || formData.teachingPhilosophy.split(" ").length < 50) {
-          toast.error("Please provide your teaching philosophy (min 50 words)");
+        if (!formData.teachingPhilosophy || formData.teachingPhilosophy.trim().length === 0) {
+          toast.error("Please provide your teaching philosophy");
           return false;
         }
         return true;
@@ -259,16 +286,16 @@ export function CoachApplication() {
         return true;
 
       case 3:
-        if (!formData.bio || formData.bio.split(" ").length < 150) {
-          toast.error("Please provide a professional bio (min 150 words)");
+        if (!formData.bio || formData.bio.trim().length === 0) {
+          toast.error("Please provide a professional bio");
           return false;
         }
-        if (!formData.whyBoogme || formData.whyBoogme.split(" ").length < 50) {
-          toast.error("Please explain why you want to join BooGMe (min 50 words)");
+        if (!formData.whyBoogme || formData.whyBoogme.trim().length === 0) {
+          toast.error("Please explain why you want to join BooGMe");
           return false;
         }
-        if (!formData.sampleLesson || formData.sampleLesson.split(" ").length < 100) {
-          toast.error("Please describe a sample lesson (min 100 words)");
+        if (!formData.sampleLesson || formData.sampleLesson.trim().length === 0) {
+          toast.error("Please describe a sample lesson");
           return false;
         }
         return true;
@@ -509,12 +536,18 @@ function Step1AboutYou({
             <Label htmlFor="country">
               Country <span className="text-destructive">*</span>
             </Label>
-            <Input
-              id="country"
-              value={formData.country}
-              onChange={(e) => updateField("country", e.target.value)}
-              placeholder="United States"
-            />
+            <Select value={formData.country} onValueChange={(value) => updateField("country", value)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select country" />
+              </SelectTrigger>
+              <SelectContent className="max-h-[300px]">
+                {COUNTRIES.map((country) => (
+                  <SelectItem key={country} value={country}>
+                    {country}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
@@ -534,7 +567,18 @@ function Step1AboutYou({
             <Label htmlFor="timezone">
               Timezone <span className="text-destructive">*</span>
             </Label>
-            <Input id="timezone" value={formData.timezone} disabled />
+            <Select value={formData.timezone} onValueChange={(value) => updateField("timezone", value)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select timezone" />
+              </SelectTrigger>
+              <SelectContent className="max-h-[300px]">
+                {TIMEZONES.map((tz) => (
+                  <SelectItem key={tz} value={tz}>
+                    {tz.replace(/_/g, " ")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
@@ -925,7 +969,7 @@ function Step4TeachingApproach({
             rows={6}
           />
           <p className="text-xs text-muted-foreground mt-1">
-            {formData.bio.split(" ").filter((w) => w).length} words (need 150-300)
+            {formData.bio.length} characters
           </p>
         </div>
 
@@ -941,7 +985,7 @@ function Step4TeachingApproach({
             rows={3}
           />
           <p className="text-xs text-muted-foreground mt-1">
-            {formData.whyBoogme.split(" ").filter((w) => w).length} words (need 50-150)
+            {formData.whyBoogme.length} characters
           </p>
         </div>
 
@@ -957,7 +1001,7 @@ function Step4TeachingApproach({
             rows={4}
           />
           <p className="text-xs text-muted-foreground mt-1">
-            {formData.sampleLesson.split(" ").filter((w) => w).length} words (need 100-200)
+            {formData.sampleLesson.length} characters
           </p>
         </div>
 
@@ -1075,11 +1119,11 @@ function Step5ReviewSubmit({
               checked={formData.backgroundCheckConsent}
               onCheckedChange={(checked) => updateField("backgroundCheckConsent", checked as boolean)}
             />
-            <label htmlFor="backgroundCheck" className="text-sm leading-relaxed cursor-pointer">
-              I consent to a background check as part of the approval process{" "}
+            <label htmlFor="backgroundCheck" className="text-sm font-medium leading-relaxed cursor-pointer">
+              I consent to verification as part of the approval process{" "}
               <span className="text-destructive">*</span>
               <p className="text-xs text-muted-foreground mt-1">
-                We verify all coaches to maintain platform quality and student safety
+                Standard verification to maintain platform quality
               </p>
             </label>
           </div>

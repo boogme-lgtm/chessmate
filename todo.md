@@ -580,3 +580,16 @@
 - [ ] Implement AI-compiled group reviews (aggregate all participant feedback)
 - [ ] Add "My Group Lessons" section to student dashboard (organized vs joined)
 - [ ] Handle participant dropouts >24hrs (auto-refund, recalculate splits)
+
+
+## Critical Bug Fixes from User Testing (Feb 12, 2026)
+- [x] Fix timezone selector stuck on Los Angeles in coach application (now editable dropdown with 50+ timezones)
+- [x] Add scroll functionality to country selector in coach application (converted to scrollable Select with 50+ countries)
+- [x] Remove minimum word count restrictions from all text boxes in coach application (removed all word count validations)
+- [x] Simplify background check consent UI (changed wording from "background check" to "verification", made less intimidating)
+- [x] Add clear messaging for Google OAuth verification code (added "Check your email inbox" message)
+- [x] Add "Coach" or "Student" label to dashboard header for role clarity (added role badges to both dashboards)
+- [ ] Simplify terms of service consent UI (improve button/checkbox visibility) - needs further testing
+- [ ] Make dashboard UI more role-specific (different layouts for coach vs student) - partially done with badges
+- [ ] Fix "Book Lesson" payment error for students (investigate payment flow bug) - needs testing with real accounts
+- [ ] Test both student and coach accounts with provided credentials
