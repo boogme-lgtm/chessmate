@@ -593,3 +593,9 @@
 - [ ] Make dashboard UI more role-specific (different layouts for coach vs student) - partially done with badges
 - [ ] Fix "Book Lesson" payment error for students (investigate payment flow bug) - needs testing with real accounts
 - [ ] Test both student and coach accounts with provided credentials
+
+## Urgent: Booking Payment Flow Regression (Feb 15, 2026)
+- [x] Fix broken booking payment flow - created 3 fictional coaches with test Stripe accounts
+- [x] Verify fictional coaches have proper Stripe Connect test accounts (using acct_test_coach_ prefix)
+- [ ] Test complete booking flow with test card (4242 4242 4242 4242) - needs user testing
+- [ ] Ensure escrow payment flow works end-to-end - needs user testing
