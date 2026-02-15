@@ -1,0 +1,100 @@
+{
+  "query": "SELECT id, studentId, coachId, scheduledAt, status, amountCents, createdAt FROM lessons ORDER BY id DESC LIMIT 10;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user o7gqiRJAqhDK5GQ.9c38f5a63e4d --database Xkyng35xnYFybYAdmyVo96 --execute SELECT id, studentId, coachId, scheduledAt, status, amountCents, createdAt FROM lessons ORDER BY id DESC LIMIT 10;",
+  "rows": [
+    {
+      "id": "150006",
+      "studentId": "570001",
+      "coachId": "1050003",
+      "scheduledAt": "2026-02-16 16:00:00",
+      "status": "pending_confirmation",
+      "amountCents": "15000",
+      "createdAt": "2026-02-15 23:37:46"
+    },
+    {
+      "id": "150005",
+      "studentId": "570001",
+      "coachId": "1050004",
+      "scheduledAt": "2026-02-20 14:00:00",
+      "status": "pending_confirmation",
+      "amountCents": "8000",
+      "createdAt": "2026-02-15 23:34:23"
+    },
+    {
+      "id": "150004",
+      "studentId": "570001",
+      "coachId": "1050004",
+      "scheduledAt": "2026-02-18 13:00:00",
+      "status": "pending_confirmation",
+      "amountCents": "8000",
+      "createdAt": "2026-02-15 23:32:45"
+    },
+    {
+      "id": "150003",
+      "studentId": "570001",
+      "coachId": "1050004",
+      "scheduledAt": "2026-02-16 12:00:00",
+      "status": "pending_confirmation",
+      "amountCents": "8000",
+      "createdAt": "2026-02-15 23:30:20"
+    },
+    {
+      "id": "150002",
+      "studentId": "570001",
+      "coachId": "1050004",
+      "scheduledAt": "2026-02-16 11:00:00",
+      "status": "pending_confirmation",
+      "amountCents": "8000",
+      "createdAt": "2026-02-15 23:22:47"
+    },
+    {
+      "id": "150001",
+      "studentId": "570001",
+      "coachId": "1050004",
+      "scheduledAt": "2026-02-16 10:00:00",
+      "status": "pending_confirmation",
+      "amountCents": "8000",
+      "createdAt": "2026-02-15 23:21:04"
+    },
+    {
+      "id": "120001",
+      "studentId": "570001",
+      "coachId": "120001",
+      "scheduledAt": "2026-02-12 16:00:00",
+      "status": "confirmed",
+      "amountCents": "12000",
+      "createdAt": "2026-02-10 04:28:55"
+    },
+    {
+      "id": "90001",
+      "studentId": "240002",
+      "coachId": "120001",
+      "scheduledAt": "2026-02-10 18:00:00",
+      "status": "confirmed",
+      "amountCents": "12000",
+      "createdAt": "2026-02-08 15:41:37"
+    },
+    {
+      "id": "60004",
+      "studentId": "1",
+      "coachId": "120001",
+      "scheduledAt": "2026-02-10 16:00:00",
+      "status": "confirmed",
+      "amountCents": "12000",
+      "createdAt": "2026-02-08 14:13:50"
+    },
+    {
+      "id": "60003",
+      "studentId": "240002",
+      "coachId": "120001",
+      "scheduledAt": "2026-02-11 16:00:00",
+      "status": "confirmed",
+      "amountCents": "12000",
+      "createdAt": "2026-02-08 14:13:27"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tstudentId\tcoachId\tscheduledAt\tstatus\tamountCents\tcreatedAt\n150006\t570001\t1050003\t2026-02-16 16:00:00\tpending_confirmation\t15000\t2026-02-15 23:37:46\n150005\t570001\t1050004\t2026-02-20 14:00:00\tpending_confirmation\t8000\t2026-02-15 23:34:23\n150004\t570001\t1050004\t2026-02-18 13:00:00\tpending_confirmation\t8000\t2026-02-15 23:32:45\n150003\t570001\t1050004\t2026-02-16 12:00:00\tpending_confirmation\t8000\t2026-02-15 23:30:20\n150002\t570001\t1050004\t2026-02-16 11:00:00\tpending_confirmation\t8000\t2026-02-15 23:22:47\n150001\t570001\t1050004\t2026-02-16 10:00:00\tpending_confirmation\t8000\t2026-02-15 23:21:04\n120001\t570001\t120001\t2026-02-12 16:00:00\tconfirmed\t12000\t2026-02-10 04:28:55\n90001\t240002\t120001\t2026-02-10 18:00:00\tconfirmed\t12000\t2026-02-08 15:41:37\n60004\t1\t120001\t2026-02-10 16:00:00\tconfirmed\t12000\t2026-02-08 14:13:50\n60003\t240002\t120001\t2026-02-11 16:00:00\tconfirmed\t12000\t2026-02-08 14:13:27\n",
+  "stderr": "",
+  "execution_time_ms": 399
+}

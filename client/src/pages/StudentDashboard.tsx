@@ -50,11 +50,11 @@ export default function StudentDashboard() {
     return null;
   }
 
-  const upcomingLessons = lessons?.filter(l => 
+  const upcomingLessons = lessons?.filter((l: any) => 
     isFuture(new Date(l.scheduledAt)) && l.status !== "cancelled"
   ) || [];
 
-  const pastLessons = lessons?.filter(l => 
+  const pastLessons = lessons?.filter((l: any) => 
     isPast(new Date(l.scheduledAt)) || l.status === "completed"
   ) || [];
 
@@ -102,7 +102,7 @@ export default function StudentDashboard() {
                 </CardContent>
               </Card>
             ) : (
-              upcomingLessons.map((lesson) => (
+              upcomingLessons.map((lesson: any) => (
                 <LessonCard key={lesson.id} lesson={lesson} />
               ))
             )}
@@ -120,7 +120,7 @@ export default function StudentDashboard() {
                 </CardContent>
               </Card>
             ) : (
-              pastLessons.map((lesson) => (
+              pastLessons.map((lesson: any) => (
                 <LessonCard key={lesson.id} lesson={lesson} isPast />
               ))
             )}

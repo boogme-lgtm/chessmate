@@ -269,17 +269,17 @@ export default function CoachDashboard() {
             )}
 
             {/* Pending Confirmations */}
-            {lessons && lessons.filter(l => l.status === "pending_confirmation").length > 0 && (
+            {lessons && lessons.filter((l: any) => l.status === "pending_confirmation").length > 0 && (
               <Card className="border-yellow-600/50 bg-yellow-50/50 dark:bg-yellow-950/20">
                 <CardHeader>
                   <CardTitle className="text-lg flex items-center gap-2">
                     <Timer className="w-5 h-5 text-yellow-600" />
-                    Pending Booking Confirmations ({lessons.filter(l => l.status === "pending_confirmation").length})
+                    Pending Booking Confirmations ({lessons.filter((l: any) => l.status === "pending_confirmation").length})
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {lessons.filter(l => l.status === "pending_confirmation").map((lesson) => (
+                    {lessons.filter((l: any) => l.status === "pending_confirmation").map((lesson: any) => (
                       <div 
                         key={lesson.id}
                         className="flex items-center justify-between p-4 rounded-lg bg-background border border-yellow-200 dark:border-yellow-900"
@@ -337,7 +337,7 @@ export default function CoachDashboard() {
               <CardContent>
                 {lessons && lessons.length > 0 ? (
                   <div className="space-y-4">
-                    {lessons.map((lesson) => {
+                    {lessons.map((lesson: any) => {
                       const getStatusBadge = () => {
                         switch (lesson.status) {
                           case "completed":

@@ -1,0 +1,17 @@
+{
+  "query": "SELECT id, studentId, coachId, scheduledAt, status FROM lessons ORDER BY id DESC LIMIT 1;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user o7gqiRJAqhDK5GQ.9c38f5a63e4d --database Xkyng35xnYFybYAdmyVo96 --execute SELECT id, studentId, coachId, scheduledAt, status FROM lessons ORDER BY id DESC LIMIT 1;",
+  "rows": [
+    {
+      "id": "150007",
+      "studentId": "570001",
+      "coachId": "1050004",
+      "scheduledAt": "2026-02-16 10:00:00",
+      "status": "pending_confirmation"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tstudentId\tcoachId\tscheduledAt\tstatus\n150007\t570001\t1050004\t2026-02-16 10:00:00\tpending_confirmation\n",
+  "stderr": "",
+  "execution_time_ms": 387
+}

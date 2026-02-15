@@ -377,8 +377,8 @@ export const appRouter = router({
         // Get existing bookings to exclude
         const bookings = await db.getLessonsByCoach(input.coachId, 100);
         const bookedSlots = bookings
-          .filter(l => l.status !== "cancelled" && l.status !== "refunded")
-          .map(l => l.scheduledAt);
+          .filter((l: any) => l.status !== "cancelled" && l.status !== "refunded")
+          .map((l: any) => l.scheduledAt);
 
         return {
           schedule,

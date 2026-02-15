@@ -348,32 +348,44 @@ export async function getLessonById(id: number) {
   const db = await getDb();
   if (!db) return undefined;
 
-  const result = await db.select().from(lessons).where(eq(lessons.id, id)).limit(1);
-  return result.length > 0 ? result[0] : undefined;
+  // Use raw SQL to avoid Drizzle transaction isolation issues
+  const result: any = await db.execute(sql`
+    SELECT * FROM lessons WHERE id = ${id} LIMIT 1
+  `);
+  
+  // Raw SQL returns [rows, fields] - we want the first row
+  const rows = result[0];
+  return rows && rows.length > 0 ? rows[0] : undefined;
 }
 
 export async function getLessonsByStudent(studentId: number, limit: number = 50) {
   const db = await getDb();
   if (!db) return [];
 
-  return await db
-    .select()
-    .from(lessons)
-    .where(eq(lessons.studentId, studentId))
-    .orderBy(desc(lessons.scheduledAt))
-    .limit(limit);
+  // Use raw SQL to avoid Drizzle transaction isolation issues
+  const result: any = await db.execute(sql`
+    SELECT * FROM lessons 
+    WHERE studentId = ${studentId} 
+    ORDER BY scheduledAt DESC 
+    LIMIT ${limit}
+  `);
+  
+  return result[0] || [];
 }
 
 export async function getLessonsByCoach(coachId: number, limit: number = 50) {
   const db = await getDb();
   if (!db) return [];
 
-  return await db
-    .select()
-    .from(lessons)
-    .where(eq(lessons.coachId, coachId))
-    .orderBy(desc(lessons.scheduledAt))
-    .limit(limit);
+  // Use raw SQL to avoid Drizzle transaction isolation issues
+  const result: any = await db.execute(sql`
+    SELECT * FROM lessons 
+    WHERE coachId = ${coachId} 
+    ORDER BY scheduledAt DESC 
+    LIMIT ${limit}
+  `);
+  
+  return result[0] || [];
 }
 
 export async function updateLessonStatus(

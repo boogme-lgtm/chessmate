@@ -610,3 +610,8 @@
 3. Click a time slot and verify modal advances to booking details
 4. Click "Continue to Payment" and verify Stripe checkout opens
 5. Complete payment with test card 4242 4242 4242 4242
+
+## Post-Payment Issues (Critical)
+- [x] Fix lesson detail page showing "Lesson not found" after payment
+- [x] Fix lessons not appearing in student dashboardt dashboard after booking
+- [ ] Investigate why lesson query fails after payment redirect
