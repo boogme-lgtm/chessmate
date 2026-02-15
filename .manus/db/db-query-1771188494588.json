@@ -1,0 +1,263 @@
+{
+  "query": "SHOW FULL COLUMNS FROM lessons;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user o7gqiRJAqhDK5GQ.9c38f5a63e4d --database Xkyng35xnYFybYAdmyVo96 --execute SHOW FULL COLUMNS FROM lessons;",
+  "rows": [
+    {
+      "Field": "id",
+      "Type": "int(11)",
+      "Collation": "NULL",
+      "Null": "NO",
+      "Key": "PRI",
+      "Default": "NULL",
+      "Extra": "auto_increment",
+      "Privileges": "select,insert,update,references",
+      "Comment": ""
+    },
+    {
+      "Field": "studentId",
+      "Type": "int(11)",
+      "Collation": "NULL",
+      "Null": "NO",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": "",
+      "Privileges": "select,insert,update,references",
+      "Comment": ""
+    },
+    {
+      "Field": "coachId",
+      "Type": "int(11)",
+      "Collation": "NULL",
+      "Null": "NO",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": "",
+      "Privileges": "select,insert,update,references",
+      "Comment": ""
+    },
+    {
+      "Field": "scheduledAt",
+      "Type": "timestamp",
+      "Collation": "NULL",
+      "Null": "NO",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": "",
+      "Privileges": "select,insert,update,references",
+      "Comment": ""
+    },
+    {
+      "Field": "durationMinutes",
+      "Type": "int(11)",
+      "Collation": "NULL",
+      "Null": "YES",
+      "Key": "",
+      "Default": "60",
+      "Extra": "",
+      "Privileges": "select,insert,update,references",
+      "Comment": ""
+    },
+    {
+      "Field": "timezone",
+      "Type": "varchar(64)",
+      "Collation": "utf8mb4_unicode_ci",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": "",
+      "Privileges": "select,insert,update,references",
+      "Comment": ""
+    },
+    {
+      "Field": "topic",
+      "Type": "varchar(255)",
+      "Collation": "utf8mb4_unicode_ci",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": "",
+      "Privileges": "select,insert,update,references",
+      "Comment": ""
+    },
+    {
+      "Field": "notes",
+      "Type": "text",
+      "Collation": "utf8mb4_unicode_ci",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": "",
+      "Privileges": "select,insert,update,references",
+      "Comment": ""
+    },
+    {
+      "Field": "meetingUrl",
+      "Type": "text",
+      "Collation": "utf8mb4_unicode_ci",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": "",
+      "Privileges": "select,insert,update,references",
+      "Comment": ""
+    },
+    {
+      "Field": "status",
+      "Type": "enum('pending','confirmed','paid','in_progress','completed','released','cancelled','disputed','refunded')",
+      "Collation": "utf8mb4_unicode_ci",
+      "Null": "YES",
+      "Key": "",
+      "Default": "pending",
+      "Extra": "",
+      "Privileges": "select,insert,update,references",
+      "Comment": ""
+    },
+    {
+      "Field": "amountCents",
+      "Type": "int(11)",
+      "Collation": "NULL",
+      "Null": "NO",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": "",
+      "Privileges": "select,insert,update,references",
+      "Comment": ""
+    },
+    {
+      "Field": "commissionCents",
+      "Type": "int(11)",
+      "Collation": "NULL",
+      "Null": "NO",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": "",
+      "Privileges": "select,insert,update,references",
+      "Comment": ""
+    },
+    {
+      "Field": "coachPayoutCents",
+      "Type": "int(11)",
+      "Collation": "NULL",
+      "Null": "NO",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": "",
+      "Privileges": "select,insert,update,references",
+      "Comment": ""
+    },
+    {
+      "Field": "currency",
+      "Type": "varchar(3)",
+      "Collation": "utf8mb4_unicode_ci",
+      "Null": "YES",
+      "Key": "",
+      "Default": "USD",
+      "Extra": "",
+      "Privileges": "select,insert,update,references",
+      "Comment": ""
+    },
+    {
+      "Field": "stripePaymentIntentId",
+      "Type": "varchar(64)",
+      "Collation": "utf8mb4_unicode_ci",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": "",
+      "Privileges": "select,insert,update,references",
+      "Comment": ""
+    },
+    {
+      "Field": "stripeTransferId",
+      "Type": "varchar(64)",
+      "Collation": "utf8mb4_unicode_ci",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": "",
+      "Privileges": "select,insert,update,references",
+      "Comment": ""
+    },
+    {
+      "Field": "studentConfirmedAt",
+      "Type": "timestamp",
+      "Collation": "NULL",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": "",
+      "Privileges": "select,insert,update,references",
+      "Comment": ""
+    },
+    {
+      "Field": "coachConfirmedAt",
+      "Type": "timestamp",
+      "Collation": "NULL",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": "",
+      "Privileges": "select,insert,update,references",
+      "Comment": ""
+    },
+    {
+      "Field": "completedAt",
+      "Type": "timestamp",
+      "Collation": "NULL",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": "",
+      "Privileges": "select,insert,update,references",
+      "Comment": ""
+    },
+    {
+      "Field": "payoutAt",
+      "Type": "timestamp",
+      "Collation": "NULL",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": "",
+      "Privileges": "select,insert,update,references",
+      "Comment": ""
+    },
+    {
+      "Field": "refundWindowEndsAt",
+      "Type": "timestamp",
+      "Collation": "NULL",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": "",
+      "Privileges": "select,insert,update,references",
+      "Comment": ""
+    },
+    {
+      "Field": "createdAt",
+      "Type": "timestamp",
+      "Collation": "NULL",
+      "Null": "NO",
+      "Key": "",
+      "Default": "CURRENT_TIMESTAMP",
+      "Extra": "",
+      "Privileges": "select,insert,update,references",
+      "Comment": ""
+    },
+    {
+      "Field": "updatedAt",
+      "Type": "timestamp",
+      "Collation": "NULL",
+      "Null": "NO",
+      "Key": "",
+      "Default": "CURRENT_TIMESTAMP",
+      "Extra": "DEFAULT_GENERATED on update CURRENT_TIMESTAMP",
+      "Privileges": "select,insert,update,references",
+      "Comment": ""
+    }
+  ],
+  "messages": [],
+  "stdout": "Field\tType\tCollation\tNull\tKey\tDefault\tExtra\tPrivileges\tComment\nid\tint(11)\tNULL\tNO\tPRI\tNULL\tauto_increment\tselect,insert,update,references\t\nstudentId\tint(11)\tNULL\tNO\t\tNULL\t\tselect,insert,update,references\t\ncoachId\tint(11)\tNULL\tNO\t\tNULL\t\tselect,insert,update,references\t\nscheduledAt\ttimestamp\tNULL\tNO\t\tNULL\t\tselect,insert,update,references\t\ndurationMinutes\tint(11)\tNULL\tYES\t\t60\t\tselect,insert,update,references\t\ntimezone\tvarchar(64)\tutf8mb4_unicode_ci\tYES\t\tNULL\t\tselect,insert,update,references\t\ntopic\tvarchar(255)\tutf8mb4_unicode_ci\tYES\t\tNULL\t\tselect,insert,update,references\t\nnotes\ttext\tutf8mb4_unicode_ci\tYES\t\tNULL\t\tselect,insert,update,references\t\nmeetingUrl\ttext\tutf8mb4_unicode_ci\tYES\t\tNULL\t\tselect,insert,update,references\t\nstatus\tenum('pending','confirmed','paid','in_progress','completed','released','cancelled','disputed','refunded')\tutf8mb4_unicode_ci\tYES\t\tpending\t\tselect,insert,update,references\t\namountCents\tint(11)\tNULL\tNO\t\tNULL\t\tselect,insert,update,references\t\ncommissionCents\tint(11)\tNULL\tNO\t\tNULL\t\tselect,insert,update,references\t\ncoachPayoutCents\tint(11)\tNULL\tNO\t\tNULL\t\tselect,insert,update,references\t\ncurrency\tvarchar(3)\tutf8mb4_unicode_ci\tYES\t\tUSD\t\tselect,insert,update,references\t\nstripePaymentIntentId\tvarchar(64)\tutf8mb4_unicode_ci\tYES\t\tNULL\t\tselect,insert,update,references\t\nstripeTransferId\tvarchar(64)\tutf8mb4_unicode_ci\tYES\t\tNULL\t\tselect,insert,update,references\t\nstudentConfirmedAt\ttimestamp\tNULL\tYES\t\tNULL\t\tselect,insert,update,references\t\ncoachConfirmedAt\ttimestamp\tNULL\tYES\t\tNULL\t\tselect,insert,update,references\t\ncompletedAt\ttimestamp\tNULL\tYES\t\tNULL\t\tselect,insert,update,references\t\npayoutAt\ttimestamp\tNULL\tYES\t\tNULL\t\tselect,insert,update,references\t\nrefundWindowEndsAt\ttimestamp\tNULL\tYES\t\tNULL\t\tselect,insert,update,references\t\ncreatedAt\ttimestamp\tNULL\tNO\t\tCURRENT_TIMESTAMP\t\tselect,insert,update,references\t\nupdatedAt\ttimestamp\tNULL\tNO\t\tCURRENT_TIMESTAMP\tDEFAULT_GENERATED on update CURRENT_TIMESTAMP\tselect,insert,update,references\t\n",
+  "stderr": "",
+  "execution_time_ms": 364
+}

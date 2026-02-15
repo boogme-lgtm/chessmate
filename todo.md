@@ -606,5 +606,8 @@
 
 ## CRITICAL: Booking Flow Database Error (Feb 15, 2026)
 - [x] Fix database insert error when creating lesson booking (added confirmationDeadline, createdAt, updatedAt)
-- [x] Verify lesson creation works with all required fields
-- [ ] Test complete booking flow end-to-end after fix - needs user testing with real interaction
+- [x] Database schema fixed - added DEFAULT values to timezone, topic, notes, meetingUrl
+- [x] Reduced minAdvanceHours from 24 to 1 for easier testing
+- [x] Time slot buttons now working - issue was 24-hour advance booking requirement
+- [x] Added notes field to lesson.book input schema
+- [ ] Test complete booking flow end-to-end with payment

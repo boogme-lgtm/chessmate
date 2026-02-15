@@ -587,6 +587,7 @@ export const appRouter = router({
         scheduledAt: z.date(),
         durationMinutes: z.number().min(30).max(180).default(60),
         topic: z.string().optional(),
+        notes: z.string().optional(),
         timezone: z.string().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
@@ -612,8 +613,9 @@ export const appRouter = router({
           coachId: input.coachId,
           scheduledAt: input.scheduledAt,
           durationMinutes: input.durationMinutes,
-          topic: input.topic,
-          timezone: input.timezone,
+          topic: input.topic || "",
+          notes: input.notes || "",
+          timezone: input.timezone || "UTC",
           amountCents,
           commissionCents,
           coachPayoutCents,

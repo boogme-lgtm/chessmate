@@ -103,7 +103,7 @@ async function seedFictionalCoaches() {
             profileActive: true,
             isAvailable: true,
             lessonDurations: JSON.stringify([60, 90, 120]),
-            minAdvanceHours: 24,
+            minAdvanceHours: 1,
             maxAdvanceDays: 60,
             bufferMinutes: 30,
           })
@@ -125,7 +125,7 @@ async function seedFictionalCoaches() {
           profileActive: true,
           isAvailable: true,
           lessonDurations: JSON.stringify([60, 90, 120]),
-          minAdvanceHours: 24,
+          minAdvanceHours: 1,
           maxAdvanceDays: 60,
           bufferMinutes: 30,
           averageRating: 4.8 + Math.random() * 0.2, // 4.8-5.0
