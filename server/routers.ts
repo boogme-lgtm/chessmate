@@ -604,6 +604,9 @@ export const appRouter = router({
         const coachPayoutCents = amountCents - commissionCents;
 
         // Create lesson
+        const now = new Date();
+        const confirmationDeadline = new Date(now.getTime() + 24 * 60 * 60 * 1000); // 24 hours from now
+        
         const lesson = await db.createLesson({
           studentId: ctx.user.id,
           coachId: input.coachId,
@@ -615,6 +618,9 @@ export const appRouter = router({
           commissionCents,
           coachPayoutCents,
           status: "pending_confirmation",
+          confirmationDeadline,
+          createdAt: now,
+          updatedAt: now,
         });
 
         return { success: true, lessonId: lesson.id };

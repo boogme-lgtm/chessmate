@@ -603,3 +603,8 @@
 ## Database Cleanup (Feb 15, 2026)
 - [x] Remove duplicate/old coaches from database (kept only the 3 new fictional coaches with test Stripe accounts)
 - [x] Verify only GM Alexandra Petrov, IM Carlos Rodriguez, and FM Sarah Chen are visible
+
+## CRITICAL: Booking Flow Database Error (Feb 15, 2026)
+- [x] Fix database insert error when creating lesson booking (added confirmationDeadline, createdAt, updatedAt)
+- [x] Verify lesson creation works with all required fields
+- [ ] Test complete booking flow end-to-end after fix - needs user testing with real interaction
