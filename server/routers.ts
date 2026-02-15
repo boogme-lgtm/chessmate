@@ -617,7 +617,8 @@ export const appRouter = router({
           status: "pending_confirmation",
         });
 
-        return { success: true, lessonId: lesson.id };
+        // Return complete lesson object to avoid transaction isolation issues
+        return { success: true, lessonId: lesson.id, lesson };
       }),
 
     // Get student's lessons
@@ -745,12 +746,24 @@ export const appRouter = router({
   payment: router({
     // Create checkout session for a lesson
     createCheckout: protectedProcedure
-      .input(z.object({ lessonId: z.number() }))
+      .input(z.object({ 
+        lessonId: z.number(),
+        // Accept optional lesson object to avoid transaction isolation issues
+        lesson: z.object({
+          id: z.number(),
+          studentId: z.number(),
+          coachId: z.number(),
+          amountCents: z.number(),
+          currency: z.string().optional(),
+        }).optional()
+      }))
       .mutation(async ({ ctx, input }) => {
-        const lesson = await db.getLessonById(input.lessonId);
+        // Use provided lesson object if available, otherwise query database
+        const lesson = input.lesson || await db.getLessonById(input.lessonId);
         if (!lesson) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
         }
+        
         if (lesson.studentId !== ctx.user.id) {
           throw new TRPCError({ code: "FORBIDDEN", message: "Not your lesson" });
         }

@@ -294,28 +294,54 @@ export async function updateStudentXp(userId: number, xpToAdd: number) {
 
 // ============ LESSON OPERATIONS ============
 
-export async function createLesson(lesson: InsertLesson) {
+export async function createLesson(lesson: Omit<InsertLesson, 'id'>) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  // Use mysql2 directly to avoid Drizzle's automatic id field handling
-  const connection = await mysql.createConnection(process.env.DATABASE_URL!);
+  // Use raw SQL to bypass Drizzle's automatic field inclusion
+  // Only include the fields we actually want to insert
+  const result = await db.execute(sql`
+    INSERT INTO lessons (
+      studentId, coachId, scheduledAt, durationMinutes, 
+      status, amountCents, commissionCents, coachPayoutCents
+    ) VALUES (
+      ${lesson.studentId}, ${lesson.coachId}, ${lesson.scheduledAt}, ${lesson.durationMinutes},
+      ${lesson.status}, ${lesson.amountCents}, ${lesson.commissionCents}, ${lesson.coachPayoutCents}
+    )
+  `);
   
-  try {
-    // Exclude id field from the insert
-    const { id, ...lessonData } = lesson;
-    const fields = Object.keys(lessonData);
-    const fieldNames = fields.join(', ');
-    const placeholders = fields.map(() => '?').join(', ');
-    const values = Object.values(lessonData);
-    
-    const query = `INSERT INTO lessons (${fieldNames}) VALUES (${placeholders})`;
-    const [result]: any = await connection.execute(query, values);
-    
-    return { id: Number(result.insertId) };
-  } finally {
-    await connection.end();
-  }
+  // Construct the lesson object manually to avoid transaction isolation issues
+  // DO NOT query the database immediately after INSERT
+  const insertId = Number(result[0].insertId);
+  const now = new Date();
+  
+  return {
+    id: insertId,
+    studentId: lesson.studentId,
+    coachId: lesson.coachId,
+    scheduledAt: lesson.scheduledAt,
+    durationMinutes: lesson.durationMinutes,
+    timezone: lesson.timezone || null,
+    topic: lesson.topic || null,
+    notes: lesson.notes || null,
+    meetingUrl: lesson.meetingUrl || null,
+    status: lesson.status,
+    amountCents: lesson.amountCents,
+    commissionCents: lesson.commissionCents,
+    coachPayoutCents: lesson.coachPayoutCents,
+    currency: lesson.currency || "USD",
+    stripePaymentIntentId: lesson.stripePaymentIntentId || null,
+    stripeTransferId: lesson.stripeTransferId || null,
+    coachConfirmedAt: lesson.coachConfirmedAt || null,
+    coachDeclinedAt: lesson.coachDeclinedAt || null,
+    confirmationDeadline: lesson.confirmationDeadline || null,
+    studentConfirmedAt: lesson.studentConfirmedAt || null,
+    completedAt: lesson.completedAt || null,
+    payoutAt: lesson.payoutAt || null,
+    refundWindowEndsAt: lesson.refundWindowEndsAt || null,
+    createdAt: lesson.createdAt || now,
+    updatedAt: lesson.updatedAt || now,
+  };
 }
 
 export async function getLessonById(id: number) {

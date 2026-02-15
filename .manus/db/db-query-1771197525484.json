@@ -1,0 +1,40 @@
+{
+  "query": "SHOW CREATE TABLE lessons;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user o7gqiRJAqhDK5GQ.9c38f5a63e4d --database Xkyng35xnYFybYAdmyVo96 --execute SHOW CREATE TABLE lessons;",
+  "rows": [
+    {
+      "Table": "lessons",
+      "Create Table": "CREATE TABLE `lessons` ("
+    }
+  ],
+  "messages": [
+    "  `id` int(11) NOT NULL AUTO_INCREMENT,",
+    "  `studentId` int(11) NOT NULL,",
+    "  `coachId` int(11) NOT NULL,",
+    "  `scheduledAt` timestamp NOT NULL,",
+    "  `durationMinutes` int(11) DEFAULT '60',",
+    "  `timezone` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT 'UTC',",
+    "  `topic` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL,",
+    "  `notes` text COLLATE utf8mb4_unicode_ci DEFAULT NULL,",
+    "  `meetingUrl` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL,",
+    "  `status` enum('pending','confirmed','paid','in_progress','completed','released','cancelled','disputed','refunded') COLLATE utf8mb4_unicode_ci DEFAULT 'pending',",
+    "  `amountCents` int(11) NOT NULL,",
+    "  `commissionCents` int(11) NOT NULL,",
+    "  `coachPayoutCents` int(11) NOT NULL,",
+    "  `currency` varchar(3) COLLATE utf8mb4_unicode_ci DEFAULT 'USD',",
+    "  `stripePaymentIntentId` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,",
+    "  `stripeTransferId` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,",
+    "  `studentConfirmedAt` timestamp NULL DEFAULT NULL,",
+    "  `coachConfirmedAt` timestamp NULL DEFAULT NULL,",
+    "  `completedAt` timestamp NULL DEFAULT NULL,",
+    "  `payoutAt` timestamp NULL DEFAULT NULL,",
+    "  `refundWindowEndsAt` timestamp NULL DEFAULT NULL,",
+    "  `createdAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,",
+    "  `updatedAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,",
+    "  PRIMARY KEY (`id`) /*T![clustered_index] CLUSTERED */",
+    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci AUTO_INCREMENT=150001"
+  ],
+  "stdout": "Table\tCreate Table\nlessons\tCREATE TABLE `lessons` (\n  `id` int(11) NOT NULL AUTO_INCREMENT,\n  `studentId` int(11) NOT NULL,\n  `coachId` int(11) NOT NULL,\n  `scheduledAt` timestamp NOT NULL,\n  `durationMinutes` int(11) DEFAULT '60',\n  `timezone` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT 'UTC',\n  `topic` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `notes` text COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `meetingUrl` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `status` enum('pending','confirmed','paid','in_progress','completed','released','cancelled','disputed','refunded') COLLATE utf8mb4_unicode_ci DEFAULT 'pending',\n  `amountCents` int(11) NOT NULL,\n  `commissionCents` int(11) NOT NULL,\n  `coachPayoutCents` int(11) NOT NULL,\n  `currency` varchar(3) COLLATE utf8mb4_unicode_ci DEFAULT 'USD',\n  `stripePaymentIntentId` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `stripeTransferId` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,\n  `studentConfirmedAt` timestamp NULL DEFAULT NULL,\n  `coachConfirmedAt` timestamp NULL DEFAULT NULL,\n  `completedAt` timestamp NULL DEFAULT NULL,\n  `payoutAt` timestamp NULL DEFAULT NULL,\n  `refundWindowEndsAt` timestamp NULL DEFAULT NULL,\n  `createdAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,\n  `updatedAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n  PRIMARY KEY (`id`) /*T![clustered_index] CLUSTERED */\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci AUTO_INCREMENT=150001\n",
+  "stderr": "",
+  "execution_time_ms": 350
+}

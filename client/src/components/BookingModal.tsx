@@ -91,8 +91,16 @@ export default function BookingModal({ open, onOpenChange, coach }: BookingModal
       });
 
       // Create Stripe checkout session
+      // Pass lesson object to avoid transaction isolation issues
       const checkout = await createCheckout.mutateAsync({
         lessonId: booking.lessonId,
+        lesson: booking.lesson ? {
+          id: booking.lesson.id,
+          studentId: booking.lesson.studentId,
+          coachId: booking.lesson.coachId,
+          amountCents: booking.lesson.amountCents,
+          currency: booking.lesson.currency || undefined,
+        } : undefined,
       });
 
       // Redirect to Stripe checkout
