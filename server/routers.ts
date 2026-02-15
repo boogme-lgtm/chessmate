@@ -587,7 +587,6 @@ export const appRouter = router({
         scheduledAt: z.date(),
         durationMinutes: z.number().min(30).max(180).default(60),
         topic: z.string().optional(),
-        notes: z.string().optional(),
         timezone: z.string().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
@@ -605,24 +604,17 @@ export const appRouter = router({
         const coachPayoutCents = amountCents - commissionCents;
 
         // Create lesson
-        const now = new Date();
-        const confirmationDeadline = new Date(now.getTime() + 24 * 60 * 60 * 1000); // 24 hours from now
-        
         const lesson = await db.createLesson({
           studentId: ctx.user.id,
           coachId: input.coachId,
           scheduledAt: input.scheduledAt,
           durationMinutes: input.durationMinutes,
-          topic: input.topic || "",
-          notes: input.notes || "",
-          timezone: input.timezone || "UTC",
+          topic: input.topic,
+          timezone: input.timezone,
           amountCents,
           commissionCents,
           coachPayoutCents,
           status: "pending_confirmation",
-          confirmationDeadline,
-          createdAt: now,
-          updatedAt: now,
         });
 
         return { success: true, lessonId: lesson.id };
