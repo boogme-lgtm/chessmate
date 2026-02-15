@@ -593,3 +593,20 @@
 - [ ] Make dashboard UI more role-specific (different layouts for coach vs student) - partially done with badges
 - [ ] Fix "Book Lesson" payment error for students (investigate payment flow bug) - needs testing with real accounts
 - [ ] Test both student and coach accounts with provided credentials
+
+
+## CRITICAL: Booking Flow Database Fix (Feb 15, 2026)
+- [x] Rolled back to checkpoint adfedf8 before breaking changes
+- [x] Fixed database INSERT error using raw SQL to bypass Drizzle's id field handling
+- [x] Updated fictional coaches to have 1-hour minimum advance booking (was 24 hours)
+- [ ] Calendar date selection appears to work but time slots not updating correctly - needs manual testing
+- [ ] Complete end-to-end booking flow test with payment
+
+**Root Cause:** Drizzle ORM was including `id` field in INSERT statement with value "default", which MySQL rejects. Fixed by using raw SQL with mysql2 directly.
+
+**Next Steps:**
+1. Test booking flow manually with your test accounts (jen@chimaeric.com / cchirila@saintlouischessclub.org)
+2. Select a future date (Feb 16 or later) and verify time slots appear
+3. Click a time slot and verify modal advances to booking details
+4. Click "Continue to Payment" and verify Stripe checkout opens
+5. Complete payment with test card 4242 4242 4242 4242

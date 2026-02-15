@@ -1,5 +1,6 @@
 import { eq, and, desc, sql, gte, lte } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
+import mysql from "mysql2/promise";
 import { 
   InsertUser, 
   users, 
@@ -297,8 +298,24 @@ export async function createLesson(lesson: InsertLesson) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  const result = await db.insert(lessons).values(lesson);
-  return { id: Number(result[0].insertId) };
+  // Use mysql2 directly to avoid Drizzle's automatic id field handling
+  const connection = await mysql.createConnection(process.env.DATABASE_URL!);
+  
+  try {
+    // Exclude id field from the insert
+    const { id, ...lessonData } = lesson;
+    const fields = Object.keys(lessonData);
+    const fieldNames = fields.join(', ');
+    const placeholders = fields.map(() => '?').join(', ');
+    const values = Object.values(lessonData);
+    
+    const query = `INSERT INTO lessons (${fieldNames}) VALUES (${placeholders})`;
+    const [result]: any = await connection.execute(query, values);
+    
+    return { id: Number(result.insertId) };
+  } finally {
+    await connection.end();
+  }
 }
 
 export async function getLessonById(id: number) {
