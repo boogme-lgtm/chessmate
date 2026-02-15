@@ -1,0 +1,52 @@
+{
+  "query": "SELECT u.id, u.name, u.email, cp.hourlyRateCents/100 as hourly_rate_usd, u.stripeConnectAccountId\nFROM users u\nINNER JOIN coach_profiles cp ON u.id = cp.userId\nWHERE cp.profileActive = 1\nORDER BY u.id;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user o7gqiRJAqhDK5GQ.9c38f5a63e4d --database Xkyng35xnYFybYAdmyVo96 --execute SELECT u.id, u.name, u.email, cp.hourlyRateCents/100 as hourly_rate_usd, u.stripeConnectAccountId\nFROM users u\nINNER JOIN coach_profiles cp ON u.id = cp.userId\nWHERE cp.profileActive = 1\nORDER BY u.id;",
+  "rows": [
+    {
+      "id": "120001",
+      "name": "GM Elena Petrov",
+      "email": "elena.petrov@example.com",
+      "hourly_rate_usd": "120.0000",
+      "stripeConnectAccountId": "acct_test_coach_120001"
+    },
+    {
+      "id": "120002",
+      "name": "IM Carlos Rodriguez",
+      "email": "carlos.rodriguez@example.com",
+      "hourly_rate_usd": "65.0000",
+      "stripeConnectAccountId": "acct_test_coach_120002"
+    },
+    {
+      "id": "120003",
+      "name": "FM Sarah Chen",
+      "email": "sarah.chen@example.com",
+      "hourly_rate_usd": "45.0000",
+      "stripeConnectAccountId": "acct_test_coach_120003"
+    },
+    {
+      "id": "1050003",
+      "name": "GM Alexandra Petrov",
+      "email": "alexandra.petrov@fictional.boogme.com",
+      "hourly_rate_usd": "150.0000",
+      "stripeConnectAccountId": "acct_test_coach_alexandra.petrov"
+    },
+    {
+      "id": "1050004",
+      "name": "IM Carlos Rodriguez",
+      "email": "carlos.rodriguez@fictional.boogme.com",
+      "hourly_rate_usd": "80.0000",
+      "stripeConnectAccountId": "acct_test_coach_carlos.rodriguez"
+    },
+    {
+      "id": "1050005",
+      "name": "FM Sarah Chen",
+      "email": "sarah.chen@fictional.boogme.com",
+      "hourly_rate_usd": "60.0000",
+      "stripeConnectAccountId": "acct_test_coach_sarah.chen"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tname\temail\thourly_rate_usd\tstripeConnectAccountId\n120001\tGM Elena Petrov\telena.petrov@example.com\t120.0000\tacct_test_coach_120001\n120002\tIM Carlos Rodriguez\tcarlos.rodriguez@example.com\t65.0000\tacct_test_coach_120002\n120003\tFM Sarah Chen\tsarah.chen@example.com\t45.0000\tacct_test_coach_120003\n1050003\tGM Alexandra Petrov\talexandra.petrov@fictional.boogme.com\t150.0000\tacct_test_coach_alexandra.petrov\n1050004\tIM Carlos Rodriguez\tcarlos.rodriguez@fictional.boogme.com\t80.0000\tacct_test_coach_carlos.rodriguez\n1050005\tFM Sarah Chen\tsarah.chen@fictional.boogme.com\t60.0000\tacct_test_coach_sarah.chen\n",
+  "stderr": "",
+  "execution_time_ms": 357
+}

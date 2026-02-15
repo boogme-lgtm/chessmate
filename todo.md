@@ -599,3 +599,7 @@
 - [x] Verify fictional coaches have proper Stripe Connect test accounts (using acct_test_coach_ prefix)
 - [ ] Test complete booking flow with test card (4242 4242 4242 4242) - needs user testing
 - [ ] Ensure escrow payment flow works end-to-end - needs user testing
+
+## Database Cleanup (Feb 15, 2026)
+- [x] Remove duplicate/old coaches from database (kept only the 3 new fictional coaches with test Stripe accounts)
+- [x] Verify only GM Alexandra Petrov, IM Carlos Rodriguez, and FM Sarah Chen are visible
