@@ -9,6 +9,7 @@ import { Request, Response } from 'express';
 import Stripe from 'stripe';
 import { constructWebhookEvent } from './stripe';
 import * as db from './db';
+import { sendEmail, getStudentBookingConfirmationEmail, getCoachBookingNotificationEmail } from './emailService';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2026-01-28.clover',
@@ -102,6 +103,67 @@ async function handleCheckoutCompleted(event: Stripe.Event) {
     }
     
     console.log(`[Webhook] ✅ Lesson ${lessonId} confirmed and payment recorded`);
+    
+    // Send confirmation emails to student and coach
+    try {
+      const lesson = await db.getLessonById(parseInt(lessonId));
+      if (lesson) {
+        const student = await db.getUserById(lesson.studentId);
+        const coach = await db.getUserById(lesson.coachId);
+        
+        if (student && coach) {
+          // Format lesson date and time
+          const lessonDate = new Date(lesson.scheduledAt).toLocaleDateString('en-US', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+          });
+          const lessonTime = new Date(lesson.scheduledAt).toLocaleTimeString('en-US', {
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true
+          });
+          const amount = `$${(lesson.amountCents / 100).toFixed(2)}`;
+          const coachPayout = `$${(lesson.coachPayoutCents / 100).toFixed(2)}`;
+          
+          // Send student confirmation
+          await sendEmail({
+            to: student.email,
+            subject: `Lesson Confirmed with ${coach.name || 'Your Coach'}`,
+            html: getStudentBookingConfirmationEmail(
+              student.name || 'Student',
+              coach.name || 'Your Coach',
+              lessonDate,
+              lessonTime,
+              lesson.durationMinutes,
+              amount,
+              lesson.id
+            )
+          });
+          console.log(`[Webhook] ✉️ Sent confirmation email to student: ${student.email}`);
+          
+          // Send coach notification
+          await sendEmail({
+            to: coach.email,
+            subject: `New Lesson Booking from ${student.name || 'a Student'}`,
+            html: getCoachBookingNotificationEmail(
+              coach.name || 'Coach',
+              student.name || 'Student',
+              lessonDate,
+              lessonTime,
+              lesson.durationMinutes,
+              coachPayout,
+              lesson.id
+            )
+          });
+          console.log(`[Webhook] ✉️ Sent booking notification to coach: ${coach.email}`);
+        }
+      }
+    } catch (emailError) {
+      console.error('[Webhook] Failed to send confirmation emails:', emailError);
+      // Don't fail the webhook if email sending fails
+    }
   } else {
     console.log(`[Webhook] Payment not completed yet for lesson ${lessonId}`);
   }

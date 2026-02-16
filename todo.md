@@ -615,3 +615,14 @@
 - [x] Fix lesson detail page showing "Lesson not found" after payment
 - [x] Fix lessons not appearing in student dashboardt dashboard after booking
 - [ ] Investigate why lesson query fails after payment redirect
+
+## Email Notifications & Reminder System (Priority)
+- [x] Design booking confirmation email templates (student + coach)
+- [x] Implement booking confirmation emails in webhook handler
+- [x] Design 24-hour reminder email templates with cancellation links
+- [ ] Create automated reminder scheduler (check every hour for upcoming lessons)
+- [x] Implement lesson cancellation endpoint with refund logic
+- [x] Add cancellation policy enforcement (>48hrs full, 24-48hrs partial, <24hrs none)
+- [ ] Create cancellation confirmation email templates
+- [ ] Test complete notification flow end-to-end
+- [ ] Add reminder clock/countdown UI component for students and coaches

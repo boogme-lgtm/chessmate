@@ -920,3 +920,104 @@ export async function getCoachApplicationStats() {
   };
 }
 
+
+
+/**
+ * Generate a secure cancellation token for a lesson
+ */
+export async function generateCancellationToken(lessonId: number): Promise<string> {
+  const crypto = await import('crypto');
+  const token = crypto.randomBytes(32).toString('hex');
+  
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  // Store the token in the database
+  await db.execute(sql`
+    UPDATE lessons 
+    SET cancellationToken = ${token}
+    WHERE id = ${lessonId}
+  `);
+  
+  return token;
+}
+
+/**
+ * Cancel a lesson and process refund based on cancellation policy
+ * Policy: >48hrs = 100%, 24-48hrs = 50%, <24hrs = 0%
+ */
+export async function cancelLesson(
+  lessonId: number,
+  cancelledBy: 'student' | 'coach' | 'system',
+  cancellationReason?: string
+): Promise<{ success: boolean; refundAmountCents: number; refundPercentage: number }> {
+  const lesson = await getLessonById(lessonId);
+  
+  if (!lesson) {
+    throw new Error('Lesson not found');
+  }
+  
+  if (lesson.status === 'cancelled' || lesson.status === 'completed') {
+    throw new Error('Lesson cannot be cancelled');
+  }
+  
+  // Calculate hours until lesson
+  const now = new Date();
+  const lessonTime = new Date(lesson.scheduledAt);
+  const hoursUntilLesson = (lessonTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+  
+  // Determine refund amount based on cancellation policy
+  let refundPercentage = 0;
+  if (hoursUntilLesson > 48) {
+    refundPercentage = 100; // Full refund
+  } else if (hoursUntilLesson >= 24) {
+    refundPercentage = 50; // 50% refund
+  } else {
+    refundPercentage = 0; // No refund
+  }
+  
+  const refundAmountCents = Math.round((lesson.amountCents * refundPercentage) / 100);
+  
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  // Update lesson status
+  await db.execute(sql`
+    UPDATE lessons 
+    SET 
+      status = 'cancelled',
+      cancelledAt = NOW(),
+      cancelledBy = ${cancelledBy},
+      cancellationReason = ${cancellationReason || null},
+      refundAmountCents = ${refundAmountCents}
+    WHERE id = ${lessonId}
+  `);
+  
+  return {
+    success: true,
+    refundAmountCents,
+    refundPercentage
+  };
+}
+
+/**
+ * Verify cancellation token for secure cancellation
+ */
+export async function verifyCancellationToken(lessonId: number, token: string): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  
+  const result: any = await db.execute(sql`
+    SELECT cancellationToken 
+    FROM lessons 
+    WHERE id = ${lessonId}
+  `);
+  
+  const rows = result[0];
+  if (!rows || rows.length === 0) {
+    return false;
+  }
+  
+  const lesson = rows[0] as any;
+  return lesson.cancellationToken === token;
+}

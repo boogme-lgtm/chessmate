@@ -167,20 +167,31 @@ export async function cancelPaymentIntent(paymentIntentId: string) {
 
 /**
  * Create a refund for a captured payment
- * Used within the 48-hour satisfaction window
+ * Supports partial refunds based on cancellation policy
+ * @param paymentIntentId - Stripe PaymentIntent ID
+ * @param amountCents - Amount to refund in cents (optional, defaults to full refund)
+ * @param reason - Reason for refund
  */
 export async function createRefund(
   paymentIntentId: string,
+  amountCents?: number,
   reason?: "requested_by_customer" | "duplicate" | "fraudulent"
 ) {
-  const refund = await stripe.refunds.create({
+  const refundParams: any = {
     payment_intent: paymentIntentId,
     reason: reason || "requested_by_customer",
     // Reverse the transfer to the coach as well
     reverse_transfer: true,
     // Refund the application fee (platform commission)
     refund_application_fee: true,
-  });
+  };
+  
+  // Add amount if partial refund
+  if (amountCents !== undefined) {
+    refundParams.amount = amountCents;
+  }
+  
+  const refund = await stripe.refunds.create(refundParams);
   return refund;
 }
 

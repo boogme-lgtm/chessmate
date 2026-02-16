@@ -768,3 +768,530 @@ export function getNurtureEmail5(name: string, email: string): string {
 </html>
   `;
 }
+
+
+/**
+ * Booking Confirmation Email for Student
+ */
+export function getStudentBookingConfirmationEmail(
+  studentName: string,
+  coachName: string,
+  lessonDate: string,
+  lessonTime: string,
+  duration: number,
+  amount: string,
+  lessonId: number
+): string {
+  const frontendUrl = process.env.VITE_FRONTEND_URL || 'http://localhost:3000';
+  
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson Booked Successfully</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #0a0a0a; color: #ffffff;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #0a0a0a;">
+    <tr>
+      <td align="center" style="padding: 40px 20px;">
+        <table width="600" cellpadding="0" cellspacing="0" style="background-color: #1a1a1a; border-radius: 8px; overflow: hidden;">
+          <!-- Header -->
+          <tr>
+            <td style="padding: 40px 40px 20px 40px; text-align: center;">
+              <img src="https://files.manuscdn.com/user_upload_by_module/session_file/310519663188415081/xRYfqyUGHSJUlDcu.png" alt="BooGMe" style="height: 48px; width: auto; margin-bottom: 20px;" />
+              <h1 style="margin: 0; font-size: 32px; font-weight: 300; color: #ffffff; letter-spacing: -0.5px;">
+                ✓ Lesson Booked!
+              </h1>
+            </td>
+          </tr>
+          
+          <!-- Content -->
+          <tr>
+            <td style="padding: 0 40px 40px 40px;">
+              <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">
+                Hi ${studentName},
+              </p>
+              
+              <p style="margin: 0 0 30px 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">
+                Your chess lesson with <strong>${coachName}</strong> has been successfully booked!
+              </p>
+              
+              <!-- Lesson Details Card -->
+              <div style="background-color: #2a2a2a; padding: 25px; margin: 30px 0; border-radius: 8px; border-left: 4px solid #8b4513;">
+                <h2 style="margin: 0 0 20px 0; font-size: 20px; font-weight: 600; color: #ffffff;">
+                  Lesson Details
+                </h2>
+                
+                <table width="100%" cellpadding="8" cellspacing="0">
+                  <tr>
+                    <td style="font-size: 15px; color: #a0a0a0; padding: 8px 0;">Coach:</td>
+                    <td style="font-size: 15px; color: #ffffff; font-weight: 600; padding: 8px 0; text-align: right;">${coachName}</td>
+                  </tr>
+                  <tr>
+                    <td style="font-size: 15px; color: #a0a0a0; padding: 8px 0;">Date:</td>
+                    <td style="font-size: 15px; color: #ffffff; font-weight: 600; padding: 8px 0; text-align: right;">${lessonDate}</td>
+                  </tr>
+                  <tr>
+                    <td style="font-size: 15px; color: #a0a0a0; padding: 8px 0;">Time:</td>
+                    <td style="font-size: 15px; color: #ffffff; font-weight: 600; padding: 8px 0; text-align: right;">${lessonTime}</td>
+                  </tr>
+                  <tr>
+                    <td style="font-size: 15px; color: #a0a0a0; padding: 8px 0;">Duration:</td>
+                    <td style="font-size: 15px; color: #ffffff; font-weight: 600; padding: 8px 0; text-align: right;">${duration} minutes</td>
+                  </tr>
+                  <tr>
+                    <td style="font-size: 15px; color: #a0a0a0; padding: 8px 0; border-top: 1px solid #3a3a3a; padding-top: 15px;">Amount Paid:</td>
+                    <td style="font-size: 18px; color: #8b4513; font-weight: 700; padding: 8px 0; text-align: right; border-top: 1px solid #3a3a3a; padding-top: 15px;">${amount}</td>
+                  </tr>
+                </table>
+              </div>
+              
+              <!-- Payment Protection Notice -->
+              <div style="background-color: #1f2937; padding: 20px; margin: 30px 0; border-radius: 6px; border: 1px solid #374151;">
+                <p style="margin: 0 0 10px 0; font-size: 14px; font-weight: 600; color: #10b981;">
+                  🛡️ Payment Protection Active
+                </p>
+                <p style="margin: 0; font-size: 14px; line-height: 1.6; color: #d1d5db;">
+                  Your payment is held securely in escrow until after your lesson. You'll only be charged once both you and your coach confirm the lesson was completed.
+                </p>
+              </div>
+              
+              <!-- Cancellation Policy -->
+              <div style="background-color: #2a2a2a; padding: 20px; margin: 30px 0; border-radius: 6px;">
+                <p style="margin: 0 0 15px 0; font-size: 15px; font-weight: 600; color: #ffffff;">
+                  Cancellation Policy
+                </p>
+                <ul style="margin: 0; padding-left: 20px; color: #e0e0e0; font-size: 14px; line-height: 1.8;">
+                  <li>More than 48 hours before: <strong>Full refund</strong></li>
+                  <li>24-48 hours before: <strong>50% refund</strong></li>
+                  <li>Less than 24 hours: <strong>No refund</strong></li>
+                </ul>
+              </div>
+              
+              <!-- CTA Button -->
+              <div style="text-align: center; margin: 40px 0;">
+                <a href="${frontendUrl}/lessons/${lessonId}" style="display: inline-block; padding: 14px 32px; background-color: #8b4513; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 600;">
+                  View Lesson Details
+                </a>
+              </div>
+              
+              <!-- Reminder Notice -->
+              <p style="margin: 30px 0 0 0; font-size: 14px; line-height: 1.6; color: #a0a0a0; text-align: center;">
+                You'll receive a reminder email 24 hours before your lesson.
+              </p>
+            </td>
+          </tr>
+          
+          <!-- Footer -->
+          <tr>
+            <td style="padding: 30px 40px; background-color: #0f0f0f; text-align: center;">
+              <p style="margin: 0 0 10px 0; font-size: 14px; color: #808080;">
+                BooGMe - AI-Powered Chess Coaching Marketplace
+              </p>
+              <p style="margin: 0; font-size: 12px; color: #606060;">
+                Questions? Reply to this email or visit our <a href="${frontendUrl}/help" style="color: #8b4513; text-decoration: none;">Help Center</a>
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `;
+}
+
+/**
+ * Booking Notification Email for Coach
+ */
+export function getCoachBookingNotificationEmail(
+  coachName: string,
+  studentName: string,
+  lessonDate: string,
+  lessonTime: string,
+  duration: number,
+  coachPayout: string,
+  lessonId: number
+): string {
+  const frontendUrl = process.env.VITE_FRONTEND_URL || 'http://localhost:3000';
+  
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>New Lesson Booking</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #0a0a0a; color: #ffffff;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #0a0a0a;">
+    <tr>
+      <td align="center" style="padding: 40px 20px;">
+        <table width="600" cellpadding="0" cellspacing="0" style="background-color: #1a1a1a; border-radius: 8px; overflow: hidden;">
+          <!-- Header -->
+          <tr>
+            <td style="padding: 40px 40px 20px 40px; text-align: center;">
+              <img src="https://files.manuscdn.com/user_upload_by_module/session_file/310519663188415081/xRYfqyUGHSJUlDcu.png" alt="BooGMe" style="height: 48px; width: auto; margin-bottom: 20px;" />
+              <h1 style="margin: 0; font-size: 32px; font-weight: 300; color: #ffffff; letter-spacing: -0.5px;">
+                🎓 New Lesson Booking!
+              </h1>
+            </td>
+          </tr>
+          
+          <!-- Content -->
+          <tr>
+            <td style="padding: 0 40px 40px 40px;">
+              <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">
+                Hi ${coachName},
+              </p>
+              
+              <p style="margin: 0 0 30px 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">
+                Great news! <strong>${studentName}</strong> has booked a lesson with you.
+              </p>
+              
+              <!-- Lesson Details Card -->
+              <div style="background-color: #2a2a2a; padding: 25px; margin: 30px 0; border-radius: 8px; border-left: 4px solid #8b4513;">
+                <h2 style="margin: 0 0 20px 0; font-size: 20px; font-weight: 600; color: #ffffff;">
+                  Lesson Details
+                </h2>
+                
+                <table width="100%" cellpadding="8" cellspacing="0">
+                  <tr>
+                    <td style="font-size: 15px; color: #a0a0a0; padding: 8px 0;">Student:</td>
+                    <td style="font-size: 15px; color: #ffffff; font-weight: 600; padding: 8px 0; text-align: right;">${studentName}</td>
+                  </tr>
+                  <tr>
+                    <td style="font-size: 15px; color: #a0a0a0; padding: 8px 0;">Date:</td>
+                    <td style="font-size: 15px; color: #ffffff; font-weight: 600; padding: 8px 0; text-align: right;">${lessonDate}</td>
+                  </tr>
+                  <tr>
+                    <td style="font-size: 15px; color: #a0a0a0; padding: 8px 0;">Time:</td>
+                    <td style="font-size: 15px; color: #ffffff; font-weight: 600; padding: 8px 0; text-align: right;">${lessonTime}</td>
+                  </tr>
+                  <tr>
+                    <td style="font-size: 15px; color: #a0a0a0; padding: 8px 0;">Duration:</td>
+                    <td style="font-size: 15px; color: #ffffff; font-weight: 600; padding: 8px 0; text-align: right;">${duration} minutes</td>
+                  </tr>
+                  <tr>
+                    <td style="font-size: 15px; color: #a0a0a0; padding: 8px 0; border-top: 1px solid #3a3a3a; padding-top: 15px;">Your Payout:</td>
+                    <td style="font-size: 18px; color: #10b981; font-weight: 700; padding: 8px 0; text-align: right; border-top: 1px solid #3a3a3a; padding-top: 15px;">${coachPayout}</td>
+                  </tr>
+                </table>
+              </div>
+              
+              <!-- Payment Protection Notice -->
+              <div style="background-color: #1f2937; padding: 20px; margin: 30px 0; border-radius: 6px; border: 1px solid #374151;">
+                <p style="margin: 0 0 10px 0; font-size: 14px; font-weight: 600; color: #10b981;">
+                  🛡️ Payment Secured in Escrow
+                </p>
+                <p style="margin: 0; font-size: 14px; line-height: 1.6; color: #d1d5db;">
+                  The student's payment is held securely. You'll receive your payout automatically after both parties confirm the lesson was completed.
+                </p>
+              </div>
+              
+              <!-- Next Steps -->
+              <div style="background-color: #2a2a2a; padding: 20px; margin: 30px 0; border-radius: 6px;">
+                <p style="margin: 0 0 15px 0; font-size: 15px; font-weight: 600; color: #ffffff;">
+                  Next Steps
+                </p>
+                <ol style="margin: 0; padding-left: 20px; color: #e0e0e0; font-size: 14px; line-height: 1.8;">
+                  <li>Review the lesson details above</li>
+                  <li>Prepare your lesson materials</li>
+                  <li>You'll receive a reminder 24 hours before the lesson</li>
+                  <li>After the lesson, confirm completion to receive your payout</li>
+                </ol>
+              </div>
+              
+              <!-- CTA Button -->
+              <div style="text-align: center; margin: 40px 0;">
+                <a href="${frontendUrl}/lessons/${lessonId}" style="display: inline-block; padding: 14px 32px; background-color: #8b4513; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 600;">
+                  View Lesson Details
+                </a>
+              </div>
+              
+              <!-- Support -->
+              <p style="margin: 30px 0 0 0; font-size: 14px; line-height: 1.6; color: #a0a0a0; text-align: center;">
+                Need to reschedule? Contact the student directly or reach out to our support team.
+              </p>
+            </td>
+          </tr>
+          
+          <!-- Footer -->
+          <tr>
+            <td style="padding: 30px 40px; background-color: #0f0f0f; text-align: center;">
+              <p style="margin: 0 0 10px 0; font-size: 14px; color: #808080;">
+                BooGMe - AI-Powered Chess Coaching Marketplace
+              </p>
+              <p style="margin: 0; font-size: 12px; color: #606060;">
+                Questions? Reply to this email or visit your <a href="${frontendUrl}/coach/dashboard" style="color: #8b4513; text-decoration: none;">Coach Dashboard</a>
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `;
+}
+
+
+/**
+ * 24-Hour Lesson Reminder Email for Student
+ */
+export function getStudentLessonReminderEmail(
+  studentName: string,
+  coachName: string,
+  lessonDate: string,
+  lessonTime: string,
+  duration: number,
+  lessonId: number,
+  cancelToken: string
+): string {
+  const frontendUrl = process.env.VITE_FRONTEND_URL || 'http://localhost:3000';
+  
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson Reminder - Tomorrow!</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #0a0a0a; color: #ffffff;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #0a0a0a;">
+    <tr>
+      <td align="center" style="padding: 40px 20px;">
+        <table width="600" cellpadding="0" cellspacing="0" style="background-color: #1a1a1a; border-radius: 8px; overflow: hidden;">
+          <!-- Header -->
+          <tr>
+            <td style="padding: 40px 40px 20px 40px; text-align: center;">
+              <img src="https://files.manuscdn.com/user_upload_by_module/session_file/310519663188415081/xRYfqyUGHSJUlDcu.png" alt="BooGMe" style="height: 48px; width: auto; margin-bottom: 20px;" />
+              <h1 style="margin: 0; font-size: 32px; font-weight: 300; color: #ffffff; letter-spacing: -0.5px;">
+                ⏰ Lesson Tomorrow!
+              </h1>
+            </td>
+          </tr>
+          
+          <!-- Content -->
+          <tr>
+            <td style="padding: 0 40px 40px 40px;">
+              <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">
+                Hi ${studentName},
+              </p>
+              
+              <p style="margin: 0 0 30px 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">
+                This is a friendly reminder that your chess lesson with <strong>${coachName}</strong> is scheduled for tomorrow!
+              </p>
+              
+              <!-- Lesson Details Card -->
+              <div style="background-color: #2a2a2a; padding: 25px; margin: 30px 0; border-radius: 8px; border-left: 4px solid #8b4513;">
+                <h2 style="margin: 0 0 20px 0; font-size: 20px; font-weight: 600; color: #ffffff;">
+                  Lesson Details
+                </h2>
+                
+                <table width="100%" cellpadding="8" cellspacing="0">
+                  <tr>
+                    <td style="font-size: 15px; color: #a0a0a0; padding: 8px 0;">Coach:</td>
+                    <td style="font-size: 15px; color: #ffffff; font-weight: 600; padding: 8px 0; text-align: right;">${coachName}</td>
+                  </tr>
+                  <tr>
+                    <td style="font-size: 15px; color: #a0a0a0; padding: 8px 0;">Date:</td>
+                    <td style="font-size: 15px; color: #ffffff; font-weight: 600; padding: 8px 0; text-align: right;">${lessonDate}</td>
+                  </tr>
+                  <tr>
+                    <td style="font-size: 15px; color: #a0a0a0; padding: 8px 0;">Time:</td>
+                    <td style="font-size: 18px; color: #8b4513; font-weight: 700; padding: 8px 0; text-align: right;">${lessonTime}</td>
+                  </tr>
+                  <tr>
+                    <td style="font-size: 15px; color: #a0a0a0; padding: 8px 0;">Duration:</td>
+                    <td style="font-size: 15px; color: #ffffff; font-weight: 600; padding: 8px 0; text-align: right;">${duration} minutes</td>
+                  </tr>
+                </table>
+              </div>
+              
+              <!-- Preparation Tips -->
+              <div style="background-color: #1f2937; padding: 20px; margin: 30px 0; border-radius: 6px; border: 1px solid #374151;">
+                <p style="margin: 0 0 15px 0; font-size: 15px; font-weight: 600; color: #ffffff;">
+                  📝 Prepare for Your Lesson
+                </p>
+                <ul style="margin: 0; padding-left: 20px; color: #d1d5db; font-size: 14px; line-height: 1.8;">
+                  <li>Review your recent games or positions you'd like to discuss</li>
+                  <li>Prepare any questions for your coach</li>
+                  <li>Have a chess board or analysis tool ready</li>
+                  <li>Join a few minutes early to test your connection</li>
+                </ul>
+              </div>
+              
+              <!-- CTA Buttons -->
+              <div style="text-align: center; margin: 40px 0;">
+                <a href="${frontendUrl}/lessons/${lessonId}" style="display: inline-block; padding: 14px 32px; background-color: #8b4513; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 600; margin-right: 10px;">
+                  View Lesson Details
+                </a>
+              </div>
+              
+              <!-- Cancellation Warning -->
+              <div style="background-color: #7f1d1d; padding: 20px; margin: 30px 0; border-radius: 6px; border: 1px solid #991b1b;">
+                <p style="margin: 0 0 10px 0; font-size: 14px; font-weight: 600; color: #fecaca;">
+                  ⚠️ Last Chance to Cancel
+                </p>
+                <p style="margin: 0 0 15px 0; font-size: 14px; line-height: 1.6; color: #fecaca;">
+                  If you need to cancel, you must do so within the next 24 hours to avoid charges. Cancellations made less than 24 hours before the lesson are non-refundable.
+                </p>
+                <div style="text-align: center;">
+                  <a href="${frontendUrl}/lessons/${lessonId}/cancel?token=${cancelToken}" style="display: inline-block; padding: 10px 24px; background-color: #991b1b; color: #ffffff; text-decoration: none; border-radius: 4px; font-size: 14px; font-weight: 600;">
+                    Cancel Lesson
+                  </a>
+                </div>
+              </div>
+              
+              <!-- Support -->
+              <p style="margin: 30px 0 0 0; font-size: 14px; line-height: 1.6; color: #a0a0a0; text-align: center;">
+                Looking forward to your lesson! If you have any questions, feel free to reach out.
+              </p>
+            </td>
+          </tr>
+          
+          <!-- Footer -->
+          <tr>
+            <td style="padding: 30px 40px; background-color: #0f0f0f; text-align: center;">
+              <p style="margin: 0 0 10px 0; font-size: 14px; color: #808080;">
+                BooGMe - AI-Powered Chess Coaching Marketplace
+              </p>
+              <p style="margin: 0; font-size: 12px; color: #606060;">
+                Questions? Reply to this email or visit our <a href="${frontendUrl}/help" style="color: #8b4513; text-decoration: none;">Help Center</a>
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `;
+}
+
+/**
+ * 24-Hour Lesson Reminder Email for Coach
+ */
+export function getCoachLessonReminderEmail(
+  coachName: string,
+  studentName: string,
+  lessonDate: string,
+  lessonTime: string,
+  duration: number,
+  lessonId: number
+): string {
+  const frontendUrl = process.env.VITE_FRONTEND_URL || 'http://localhost:3000';
+  
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson Reminder - Tomorrow!</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #0a0a0a; color: #ffffff;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #0a0a0a;">
+    <tr>
+      <td align="center" style="padding: 40px 20px;">
+        <table width="600" cellpadding="0" cellspacing="0" style="background-color: #1a1a1a; border-radius: 8px; overflow: hidden;">
+          <!-- Header -->
+          <tr>
+            <td style="padding: 40px 40px 20px 40px; text-align: center;">
+              <img src="https://files.manuscdn.com/user_upload_by_module/session_file/310519663188415081/xRYfqyUGHSJUlDcu.png" alt="BooGMe" style="height: 48px; width: auto; margin-bottom: 20px;" />
+              <h1 style="margin: 0; font-size: 32px; font-weight: 300; color: #ffffff; letter-spacing: -0.5px;">
+                ⏰ Lesson Tomorrow!
+              </h1>
+            </td>
+          </tr>
+          
+          <!-- Content -->
+          <tr>
+            <td style="padding: 0 40px 40px 40px;">
+              <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">
+                Hi ${coachName},
+              </p>
+              
+              <p style="margin: 0 0 30px 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">
+                This is a friendly reminder that you have a lesson with <strong>${studentName}</strong> scheduled for tomorrow!
+              </p>
+              
+              <!-- Lesson Details Card -->
+              <div style="background-color: #2a2a2a; padding: 25px; margin: 30px 0; border-radius: 8px; border-left: 4px solid #8b4513;">
+                <h2 style="margin: 0 0 20px 0; font-size: 20px; font-weight: 600; color: #ffffff;">
+                  Lesson Details
+                </h2>
+                
+                <table width="100%" cellpadding="8" cellspacing="0">
+                  <tr>
+                    <td style="font-size: 15px; color: #a0a0a0; padding: 8px 0;">Student:</td>
+                    <td style="font-size: 15px; color: #ffffff; font-weight: 600; padding: 8px 0; text-align: right;">${studentName}</td>
+                  </tr>
+                  <tr>
+                    <td style="font-size: 15px; color: #a0a0a0; padding: 8px 0;">Date:</td>
+                    <td style="font-size: 15px; color: #ffffff; font-weight: 600; padding: 8px 0; text-align: right;">${lessonDate}</td>
+                  </tr>
+                  <tr>
+                    <td style="font-size: 15px; color: #a0a0a0; padding: 8px 0;">Time:</td>
+                    <td style="font-size: 18px; color: #8b4513; font-weight: 700; padding: 8px 0; text-align: right;">${lessonTime}</td>
+                  </tr>
+                  <tr>
+                    <td style="font-size: 15px; color: #a0a0a0; padding: 8px 0;">Duration:</td>
+                    <td style="font-size: 15px; color: #ffffff; font-weight: 600; padding: 8px 0; text-align: right;">${duration} minutes</td>
+                  </tr>
+                </table>
+              </div>
+              
+              <!-- Preparation Checklist -->
+              <div style="background-color: #1f2937; padding: 20px; margin: 30px 0; border-radius: 6px; border: 1px solid #374151;">
+                <p style="margin: 0 0 15px 0; font-size: 15px; font-weight: 600; color: #ffffff;">
+                  📋 Preparation Checklist
+                </p>
+                <ul style="margin: 0; padding-left: 20px; color: #d1d5db; font-size: 14px; line-height: 1.8;">
+                  <li>Review the student's profile and learning goals</li>
+                  <li>Prepare lesson materials and exercises</li>
+                  <li>Test your video conferencing setup</li>
+                  <li>Have analysis tools ready (engine, database, etc.)</li>
+                </ul>
+              </div>
+              
+              <!-- CTA Button -->
+              <div style="text-align: center; margin: 40px 0;">
+                <a href="${frontendUrl}/lessons/${lessonId}" style="display: inline-block; padding: 14px 32px; background-color: #8b4513; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 600;">
+                  View Lesson Details
+                </a>
+              </div>
+              
+              <!-- Support -->
+              <p style="margin: 30px 0 0 0; font-size: 14px; line-height: 1.6; color: #a0a0a0; text-align: center;">
+                Need to reschedule? Contact your student or our support team as soon as possible.
+              </p>
+            </td>
+          </tr>
+          
+          <!-- Footer -->
+          <tr>
+            <td style="padding: 30px 40px; background-color: #0f0f0f; text-align: center;">
+              <p style="margin: 0 0 10px 0; font-size: 14px; color: #808080;">
+                BooGMe - AI-Powered Chess Coaching Marketplace
+              </p>
+              <p style="margin: 0; font-size: 12px; color: #606060;">
+                Questions? Reply to this email or visit your <a href="${frontendUrl}/coach/dashboard" style="color: #8b4513; text-decoration: none;">Coach Dashboard</a>
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `;
+}
