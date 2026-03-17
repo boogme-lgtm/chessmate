@@ -18,6 +18,7 @@ import {
   Timer
 } from "lucide-react";
 import { format, isPast, isFuture, differenceInHours, differenceInMinutes } from "date-fns";
+import { toast } from "sonner";
 import { useLocation } from "wouter";
 import { useEffect, useState } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
@@ -139,6 +140,20 @@ interface LessonCardProps {
 
 function LessonCard({ lesson, isPast = false }: LessonCardProps) {
   const [, setLocation] = useLocation();
+  const utils = trpc.useUtils();
+
+  const cancelMutation = trpc.lesson.cancel.useMutation({
+    onSuccess: (data) => {
+      const msg = data.refundPercentage === 100
+        ? "Lesson cancelled. Full refund issued."
+        : data.refundPercentage > 0
+          ? `Lesson cancelled. ${data.refundPercentage}% refund issued.`
+          : "Lesson cancelled. No refund (within 24-hour window).";
+      toast.success(msg);
+      utils.lesson.myLessons.invalidate();
+    },
+    onError: (err) => toast.error(err.message),
+  });
 
   const getStatusBadge = () => {
     switch (lesson.status) {
@@ -259,16 +274,15 @@ function LessonCard({ lesson, isPast = false }: LessonCardProps) {
               )}
               
               {canCancel && (
-                <Button size="sm" variant="outline" className="gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-2"
+                  disabled={cancelMutation.isPending}
+                  onClick={() => cancelMutation.mutate({ lessonId: lesson.id })}
+                >
                   <Ban className="h-4 w-4" />
-                  Cancel Lesson
-                </Button>
-              )}
-              
-              {canReschedule && (
-                <Button size="sm" variant="outline" className="gap-2">
-                  <RefreshCw className="h-4 w-4" />
-                  Reschedule
+                  {cancelMutation.isPending ? "Cancelling..." : "Cancel Lesson"}
                 </Button>
               )}
               

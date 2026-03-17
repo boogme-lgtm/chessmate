@@ -11,7 +11,9 @@ import { Loader2, CheckCircle2, Eye, EyeOff } from "lucide-react";
 export default function Register() {
   const [, setLocation] = useLocation();
   const searchParams = useSearch();
-  const redirect = new URLSearchParams(searchParams).get("redirect") || "/dashboard";
+  const rawRedirect = new URLSearchParams(searchParams).get("redirect") || "/dashboard";
+  // Prevent open redirect: only allow relative paths
+  const redirect = rawRedirect.startsWith('/') && !rawRedirect.startsWith('//') ? rawRedirect : "/dashboard";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");

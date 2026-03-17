@@ -41,10 +41,26 @@ export default function CoachDashboard() {
   );
   
   // Fetch coach lessons
-  const { data: lessons, isLoading: lessonsLoading } = trpc.lesson.coachLessons.useQuery(
+  const { data: lessons, isLoading: lessonsLoading, refetch: refetchLessons } = trpc.lesson.coachLessons.useQuery(
     { limit: 10 },
     { enabled: isAuthenticated }
   );
+
+  // Mutations for accept/decline
+  const confirmMutation = trpc.lesson.confirmAsCoach.useMutation({
+    onSuccess: () => {
+      toast.success("Lesson confirmed!");
+      refetchLessons();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+  const declineMutation = trpc.lesson.declineAsCoach.useMutation({
+    onSuccess: () => {
+      toast.success("Lesson declined");
+      refetchLessons();
+    },
+    onError: (err) => toast.error(err.message),
+  });
 
   // Start Stripe onboarding mutation
   const startOnboarding = trpc.coach.startOnboarding.useMutation({
@@ -304,19 +320,21 @@ export default function CoachDashboard() {
                           <Button
                             size="sm"
                             className="gap-2 bg-green-600 hover:bg-green-700 text-white"
-                            onClick={() => toast.success("Lesson confirmed! (Backend integration pending)")}
+                            disabled={confirmMutation.isPending}
+                            onClick={() => confirmMutation.mutate({ lessonId: lesson.id })}
                           >
                             <ThumbsUp className="w-4 h-4" />
-                            Accept
+                            {confirmMutation.isPending ? "Confirming..." : "Accept"}
                           </Button>
                           <Button
                             size="sm"
                             variant="outline"
                             className="gap-2 border-red-600 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20"
-                            onClick={() => toast.error("Lesson declined (Backend integration pending)")}
+                            disabled={declineMutation.isPending}
+                            onClick={() => declineMutation.mutate({ lessonId: lesson.id })}
                           >
                             <ThumbsDown className="w-4 h-4" />
-                            Decline
+                            {declineMutation.isPending ? "Declining..." : "Decline"}
                           </Button>
                         </div>
                       </div>

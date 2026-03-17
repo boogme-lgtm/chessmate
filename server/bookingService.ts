@@ -1,6 +1,15 @@
 import { getDb } from "./db";
 import { lessons, coachProfiles, users } from "../drizzle/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, ne, notInArray } from "drizzle-orm";
+
+function safeJsonParse<T>(value: string | null | undefined, fallback: T): T {
+  if (!value) return fallback;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+}
 
 /**
  * Calculate pricing for a lesson booking
@@ -54,18 +63,14 @@ export async function isTimeSlotAvailable(
   const db = await getDb();
   if (!db) throw new Error("Database not initialized");
   
-  // Check for overlapping lessons
+  // Check for overlapping lessons (exclude cancelled and refunded)
   const overlapping = await db
     .select()
     .from(lessons)
     .where(
       and(
         eq(lessons.coachId, coachId),
-        // Lesson is not cancelled or refunded
-        // @ts-ignore - MySQL enum comparison
-        lessons.status !== "cancelled",
-        // @ts-ignore
-        lessons.status !== "refunded"
+        notInArray(lessons.status, ["cancelled", "refunded"])
       )
     );
 
@@ -112,17 +117,14 @@ export async function getCoachAvailability(
     console.error("Failed to parse availability schedule:", e);
   }
 
-  // Get all booked lessons in the date range
+  // Get all booked lessons in the date range (exclude cancelled and refunded)
   const bookedLessons = await db
     .select()
     .from(lessons)
     .where(
       and(
         eq(lessons.coachId, coachId),
-        // @ts-ignore
-        lessons.status !== "cancelled",
-        // @ts-ignore
-        lessons.status !== "refunded"
+        notInArray(lessons.status, ["cancelled", "refunded"])
       )
     );
 
@@ -132,7 +134,7 @@ export async function getCoachAvailability(
     minAdvanceHours: coach.minAdvanceHours || 24,
     maxAdvanceDays: coach.maxAdvanceDays || 30,
     bufferMinutes: coach.bufferMinutes || 15,
-    lessonDurations: coach.lessonDurations ? JSON.parse(coach.lessonDurations) : [60],
+    lessonDurations: safeJsonParse(coach.lessonDurations, [60]),
   };
 }
 

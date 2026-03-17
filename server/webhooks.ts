@@ -10,8 +10,9 @@ import Stripe from 'stripe';
 import { constructWebhookEvent } from './stripe';
 import * as db from './db';
 import { sendEmail, getStudentBookingConfirmationEmail, getCoachBookingNotificationEmail } from './emailService';
+import { ENV } from './_core/env';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+const stripe = new Stripe(ENV.stripeSecretKey || 'sk_test_placeholder', {
   apiVersion: '2026-01-28.clover',
 });
 
@@ -27,11 +28,17 @@ export async function handleStripeWebhook(req: Request, res: Response) {
   }
 
   try {
+    // Validate webhook secret is configured
+    if (!ENV.stripeWebhookSecret) {
+      console.error('[Webhook] STRIPE_WEBHOOK_SECRET not configured');
+      return res.status(500).json({ error: 'Webhook secret not configured' });
+    }
+
     // Construct and verify the webhook event
     const event = constructWebhookEvent(
       req.body,
       signature,
-      process.env.STRIPE_WEBHOOK_SECRET!
+      ENV.stripeWebhookSecret
     );
 
     console.log(`[Webhook] Received event: ${event.type} (${event.id})`);
@@ -78,35 +85,41 @@ async function handleCheckoutCompleted(event: Stripe.Event) {
   console.log(`[Webhook] Payment status: ${session.payment_status}`);
   console.log(`[Webhook] Metadata:`, session.metadata);
 
-  // Extract lesson ID from metadata
-  const lessonId = session.metadata?.lessonId;
-  
-  if (!lessonId) {
+  // Extract and validate lesson ID from metadata
+  const rawLessonId = session.metadata?.lessonId;
+
+  if (!rawLessonId) {
     console.error('[Webhook] No lessonId in checkout session metadata');
+    return;
+  }
+
+  const lessonId = parseInt(rawLessonId, 10);
+  if (isNaN(lessonId) || lessonId <= 0) {
+    console.error(`[Webhook] Invalid lessonId in metadata: ${rawLessonId}`);
     return;
   }
 
   // Update lesson status based on payment status
   if (session.payment_status === 'paid') {
     console.log(`[Webhook] Updating lesson ${lessonId} to confirmed status`);
-    
-    await db.updateLessonStatus(parseInt(lessonId), 'confirmed');
-    
+
+    await db.updateLessonStatus(lessonId, 'confirmed');
+
     // Store the Stripe payment intent ID
     if (session.payment_intent) {
-      const paymentIntentId = typeof session.payment_intent === 'string' 
-        ? session.payment_intent 
+      const paymentIntentId = typeof session.payment_intent === 'string'
+        ? session.payment_intent
         : session.payment_intent.id;
-      
-      await db.updateLessonPaymentIntent(parseInt(lessonId), paymentIntentId);
+
+      await db.updateLessonPaymentIntent(lessonId, paymentIntentId);
       console.log(`[Webhook] Stored payment intent ${paymentIntentId} for lesson ${lessonId}`);
     }
-    
-    console.log(`[Webhook] ✅ Lesson ${lessonId} confirmed and payment recorded`);
-    
+
+    console.log(`[Webhook] Lesson ${lessonId} confirmed and payment recorded`);
+
     // Send confirmation emails to student and coach
     try {
-      const lesson = await db.getLessonById(parseInt(lessonId));
+      const lesson = await db.getLessonById(lessonId);
       if (lesson) {
         const student = await db.getUserById(lesson.studentId);
         const coach = await db.getUserById(lesson.coachId);

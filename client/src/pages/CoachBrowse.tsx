@@ -162,7 +162,7 @@ function CoachCard({ coach }: CoachCardProps) {
         {profile?.specialties && (
           <div className="mb-4">
             <div className="flex flex-wrap gap-1">
-              {JSON.parse(profile.specialties as string).slice(0, 3).map((specialty: string) => (
+              {(() => { try { return JSON.parse(profile.specialties as string); } catch { return []; } })().slice(0, 3).map((specialty: string) => (
                 <Badge key={specialty} variant="outline" className="text-xs">
                   {specialty}
                 </Badge>

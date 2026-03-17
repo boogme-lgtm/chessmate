@@ -584,7 +584,9 @@ export const appRouter = router({
     book: protectedProcedure
       .input(z.object({
         coachId: z.number(),
-        scheduledAt: z.date(),
+        scheduledAt: z.date().refine((d) => d > new Date(), {
+          message: "Lesson must be scheduled in the future",
+        }),
         durationMinutes: z.number().min(30).max(180).default(60),
         topic: z.string().optional(),
         timezone: z.string().optional(),
@@ -656,6 +658,51 @@ export const appRouter = router({
         });
 
         return { success: true };
+      }),
+
+    // Decline lesson (coach)
+    declineAsCoach: protectedProcedure
+      .input(z.object({
+        lessonId: z.number(),
+        reason: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const lesson = await db.getLessonById(input.lessonId);
+        if (!lesson) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
+        }
+        if (lesson.coachId !== ctx.user.id) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Not your lesson" });
+        }
+        if (lesson.status !== "pending_confirmation") {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Lesson cannot be declined in its current state" });
+        }
+
+        const result = await db.cancelLesson(input.lessonId, 'coach', input.reason || 'Declined by coach');
+        return { success: true, refundAmountCents: result.refundAmountCents };
+      }),
+
+    // Cancel lesson (student)
+    cancel: protectedProcedure
+      .input(z.object({
+        lessonId: z.number(),
+        reason: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const lesson = await db.getLessonById(input.lessonId);
+        if (!lesson) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
+        }
+        if (lesson.studentId !== ctx.user.id) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Not your lesson" });
+        }
+
+        const result = await db.cancelLesson(input.lessonId, 'student', input.reason);
+        return {
+          success: true,
+          refundAmountCents: result.refundAmountCents,
+          refundPercentage: result.refundPercentage,
+        };
       }),
 
     // Confirm completion (student) - releases payment

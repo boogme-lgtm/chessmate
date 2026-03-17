@@ -157,7 +157,7 @@ export default function CoachDetail() {
                 </CardHeader>
                 <CardContent>
                   <div className="flex flex-wrap gap-2">
-                    {JSON.parse(profile.specialties as string).map((specialty: string) => (
+                    {(() => { try { return JSON.parse(profile.specialties as string); } catch { return []; } })().map((specialty: string) => (
                       <Badge key={specialty} variant="secondary">
                         {specialty}
                       </Badge>

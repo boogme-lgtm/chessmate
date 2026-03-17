@@ -54,9 +54,10 @@ export default function BookingModal({ open, onOpenChange, coach }: BookingModal
 
   const profile = coach.profile;
   const hourlyRateCents = profile?.hourlyRateCents || 5000;
-  const lessonDurations = profile?.lessonDurations 
-    ? JSON.parse(profile.lessonDurations)
-    : [60];
+  const lessonDurations = (() => {
+    if (!profile?.lessonDurations) return [60];
+    try { return JSON.parse(profile.lessonDurations); } catch { return [60]; }
+  })();
 
   const calculatePrice = (duration: number) => {
     return ((hourlyRateCents / 100) * (duration / 60)).toFixed(2);

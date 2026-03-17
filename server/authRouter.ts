@@ -156,27 +156,21 @@ export const authRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
-      console.log("[Login] Attempting login for:", input.email);
       const result = await loginUser({
         email: input.email,
         password: input.password,
       });
 
       if (!result.success || !result.user) {
-        console.log("[Login] Login failed:", result.error);
         throw new TRPCError({
           code: "UNAUTHORIZED",
           message: result.error || "Login failed",
         });
       }
 
-      console.log("[Login] Login successful for user ID:", result.user.id);
-      
       // Create session
       const sessionToken = await createSessionToken(result.user);
-      console.log("[Login] Session token created, setting cookie");
       setSessionCookie(ctx.res, sessionToken);
-      console.log("[Login] Cookie set successfully");
 
       return {
         success: true,
