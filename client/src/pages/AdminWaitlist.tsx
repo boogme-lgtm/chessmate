@@ -43,7 +43,7 @@ export default function AdminWaitlist() {
     const rows = waitlistEntries.map(entry => [
       sanitizeCell(entry.email),
       sanitizeCell(entry.name || "N/A"),
-      sanitizeCell(entry.userType),
+      sanitizeCell(entry.userType ?? "N/A"),
       sanitizeCell(entry.referralSource || "N/A"),
       format(new Date(entry.createdAt), "yyyy-MM-dd HH:mm:ss"),
       entry.confirmationEmailSent ? "Yes" : "No",

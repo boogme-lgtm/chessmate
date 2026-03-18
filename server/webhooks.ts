@@ -228,7 +228,7 @@ async function handlePaymentFailed(event: Stripe.Event) {
   
   if (lesson) {
     // Only cancel if lesson hasn't already progressed past payment
-    if (['pending_confirmation', 'confirmed'].includes(lesson.status)) {
+    if (lesson.status && ['pending_confirmation', 'confirmed'].includes(lesson.status)) {
       console.log(`[Webhook] Marking lesson ${lesson.id} as payment failed`);
       await db.updateLessonStatus(lesson.id, 'cancelled');
       console.log(`[Webhook] Lesson ${lesson.id} cancelled due to payment failure`);
