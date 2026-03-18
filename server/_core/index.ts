@@ -91,6 +91,10 @@ async function startServer() {
   server.listen(port, () => {
     console.log(`Server running on http://localhost:${port}/`);
   });
+
+  // Start the 24-hour lesson reminder scheduler
+  const { startReminderScheduler } = await import("../reminderScheduler");
+  startReminderScheduler();
 }
 
 startServer().catch(console.error);

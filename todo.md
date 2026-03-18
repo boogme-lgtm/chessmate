@@ -620,9 +620,34 @@
 - [x] Design booking confirmation email templates (student + coach)
 - [x] Implement booking confirmation emails in webhook handler
 - [x] Design 24-hour reminder email templates with cancellation links
-- [ ] Create automated reminder scheduler (check every hour for upcoming lessons)
+- [x] Create automated reminder scheduler (check every hour for upcoming lessons)
 - [x] Implement lesson cancellation endpoint with refund logic
 - [x] Add cancellation policy enforcement (>48hrs full, 24-48hrs partial, <24hrs none)
 - [ ] Create cancellation confirmation email templates
 - [ ] Test complete notification flow end-to-end
-- [ ] Add reminder clock/countdown UI component for students and coaches
+- [x] Add reminder clock/countdown UI component for students and coaches
+
+## 3-Step Flow Build (March 17, 2026)
+
+### Step 1: Automated 24-Hour Reminder Scheduler
+- [x] Create server-side cron job that runs every hour
+- [x] Query lessons scheduled 20-28 hours from now that haven't had reminder sent
+- [x] Send 24-hour reminder email to student with lesson details + cancellation link
+- [x] Send 24-hour reminder email to coach with lesson details
+- [x] Mark lesson as reminder_sent in database to prevent duplicate sends
+- [x] Add reminderSentAt column to lessons table
+- [x] Register cron job in server startup
+
+### Step 2: Cancellation Confirmation Dialog + Countdown Timer
+- [x] Build CancellationDialog component with refund breakdown
+- [x] Show exact refund amount based on time until lesson (>48h=100%, 24-48h=50%, <24h=0%)
+- [x] Add countdown timer showing time remaining until lesson on each lesson card
+- [x] Add "time to cancel with full refund" countdown on lesson cards
+- [x] Wire Cancel button to open dialog instead of firing immediately
+- [x] Show cancellation confirmation email will be sent
+
+### Step 3: Cristian's Coach Profile
+- [ ] Navigate to /coach/apply and complete the application as Cristian
+- [ ] Verify AI vetting auto-approves the application
+- [ ] Confirm coach profile appears in /coaches browse page
+- [ ] Test booking flow against Cristian's coach profile

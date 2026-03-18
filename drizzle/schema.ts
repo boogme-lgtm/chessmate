@@ -208,8 +208,11 @@ export const lessons = mysqlTable("lessons", {
   // Refund window (48 hours after completion)
   refundWindowEndsAt: timestamp("refundWindowEndsAt"),
   
+  // Reminder tracking
+  reminderSentAt: timestamp('reminderSentAt'),
+  
   // Cancellation tracking
-  cancelledAt: timestamp("cancelledAt"),
+  cancelledAt: timestamp('cancelledAt'),
   cancelledBy: mysqlEnum("cancelledBy", ["student", "coach", "system"]),
   cancellationReason: text("cancellationReason"),
   refundAmountCents: int("refundAmountCents"),
