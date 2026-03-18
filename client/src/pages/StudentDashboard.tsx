@@ -58,7 +58,7 @@ export default function StudentDashboard() {
   if (!user) return null;
 
   const upcomingLessons = lessons?.filter((l: any) =>
-    isFuture(new Date(l.scheduledAt)) && l.status !== "cancelled"
+    isFuture(new Date(l.scheduledAt)) && l.status !== "cancelled" && l.status !== "completed"
   ) || [];
 
   const pastLessons = lessons?.filter((l: any) =>

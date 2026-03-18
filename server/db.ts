@@ -298,15 +298,21 @@ export async function createLesson(lesson: Omit<InsertLesson, 'id'>) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
+  // Generate a secure cancellation token for email cancel links
+  const crypto = await import('crypto');
+  const cancellationToken = crypto.randomBytes(32).toString('hex');
+
   // Use raw SQL to bypass Drizzle's automatic field inclusion
   // Only include the fields we actually want to insert
   const result = await db.execute(sql`
     INSERT INTO lessons (
-      studentId, coachId, scheduledAt, durationMinutes, 
-      status, amountCents, commissionCents, coachPayoutCents
+      studentId, coachId, scheduledAt, durationMinutes,
+      status, amountCents, commissionCents, coachPayoutCents,
+      cancellationToken
     ) VALUES (
       ${lesson.studentId}, ${lesson.coachId}, ${lesson.scheduledAt}, ${lesson.durationMinutes},
-      ${lesson.status}, ${lesson.amountCents}, ${lesson.commissionCents}, ${lesson.coachPayoutCents}
+      ${lesson.status}, ${lesson.amountCents}, ${lesson.commissionCents}, ${lesson.coachPayoutCents},
+      ${cancellationToken}
     )
   `);
   
@@ -977,22 +983,39 @@ export async function cancelLesson(
   }
   
   const refundAmountCents = Math.round((lesson.amountCents * refundPercentage) / 100);
-  
+
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  
+
+  // Process Stripe refund if payment was made and refund is due
+  if (refundAmountCents > 0 && lesson.stripePaymentIntentId) {
+    try {
+      // Dynamic import to avoid circular dependency
+      const stripeService = await import("./stripe");
+      await stripeService.createRefund(
+        lesson.stripePaymentIntentId,
+        refundAmountCents,
+        "requested_by_customer"
+      );
+    } catch (err) {
+      console.error(`[cancelLesson] Stripe refund failed for lesson ${lessonId}:`, err);
+      // Still cancel the lesson but log the refund failure for manual resolution
+    }
+  }
+
   // Update lesson status
   await db.execute(sql`
-    UPDATE lessons 
-    SET 
+    UPDATE lessons
+    SET
       status = 'cancelled',
       cancelledAt = NOW(),
       cancelledBy = ${cancelledBy},
       cancellationReason = ${cancellationReason || null},
-      refundAmountCents = ${refundAmountCents}
+      refundAmountCents = ${refundAmountCents},
+      refundProcessedAt = ${refundAmountCents > 0 ? new Date() : null}
     WHERE id = ${lessonId}
   `);
-  
+
   return {
     success: true,
     refundAmountCents,

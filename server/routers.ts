@@ -778,14 +778,18 @@ export const appRouter = router({
           });
         }
 
-        // Process refund
+        // Process full refund (this is post-completion dispute, full refund is appropriate)
         if (lesson.stripePaymentIntentId) {
-          await stripeService.createRefund(lesson.stripePaymentIntentId);
+          await stripeService.createRefund(
+            lesson.stripePaymentIntentId,
+            lesson.amountCents,
+            "requested_by_customer"
+          );
         }
 
         await db.updateLessonStatus(input.lessonId, "refunded");
 
-        return { success: true };
+        return { success: true, refundAmountCents: lesson.amountCents };
       }),
   }),
 
