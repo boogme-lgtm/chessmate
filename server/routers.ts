@@ -353,7 +353,11 @@ export const appRouter = router({
           return null;
         }
         const profile = await db.getCoachProfileByUserId(input.id);
-        return { ...coach, profile };
+        // Only return public fields — never expose password, tokens, or Stripe IDs
+        const { password, emailVerificationToken, emailVerificationExpires,
+          passwordResetToken, passwordResetExpires, stripeCustomerId,
+          stripeConnectAccountId, ...publicCoach } = coach as any;
+        return { ...publicCoach, profile };
       }),
 
     // Get coach availability (public)
@@ -369,10 +373,13 @@ export const appRouter = router({
           throw new TRPCError({ code: "NOT_FOUND", message: "Coach not found" });
         }
 
-        // Parse availability schedule (JSON)
-        const schedule = profile.availabilitySchedule 
-          ? JSON.parse(profile.availabilitySchedule as string)
-          : {};
+        // Parse availability schedule (JSON) — safely handle malformed data
+        let schedule = {};
+        try {
+          schedule = profile.availabilitySchedule
+            ? JSON.parse(profile.availabilitySchedule as string)
+            : {};
+        } catch { /* malformed JSON, use empty schedule */ }
 
         // Get existing bookings to exclude
         const bookings = await db.getLessonsByCoach(input.coachId, 100);
@@ -380,15 +387,20 @@ export const appRouter = router({
           .filter((l: any) => l.status !== "cancelled" && l.status !== "refunded")
           .map((l: any) => l.scheduledAt);
 
+        let lessonDurations = [60];
+        try {
+          lessonDurations = profile.lessonDurations
+            ? JSON.parse(profile.lessonDurations as string)
+            : [60];
+        } catch { /* malformed JSON, use default */ }
+
         return {
           schedule,
           bookedSlots,
           minAdvanceHours: profile.minAdvanceHours || 24,
           maxAdvanceDays: profile.maxAdvanceDays || 30,
           bufferMinutes: profile.bufferMinutes || 15,
-          lessonDurations: profile.lessonDurations 
-            ? JSON.parse(profile.lessonDurations as string)
-            : [60],
+          lessonDurations,
         };
       }),
 
@@ -592,6 +604,11 @@ export const appRouter = router({
         timezone: z.string().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
+        // Prevent self-booking
+        if (ctx.user.id === input.coachId) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "You cannot book a lesson with yourself" });
+        }
+
         // Get coach profile for pricing
         const coachProfile = await db.getCoachProfileByUserId(input.coachId);
         if (!coachProfile) {
@@ -651,6 +668,9 @@ export const appRouter = router({
         }
         if (lesson.coachId !== ctx.user.id) {
           throw new TRPCError({ code: "FORBIDDEN", message: "Not your lesson" });
+        }
+        if (lesson.status !== "pending_confirmation") {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Lesson cannot be confirmed in its current state" });
         }
 
         await db.updateLessonStatus(input.lessonId, "confirmed", {
@@ -720,6 +740,9 @@ export const appRouter = router({
         if (lesson.studentId !== ctx.user.id) {
           throw new TRPCError({ code: "FORBIDDEN", message: "Not your lesson" });
         }
+        if (!["confirmed", "paid"].includes(lesson.status)) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Lesson cannot be completed in its current state" });
+        }
 
         // Capture payment (release from escrow)
         if (lesson.stripePaymentIntentId) {
@@ -770,6 +793,10 @@ export const appRouter = router({
           throw new TRPCError({ code: "FORBIDDEN", message: "Not your lesson" });
         }
 
+        if (lesson.status !== "released") {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Lesson is not in a refundable state" });
+        }
+
         // Check refund window
         if (lesson.refundWindowEndsAt && new Date() > lesson.refundWindowEndsAt) {
           throw new TRPCError({
@@ -797,20 +824,12 @@ export const appRouter = router({
   payment: router({
     // Create checkout session for a lesson
     createCheckout: protectedProcedure
-      .input(z.object({ 
+      .input(z.object({
         lessonId: z.number(),
-        // Accept optional lesson object to avoid transaction isolation issues
-        lesson: z.object({
-          id: z.number(),
-          studentId: z.number(),
-          coachId: z.number(),
-          amountCents: z.number(),
-          currency: z.string().optional(),
-        }).optional()
       }))
       .mutation(async ({ ctx, input }) => {
-        // Use provided lesson object if available, otherwise query database
-        const lesson = input.lesson || await db.getLessonById(input.lessonId);
+        // Always fetch from DB — never trust client-supplied pricing data
+        const lesson = await db.getLessonById(input.lessonId);
         if (!lesson) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
         }

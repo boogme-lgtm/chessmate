@@ -269,6 +269,8 @@ export async function createRefund(params: {
       amount: amountCents,
       reason,
       metadata,
+      reverse_transfer: true,
+      refund_application_fee: true,
     });
 
     console.log('[Stripe Refund] Refund created:', refund.id);

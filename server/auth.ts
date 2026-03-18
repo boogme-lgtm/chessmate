@@ -194,7 +194,7 @@ export async function loginUser(params: {
   if (!user.password) {
     return {
       success: false,
-      error: "This account uses social login. Please sign in with Google.",
+      error: "Invalid email or password",
     };
   }
 
@@ -218,9 +218,10 @@ export async function loginUser(params: {
     .set({ lastSignedIn: new Date() })
     .where(eq(users.id, user.id));
 
-  // Return user without password
-  const { password, ...userWithoutPassword } = user;
-  return { success: true, user: userWithoutPassword };
+  // Return user without sensitive fields
+  const { password, emailVerificationToken, emailVerificationExpires,
+    passwordResetToken, passwordResetExpires, ...safeUser } = user;
+  return { success: true, user: safeUser };
 }
 
 /**
