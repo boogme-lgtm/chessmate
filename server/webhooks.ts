@@ -12,9 +12,7 @@ import * as db from './db';
 import { sendEmail, getStudentBookingConfirmationEmail, getCoachBookingNotificationEmail } from './emailService';
 import { ENV } from './_core/env';
 
-const stripe = new Stripe(ENV.stripeSecretKey || 'sk_test_placeholder', {
-  apiVersion: '2026-01-28.clover',
-});
+// Use the shared Stripe instance from stripe.ts — do not create a duplicate
 
 /**
  * Main webhook handler that routes events to specific handlers
@@ -101,6 +99,13 @@ async function handleCheckoutCompleted(event: Stripe.Event) {
 
   // Update lesson status based on payment status
   if (session.payment_status === 'paid') {
+    // Idempotency: skip if lesson is already confirmed or further along
+    const currentLesson = await db.getLessonById(lessonId);
+    if (currentLesson && ['confirmed', 'completed', 'released', 'cancelled', 'refunded'].includes(currentLesson.status)) {
+      console.log(`[Webhook] Lesson ${lessonId} already in state '${currentLesson.status}', skipping duplicate event`);
+      return;
+    }
+
     console.log(`[Webhook] Updating lesson ${lessonId} to confirmed status`);
 
     await db.updateLessonStatus(lessonId, 'confirmed');
@@ -222,8 +227,13 @@ async function handlePaymentFailed(event: Stripe.Event) {
   const lesson = await db.getLessonByPaymentIntent(paymentIntent.id);
   
   if (lesson) {
-    console.log(`[Webhook] Marking lesson ${lesson.id} as payment failed`);
-    await db.updateLessonStatus(lesson.id, 'cancelled');
-    console.log(`[Webhook] ❌ Lesson ${lesson.id} cancelled due to payment failure`);
+    // Only cancel if lesson hasn't already progressed past payment
+    if (['pending_confirmation', 'confirmed'].includes(lesson.status)) {
+      console.log(`[Webhook] Marking lesson ${lesson.id} as payment failed`);
+      await db.updateLessonStatus(lesson.id, 'cancelled');
+      console.log(`[Webhook] Lesson ${lesson.id} cancelled due to payment failure`);
+    } else {
+      console.log(`[Webhook] Lesson ${lesson.id} already in state '${lesson.status}', ignoring payment failure`);
+    }
   }
 }

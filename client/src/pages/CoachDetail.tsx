@@ -62,9 +62,9 @@ export default function CoachDetail() {
     ? (profile.hourlyRateCents / 100).toFixed(0) 
     : "50";
   
-  const rating = profile?.averageRating 
+  const rating = profile?.averageRating
     ? parseFloat(profile.averageRating as string).toFixed(1)
-    : "5.0";
+    : null;
 
   return (
     <div className="min-h-screen bg-background">
@@ -107,13 +107,19 @@ export default function CoachDetail() {
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="flex items-center gap-1 text-yellow-500 mb-1">
-                    <Star className="h-5 w-5 fill-current" />
-                    <span className="text-2xl font-semibold text-foreground">{rating}</span>
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    {profile?.totalReviews || 0} reviews
-                  </p>
+                  {rating ? (
+                    <>
+                      <div className="flex items-center gap-1 text-yellow-500 mb-1">
+                        <Star className="h-5 w-5 fill-current" />
+                        <span className="text-2xl font-semibold text-foreground">{rating}</span>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        {profile?.totalReviews || 0} reviews
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">New coach</p>
+                  )}
                 </div>
               </div>
 

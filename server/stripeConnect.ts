@@ -269,6 +269,8 @@ export async function createRefund(params: {
       amount: amountCents,
       reason,
       metadata,
+      reverse_transfer: true,
+      refund_application_fee: true,
     });
 
     console.log('[Stripe Refund] Refund created:', refund.id);
@@ -340,7 +342,7 @@ export function calculateCancellationRefund(params: {
     };
   }
 
-  if (params.hoursBeforeLesson >= 24) {
+  if (params.hoursBeforeLesson > 48) {
     return {
       refundPercent: 100,
       refundAmountCents: params.amountCents,
@@ -348,11 +350,19 @@ export function calculateCancellationRefund(params: {
     };
   }
 
-  // Less than 24 hours
-  const refundAmountCents = Math.round(params.amountCents * 0.5);
+  if (params.hoursBeforeLesson >= 24) {
+    const refundAmountCents = Math.round(params.amountCents * 0.5);
+    return {
+      refundPercent: 50,
+      refundAmountCents,
+      coachCompensationCents: params.amountCents - refundAmountCents,
+    };
+  }
+
+  // Less than 24 hours — no refund
   return {
-    refundPercent: 50,
-    refundAmountCents,
-    coachCompensationCents: params.amountCents - refundAmountCents,
+    refundPercent: 0,
+    refundAmountCents: 0,
+    coachCompensationCents: params.amountCents,
   };
 }

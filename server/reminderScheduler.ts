@@ -159,15 +159,20 @@ export async function sendPendingReminders(): Promise<void> {
       console.error(`[Reminder Scheduler] Failed to send coach reminder for lesson ${lesson.lessonId}:`, err);
     }
 
-    // Mark reminder as sent if at least one email went through
-    if (studentSent || coachSent) {
+    // Only mark as fully sent if BOTH emails succeeded
+    if (studentSent && coachSent) {
       await dbInstance.execute(sql`
         UPDATE lessons
         SET reminderSentAt = NOW()
         WHERE id = ${lesson.lessonId}
       `);
       console.log(
-        `[Reminder Scheduler] Reminder sent for lesson ${lesson.lessonId} (student: ${studentSent}, coach: ${coachSent})`
+        `[Reminder Scheduler] Both reminders sent for lesson ${lesson.lessonId}`
+      );
+    } else if (studentSent || coachSent) {
+      // Partial success — log but don't mark as sent so it retries next hour
+      console.warn(
+        `[Reminder Scheduler] Partial reminder for lesson ${lesson.lessonId} (student: ${studentSent}, coach: ${coachSent}) — will retry next hour`
       );
     }
   }

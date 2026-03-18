@@ -46,27 +46,12 @@ export default function CoachDashboard() {
     { enabled: isAuthenticated }
   );
 
-  // Mutations for accept/decline
-  const confirmMutation = trpc.lesson.confirmAsCoach.useMutation({
-    onSuccess: () => {
-      toast.success("Lesson confirmed!");
-      refetchLessons();
-    },
-    onError: (err) => toast.error(err.message),
-  });
-  const declineMutation = trpc.lesson.declineAsCoach.useMutation({
-    onSuccess: () => {
-      toast.success("Lesson declined");
-      refetchLessons();
-    },
-    onError: (err) => toast.error(err.message),
-  });
+  // Note: accept/decline mutations moved to PendingLessonCard component below
 
   // Start Stripe onboarding mutation
   const startOnboarding = trpc.coach.startOnboarding.useMutation({
     onSuccess: (data) => {
-      window.open(data.url, "_blank");
-      toast.success("Opening Stripe onboarding in a new tab...");
+      window.location.href = data.url;
     },
     onError: () => {
       toast.error("Failed to start onboarding. Please try again.");
@@ -96,12 +81,33 @@ export default function CoachDashboard() {
             <p className="text-muted-foreground mb-6">
               Please log in to access your coach dashboard.
             </p>
-            <Button 
+            <Button
               className="bg-burgundy hover:bg-burgundy/90 text-white"
               onClick={() => window.location.href = "/sign-in"}
             >
               Log In
             </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (user?.role !== "coach") {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Card className="max-w-md w-full mx-4">
+          <CardContent className="p-8 text-center">
+            <AlertCircle className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+            <h2 className="text-xl font-semibold mb-2">Access Denied</h2>
+            <p className="text-muted-foreground mb-6">
+              This page is only available to coaches.
+            </p>
+            <Link href="/">
+              <Button className="bg-burgundy hover:bg-burgundy/90 text-white">
+                Go Home
+              </Button>
+            </Link>
           </CardContent>
         </Card>
       </div>
@@ -296,48 +302,12 @@ export default function CoachDashboard() {
                 <CardContent>
                   <div className="space-y-4">
                     {lessons.filter((l: any) => l.status === "pending_confirmation").map((lesson: any) => (
-                      <div 
+                      <PendingLessonCard
                         key={lesson.id}
-                        className="flex items-center justify-between p-4 rounded-lg bg-background border border-yellow-200 dark:border-yellow-900"
-                      >
-                        <div className="flex items-center gap-4 flex-1">
-                          <div className="w-10 h-10 rounded-full bg-yellow-100 dark:bg-yellow-900/30 flex items-center justify-center">
-                            <Users className="w-5 h-5 text-yellow-600" />
-                          </div>
-                          <div className="flex-1">
-                            <div className="font-medium">
-                              {lesson.topic || "Chess Lesson"} • Student #{lesson.studentId}
-                            </div>
-                            <div className="text-sm text-muted-foreground">
-                              {lesson.durationMinutes} min • {new Date(lesson.scheduledAt).toLocaleDateString()} at {new Date(lesson.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </div>
-                            <div className="text-sm font-semibold text-burgundy mt-1">
-                              {formatCurrency(lesson.coachPayoutCents || 0)} (your payout)
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            className="gap-2 bg-green-600 hover:bg-green-700 text-white"
-                            disabled={confirmMutation.isPending}
-                            onClick={() => confirmMutation.mutate({ lessonId: lesson.id })}
-                          >
-                            <ThumbsUp className="w-4 h-4" />
-                            {confirmMutation.isPending ? "Confirming..." : "Accept"}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="gap-2 border-red-600 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20"
-                            disabled={declineMutation.isPending}
-                            onClick={() => declineMutation.mutate({ lessonId: lesson.id })}
-                          >
-                            <ThumbsDown className="w-4 h-4" />
-                            {declineMutation.isPending ? "Declining..." : "Decline"}
-                          </Button>
-                        </div>
-                      </div>
+                        lesson={lesson}
+                        formatCurrency={formatCurrency}
+                        onActionComplete={() => refetchLessons()}
+                      />
                     ))}
                   </div>
                 </CardContent>
@@ -450,6 +420,69 @@ export default function CoachDashboard() {
           </div>
         )}
       </main>
+    </div>
+  );
+}
+
+function PendingLessonCard({ lesson, formatCurrency, onActionComplete }: {
+  lesson: any;
+  formatCurrency: (cents: number) => string;
+  onActionComplete: () => void;
+}) {
+  const confirmMutation = trpc.lesson.confirmAsCoach.useMutation({
+    onSuccess: () => {
+      toast.success("Lesson confirmed!");
+      onActionComplete();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+  const declineMutation = trpc.lesson.declineAsCoach.useMutation({
+    onSuccess: () => {
+      toast.success("Lesson declined");
+      onActionComplete();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  return (
+    <div className="flex items-center justify-between p-4 rounded-lg bg-background border border-yellow-200 dark:border-yellow-900">
+      <div className="flex items-center gap-4 flex-1">
+        <div className="w-10 h-10 rounded-full bg-yellow-100 dark:bg-yellow-900/30 flex items-center justify-center">
+          <Users className="w-5 h-5 text-yellow-600" />
+        </div>
+        <div className="flex-1">
+          <div className="font-medium">
+            {lesson.topic || "Chess Lesson"} • Student #{lesson.studentId}
+          </div>
+          <div className="text-sm text-muted-foreground">
+            {lesson.durationMinutes} min • {new Date(lesson.scheduledAt).toLocaleDateString()} at {new Date(lesson.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </div>
+          <div className="text-sm font-semibold text-burgundy mt-1">
+            {formatCurrency(lesson.coachPayoutCents || 0)} (your payout)
+          </div>
+        </div>
+      </div>
+      <div className="flex gap-2">
+        <Button
+          size="sm"
+          className="gap-2 bg-green-600 hover:bg-green-700 text-white"
+          disabled={confirmMutation.isPending || declineMutation.isPending}
+          onClick={() => confirmMutation.mutate({ lessonId: lesson.id })}
+        >
+          <ThumbsUp className="w-4 h-4" />
+          {confirmMutation.isPending ? "Confirming..." : "Accept"}
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          className="gap-2 border-red-600 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20"
+          disabled={declineMutation.isPending || confirmMutation.isPending}
+          onClick={() => declineMutation.mutate({ lessonId: lesson.id })}
+        >
+          <ThumbsDown className="w-4 h-4" />
+          {declineMutation.isPending ? "Declining..." : "Decline"}
+        </Button>
+      </div>
     </div>
   );
 }

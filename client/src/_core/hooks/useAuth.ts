@@ -37,16 +37,13 @@ export function useAuth(options?: UseAuthOptions) {
       }
       throw error;
     } finally {
+      localStorage.removeItem("manus-runtime-user-info");
       utils.auth.me.setData(undefined, null);
       await utils.auth.me.invalidate();
     }
   }, [logoutMutation, utils]);
 
   const state = useMemo(() => {
-    localStorage.setItem(
-      "manus-runtime-user-info",
-      JSON.stringify(meQuery.data)
-    );
     return {
       user: meQuery.data ?? null,
       loading: meQuery.isLoading || logoutMutation.isPending,
@@ -60,6 +57,17 @@ export function useAuth(options?: UseAuthOptions) {
     logoutMutation.error,
     logoutMutation.isPending,
   ]);
+
+  // Sync minimal user info to localStorage via useEffect (not useMemo)
+  useEffect(() => {
+    if (meQuery.data) {
+      // Only store non-sensitive fields needed by external integrations
+      const { id, name, role, userType } = meQuery.data as any;
+      localStorage.setItem("manus-runtime-user-info", JSON.stringify({ id, name, role, userType }));
+    } else {
+      localStorage.removeItem("manus-runtime-user-info");
+    }
+  }, [meQuery.data]);
 
   useEffect(() => {
     if (!redirectOnUnauthenticated) return;

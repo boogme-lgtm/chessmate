@@ -298,15 +298,21 @@ export async function createLesson(lesson: Omit<InsertLesson, 'id'>) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
+  // Generate a secure cancellation token for email cancel links
+  const crypto = await import('crypto');
+  const cancellationToken = crypto.randomBytes(32).toString('hex');
+
   // Use raw SQL to bypass Drizzle's automatic field inclusion
   // Only include the fields we actually want to insert
   const result = await db.execute(sql`
     INSERT INTO lessons (
-      studentId, coachId, scheduledAt, durationMinutes, 
-      status, amountCents, commissionCents, coachPayoutCents
+      studentId, coachId, scheduledAt, durationMinutes,
+      status, amountCents, commissionCents, coachPayoutCents,
+      cancellationToken
     ) VALUES (
       ${lesson.studentId}, ${lesson.coachId}, ${lesson.scheduledAt}, ${lesson.durationMinutes},
-      ${lesson.status}, ${lesson.amountCents}, ${lesson.commissionCents}, ${lesson.coachPayoutCents}
+      ${lesson.status}, ${lesson.amountCents}, ${lesson.commissionCents}, ${lesson.coachPayoutCents},
+      ${cancellationToken}
     )
   `);
   
@@ -977,22 +983,53 @@ export async function cancelLesson(
   }
   
   const refundAmountCents = Math.round((lesson.amountCents * refundPercentage) / 100);
-  
+
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  
-  // Update lesson status
-  await db.execute(sql`
-    UPDATE lessons 
-    SET 
+
+  // Atomically set status to cancelled — prevents double-cancellation race condition
+  const updateResult: any = await db.execute(sql`
+    UPDATE lessons
+    SET
       status = 'cancelled',
       cancelledAt = NOW(),
       cancelledBy = ${cancelledBy},
       cancellationReason = ${cancellationReason || null},
       refundAmountCents = ${refundAmountCents}
     WHERE id = ${lessonId}
+      AND status NOT IN ('cancelled', 'completed', 'refunded')
   `);
-  
+
+  // If no rows updated, the lesson was already cancelled/completed
+  if (updateResult[0].affectedRows === 0) {
+    throw new Error('Lesson cannot be cancelled in its current state');
+  }
+
+  // Process Stripe refund if payment was made and refund is due
+  let stripeRefundSucceeded = false;
+  if (refundAmountCents > 0 && lesson.stripePaymentIntentId) {
+    try {
+      const stripeService = await import("./stripe");
+      await stripeService.createRefund(
+        lesson.stripePaymentIntentId,
+        refundAmountCents,
+        "requested_by_customer"
+      );
+      stripeRefundSucceeded = true;
+    } catch (err) {
+      console.error(`[cancelLesson] Stripe refund failed for lesson ${lessonId}:`, err);
+    }
+  }
+
+  // Only mark refundProcessedAt if Stripe refund actually succeeded
+  if (stripeRefundSucceeded) {
+    await db.execute(sql`
+      UPDATE lessons
+      SET refundProcessedAt = NOW()
+      WHERE id = ${lessonId}
+    `);
+  }
+
   return {
     success: true,
     refundAmountCents,
@@ -1019,5 +1056,11 @@ export async function verifyCancellationToken(lessonId: number, token: string): 
   }
   
   const lesson = rows[0] as any;
-  return lesson.cancellationToken === token;
+  if (!lesson.cancellationToken || !token) return false;
+  // Use constant-time comparison to prevent timing attacks
+  const crypto = await import('crypto');
+  const a = Buffer.from(lesson.cancellationToken);
+  const b = Buffer.from(token);
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
 }
