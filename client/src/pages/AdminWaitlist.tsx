@@ -1,3 +1,4 @@
+import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,7 +15,11 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 
 export default function AdminWaitlist() {
-  const { data: waitlistEntries, isLoading, error } = trpc.admin.waitlist.list.useQuery();
+  const { user, loading: authLoading } = useAuth();
+  const { data: waitlistEntries, isLoading, error } = trpc.admin.waitlist.list.useQuery(
+    undefined,
+    { enabled: user?.role === "admin" }
+  );
 
   const exportToCSV = () => {
     if (!waitlistEntries || waitlistEntries.length === 0) {
@@ -25,12 +30,21 @@ export default function AdminWaitlist() {
     // Create CSV header
     const headers = ["Email", "Name", "User Type", "Referral Source", "Signup Date", "Confirmation Email Sent", "Nurture Email 1", "Nurture Email 2", "Nurture Email 3", "Nurture Email 4", "Nurture Email 5"];
     
+    // Sanitize cell values to prevent CSV formula injection
+    const sanitizeCell = (value: string) => {
+      const str = String(value);
+      if (/^[=+\-@\t\r]/.test(str)) {
+        return "'" + str;
+      }
+      return str;
+    };
+
     // Create CSV rows
     const rows = waitlistEntries.map(entry => [
-      entry.email,
-      entry.name || "N/A",
-      entry.userType,
-      entry.referralSource || "N/A",
+      sanitizeCell(entry.email),
+      sanitizeCell(entry.name || "N/A"),
+      sanitizeCell(entry.userType),
+      sanitizeCell(entry.referralSource || "N/A"),
       format(new Date(entry.createdAt), "yyyy-MM-dd HH:mm:ss"),
       entry.confirmationEmailSent ? "Yes" : "No",
       entry.nurtureEmail1Sent ? "Yes" : "No",
@@ -43,7 +57,7 @@ export default function AdminWaitlist() {
     // Combine headers and rows
     const csvContent = [
       headers.join(","),
-      ...rows.map(row => row.map(cell => `"${cell}"`).join(","))
+      ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(","))
     ].join("\n");
 
     // Create blob and download
@@ -59,6 +73,29 @@ export default function AdminWaitlist() {
 
     toast.success("CSV exported successfully");
   };
+
+  if (authLoading) {
+    return (
+      <div className="container py-12 flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!user || user.role !== "admin") {
+    return (
+      <div className="container py-12">
+        <Card className="border-destructive">
+          <CardHeader>
+            <CardTitle className="text-destructive">Access Denied</CardTitle>
+            <CardDescription>
+              You don't have permission to view this page. Admin access required.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      </div>
+    );
+  }
 
   if (error) {
     return (

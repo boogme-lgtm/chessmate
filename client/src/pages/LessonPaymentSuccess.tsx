@@ -19,16 +19,16 @@ export default function LessonPaymentSuccess() {
   // Check if payment was cancelled
   const searchParams = new URLSearchParams(location.split('?')[1]);
   const paymentStatus = searchParams.get('payment');
-  
-  // Show cancel page if payment was cancelled
-  if (paymentStatus === 'cancelled') {
-    return <LessonPaymentCancel />;
-  }
 
   const { data: lesson, isLoading } = trpc.booking.getBookingById.useQuery(
     { id: lessonId! },
-    { enabled: !!lessonId }
+    { enabled: !!lessonId && paymentStatus !== 'cancelled' }
   );
+
+  // Show cancel page if payment was cancelled (after all hooks)
+  if (paymentStatus === 'cancelled') {
+    return <LessonPaymentCancel />;
+  }
 
   // Removed auto-redirect - let users navigate manually via buttons
 

@@ -412,7 +412,7 @@ export default function AdminApplications() {
                   <div>
                     <h3 className="font-semibold mb-2">Specializations</h3>
                     <div className="flex flex-wrap gap-2">
-                      {JSON.parse(applicationDetails.specializations).map((spec: string) => (
+                      {(() => { try { return JSON.parse(applicationDetails.specializations); } catch { return []; } })().map((spec: string) => (
                         <Badge key={spec} variant="secondary">{spec}</Badge>
                       ))}
                     </div>
@@ -421,7 +421,7 @@ export default function AdminApplications() {
                   <div>
                     <h3 className="font-semibold mb-2">Target Levels</h3>
                     <div className="flex flex-wrap gap-2">
-                      {JSON.parse(applicationDetails.targetLevels).map((level: string) => (
+                      {(() => { try { return JSON.parse(applicationDetails.targetLevels); } catch { return []; } })().map((level: string) => (
                         <Badge key={level} variant="outline">{level}</Badge>
                       ))}
                     </div>
@@ -442,8 +442,8 @@ export default function AdminApplications() {
                   <div>
                     <h3 className="font-semibold mb-2">Lesson Formats</h3>
                     <div className="flex flex-wrap gap-2">
-                      {JSON.parse(applicationDetails.lessonFormats).map((format: string) => (
-                        <Badge key={format} variant="secondary">{format}</Badge>
+                      {(() => { try { return JSON.parse(applicationDetails.lessonFormats); } catch { return []; } })().map((fmt: string) => (
+                        <Badge key={fmt} variant="secondary">{fmt}</Badge>
                       ))}
                     </div>
                   </div>
@@ -451,7 +451,7 @@ export default function AdminApplications() {
                   <div>
                     <h3 className="font-semibold mb-2">Languages</h3>
                     <div className="flex flex-wrap gap-2">
-                      {JSON.parse(applicationDetails.languages).map((lang: string) => (
+                      {(() => { try { return JSON.parse(applicationDetails.languages); } catch { return []; } })().map((lang: string) => (
                         <Badge key={lang} variant="outline">{lang}</Badge>
                       ))}
                     </div>
