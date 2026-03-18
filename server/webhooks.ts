@@ -101,7 +101,7 @@ async function handleCheckoutCompleted(event: Stripe.Event) {
   if (session.payment_status === 'paid') {
     // Idempotency: skip if lesson is already confirmed or further along
     const currentLesson = await db.getLessonById(lessonId);
-    if (currentLesson && ['confirmed', 'completed', 'released', 'cancelled', 'refunded'].includes(currentLesson.status)) {
+    if (currentLesson?.status && ['confirmed', 'completed', 'released', 'cancelled', 'refunded'].includes(currentLesson.status)) {
       console.log(`[Webhook] Lesson ${lessonId} already in state '${currentLesson.status}', skipping duplicate event`);
       return;
     }
@@ -228,7 +228,7 @@ async function handlePaymentFailed(event: Stripe.Event) {
   
   if (lesson) {
     // Only cancel if lesson hasn't already progressed past payment
-    if (['pending_confirmation', 'confirmed'].includes(lesson.status)) {
+    if (lesson.status && ['pending_confirmation', 'confirmed'].includes(lesson.status)) {
       console.log(`[Webhook] Marking lesson ${lesson.id} as payment failed`);
       await db.updateLessonStatus(lesson.id, 'cancelled');
       console.log(`[Webhook] Lesson ${lesson.id} cancelled due to payment failure`);
