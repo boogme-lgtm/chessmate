@@ -302,17 +302,22 @@ export async function createLesson(lesson: Omit<InsertLesson, 'id'>) {
   const crypto = await import('crypto');
   const cancellationToken = crypto.randomBytes(32).toString('hex');
 
+  // Default the confirmation deadline to 24h from now if the caller doesn't
+  // provide one (Sprint 4 — auto-decline stale pending_confirmation lessons).
+  const confirmationDeadline = lesson.confirmationDeadline
+    ?? new Date(Date.now() + 24 * 60 * 60 * 1000);
+
   // Use raw SQL to bypass Drizzle's automatic field inclusion
   // Only include the fields we actually want to insert
   const result = await db.execute(sql`
     INSERT INTO lessons (
       studentId, coachId, scheduledAt, durationMinutes,
       status, amountCents, commissionCents, coachPayoutCents,
-      cancellationToken
+      cancellationToken, confirmationDeadline
     ) VALUES (
       ${lesson.studentId}, ${lesson.coachId}, ${lesson.scheduledAt}, ${lesson.durationMinutes},
       ${lesson.status}, ${lesson.amountCents}, ${lesson.commissionCents}, ${lesson.coachPayoutCents},
-      ${cancellationToken}
+      ${cancellationToken}, ${confirmationDeadline}
     )
   `);
   
@@ -340,7 +345,7 @@ export async function createLesson(lesson: Omit<InsertLesson, 'id'>) {
     stripeTransferId: lesson.stripeTransferId || null,
     coachConfirmedAt: lesson.coachConfirmedAt || null,
     coachDeclinedAt: lesson.coachDeclinedAt || null,
-    confirmationDeadline: lesson.confirmationDeadline || null,
+    confirmationDeadline: confirmationDeadline,
     studentConfirmedAt: lesson.studentConfirmedAt || null,
     completedAt: lesson.completedAt || null,
     payoutAt: lesson.payoutAt || null,

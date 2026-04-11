@@ -15,6 +15,8 @@ import {
   getWaitlistConfirmationEmail,
   getStudentCancellationEmail,
   getCoachCancellationEmail,
+  getCoachNewBookingRequestEmail,
+  getStudentCoachConfirmedEmail,
 } from "./emailService";
 import { sendNurtureEmails, sendNurtureEmailsManual } from "./nurtureEmailScheduler";
 import { resendWelcomeEmails } from "./resendWelcomeEmails";
@@ -706,7 +708,7 @@ export const appRouter = router({
         const commissionCents = Math.round(amountCents * (commissionRate / 100));
         const coachPayoutCents = amountCents - commissionCents;
 
-        // Create lesson
+        // Create lesson (db.createLesson auto-sets confirmationDeadline to now+24h)
         const lesson = await db.createLesson({
           studentId: ctx.user.id,
           coachId: input.coachId,
@@ -719,6 +721,46 @@ export const appRouter = router({
           coachPayoutCents,
           status: "pending_confirmation",
         });
+
+        // Best-effort "new booking request" email to the coach.
+        (async () => {
+          try {
+            const [coach, student] = await Promise.all([
+              db.getUserById(input.coachId),
+              db.getUserById(ctx.user.id),
+            ]);
+            if (!coach?.email) return;
+            const lessonDate = new Date(input.scheduledAt).toLocaleDateString("en-US", {
+              weekday: "long", year: "numeric", month: "long", day: "numeric",
+            });
+            const lessonTime = new Date(input.scheduledAt).toLocaleTimeString("en-US", {
+              hour: "numeric", minute: "2-digit", hour12: true,
+            });
+            const deadline = new Date(Date.now() + 24 * 60 * 60 * 1000);
+            const confirmByDate = deadline.toLocaleDateString("en-US", {
+              weekday: "long", month: "long", day: "numeric",
+            });
+            const confirmByTime = deadline.toLocaleTimeString("en-US", {
+              hour: "numeric", minute: "2-digit", hour12: true,
+            });
+            await sendEmail({
+              to: coach.email,
+              subject: `New lesson request from ${student?.name || "a student"}`,
+              html: getCoachNewBookingRequestEmail({
+                coachName: coach.name || "Coach",
+                studentName: student?.name || "Student",
+                lessonDate,
+                lessonTime,
+                durationMinutes: input.durationMinutes,
+                coachPayout: `$${(coachPayoutCents / 100).toFixed(2)}`,
+                confirmByDate,
+                confirmByTime,
+              }),
+            });
+          } catch (err) {
+            console.error(`[lesson.book] Failed to send coach new-booking email for lesson ${lesson.id}:`, err);
+          }
+        })();
 
         // Return complete lesson object to avoid transaction isolation issues
         return { success: true, lessonId: lesson.id, lesson };
@@ -760,6 +802,38 @@ export const appRouter = router({
         await db.updateLessonStatus(input.lessonId, "confirmed", {
           coachConfirmedAt: new Date(),
         });
+
+        // Notify the student that they can now complete payment.
+        (async () => {
+          try {
+            const [student, coach] = await Promise.all([
+              db.getUserById(lesson.studentId),
+              db.getUserById(lesson.coachId),
+            ]);
+            if (!student?.email) return;
+            const lessonDate = new Date(lesson.scheduledAt).toLocaleDateString("en-US", {
+              weekday: "long", year: "numeric", month: "long", day: "numeric",
+            });
+            const lessonTime = new Date(lesson.scheduledAt).toLocaleTimeString("en-US", {
+              hour: "numeric", minute: "2-digit", hour12: true,
+            });
+            await sendEmail({
+              to: student.email,
+              subject: `${coach?.name || "Your coach"} accepted your lesson — complete payment`,
+              html: getStudentCoachConfirmedEmail({
+                studentName: student.name || "Student",
+                coachName: coach?.name || "Your Coach",
+                lessonDate,
+                lessonTime,
+                durationMinutes: lesson.durationMinutes ?? 60,
+                amount: `$${(lesson.amountCents / 100).toFixed(2)}`,
+                lessonId: lesson.id,
+              }),
+            });
+          } catch (err) {
+            console.error(`[confirmAsCoach] Failed to send student confirmation email for lesson ${input.lessonId}:`, err);
+          }
+        })();
 
         return { success: true };
       }),

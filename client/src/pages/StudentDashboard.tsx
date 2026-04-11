@@ -380,6 +380,17 @@ function LessonCard({ lesson, isPast = false }: LessonCardProps) {
     },
   });
 
+  const createCheckout = trpc.payment.createCheckout.useMutation({
+    onSuccess: (data) => {
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        toast.error("Failed to start payment");
+      }
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
   const getStatusBadge = () => {
     switch (lesson.status) {
       case "completed":
@@ -483,6 +494,19 @@ function LessonCard({ lesson, isPast = false }: LessonCardProps) {
                       <Video className="h-4 w-4" />
                       Join Video Call
                     </a>
+                  </Button>
+                )}
+
+                {/* Coach has confirmed → student still needs to pay */}
+                {lesson.status === "confirmed" && !isPast && (
+                  <Button
+                    size="sm"
+                    className="gap-2"
+                    disabled={createCheckout.isPending}
+                    onClick={() => createCheckout.mutate({ lessonId: lesson.id })}
+                  >
+                    <DollarSign className="h-4 w-4" />
+                    {createCheckout.isPending ? "Redirecting…" : "Complete Payment"}
                   </Button>
                 )}
 
