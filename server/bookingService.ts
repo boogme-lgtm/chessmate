@@ -1,4 +1,4 @@
-import { getDb } from "./db";
+import { getDb, createLesson } from "./db";
 import { lessons, coachProfiles, users } from "../drizzle/schema";
 import { eq, and, ne, notInArray } from "drizzle-orm";
 
@@ -164,11 +164,10 @@ export async function createBooking(data: {
   // Calculate pricing
   const pricing = await calculateLessonPricing(data.coachId, data.durationMinutes);
 
-  const db = await getDb();
-  if (!db) throw new Error("Database not initialized");
-  
-  // Create lesson record
-  const [lesson] = await db.insert(lessons).values({
+  // Delegate to db.createLesson which uses raw SQL to bypass the Drizzle
+  // INSERT `id = 'default'` bug that MySQL rejects. db.createLesson also
+  // returns a constructed lesson object so the caller has the insertId.
+  const lesson = await createLesson({
     studentId: data.studentId,
     coachId: data.coachId,
     scheduledAt: data.scheduledAt,

@@ -433,12 +433,14 @@ export async function getLessonByPaymentIntent(paymentIntentId: string) {
   const db = await getDb();
   if (!db) return null;
 
-  const result = await db.select()
-    .from(lessons)
-    .where(eq(lessons.stripePaymentIntentId, paymentIntentId))
-    .limit(1);
-  
-  return result[0] || null;
+  // Raw SQL for consistency with other lesson reads that bypass Drizzle
+  // transaction isolation quirks.
+  const result: any = await db.execute(sql`
+    SELECT * FROM lessons WHERE stripePaymentIntentId = ${paymentIntentId} LIMIT 1
+  `);
+
+  const rows = result[0];
+  return rows && rows.length > 0 ? rows[0] : null;
 }
 
 // ============ REVIEW OPERATIONS ============
