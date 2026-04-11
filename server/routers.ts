@@ -10,9 +10,86 @@ import * as db from "./db";
 import * as stripeService from "./stripe";
 import { ENV } from "./_core/env";
 import { Chess } from "chess.js";
-import { sendEmail, getWaitlistConfirmationEmail } from "./emailService";
+import {
+  sendEmail,
+  getWaitlistConfirmationEmail,
+  getStudentCancellationEmail,
+  getCoachCancellationEmail,
+} from "./emailService";
 import { sendNurtureEmails, sendNurtureEmailsManual } from "./nurtureEmailScheduler";
 import { resendWelcomeEmails } from "./resendWelcomeEmails";
+
+/**
+ * Send cancellation confirmation emails to both student and coach.
+ * Best-effort — logs errors but does not throw (cancellation itself already succeeded).
+ */
+async function sendCancellationEmails(
+  lessonId: number,
+  cancelledBy: "student" | "coach" | "system",
+  cancellationReason: string | null | undefined,
+  refundAmountCents: number,
+  refundPercentage: number,
+): Promise<void> {
+  try {
+    const lesson = await db.getLessonById(lessonId);
+    if (!lesson) return;
+    const [student, coach] = await Promise.all([
+      db.getUserById(lesson.studentId),
+      db.getUserById(lesson.coachId),
+    ]);
+    if (!student?.email || !coach?.email) return;
+
+    const lessonDate = new Date(lesson.scheduledAt).toLocaleDateString("en-US", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+    const lessonTime = new Date(lesson.scheduledAt).toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+    const amountPaid = `$${(lesson.amountCents / 100).toFixed(2)}`;
+    const refundAmount = `$${(refundAmountCents / 100).toFixed(2)}`;
+
+    // When coach cancels, student gets a full refund regardless of timing.
+    const effectiveRefundPct = cancelledBy === "coach" ? 100 : refundPercentage;
+
+    await sendEmail({
+      to: student.email,
+      subject: `Lesson Cancelled — ${lessonDate}`,
+      html: getStudentCancellationEmail({
+        studentName: student.name || "Student",
+        coachName: coach.name || "Your Coach",
+        lessonDate,
+        lessonTime,
+        durationMinutes: lesson.durationMinutes ?? 60,
+        amountPaid,
+        refundAmount,
+        refundPercentage: effectiveRefundPct,
+        cancelledBy,
+        cancellationReason,
+      }),
+    });
+
+    await sendEmail({
+      to: coach.email,
+      subject: `Lesson Cancelled — ${lessonDate}`,
+      html: getCoachCancellationEmail({
+        coachName: coach.name || "Coach",
+        studentName: student.name || "Student",
+        lessonDate,
+        lessonTime,
+        durationMinutes: lesson.durationMinutes ?? 60,
+        cancelledBy,
+        cancellationReason,
+      }),
+    });
+  } catch (err) {
+    console.error(`[cancellation email] Failed for lesson ${lessonId}:`, err);
+  }
+}
 
 export const appRouter = router({
   system: systemRouter,
@@ -706,6 +783,16 @@ export const appRouter = router({
         }
 
         const result = await db.cancelLesson(input.lessonId, 'coach', input.reason || 'Declined by coach');
+        // Best-effort cancellation confirmation emails. Awaited so errors are
+        // visible in logs, but wrapped in try/catch inside the helper so they
+        // can't fail the mutation.
+        await sendCancellationEmails(
+          input.lessonId,
+          'coach',
+          input.reason || 'Declined by coach',
+          result.refundAmountCents,
+          result.refundPercentage,
+        );
         return { success: true, refundAmountCents: result.refundAmountCents };
       }),
 
@@ -725,6 +812,13 @@ export const appRouter = router({
         }
 
         const result = await db.cancelLesson(input.lessonId, 'student', input.reason);
+        await sendCancellationEmails(
+          input.lessonId,
+          'student',
+          input.reason,
+          result.refundAmountCents,
+          result.refundPercentage,
+        );
         return {
           success: true,
           refundAmountCents: result.refundAmountCents,
