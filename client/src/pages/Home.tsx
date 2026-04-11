@@ -749,7 +749,7 @@ function Footer() {
       <div className="container">
         <div className="flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-4">
-            <img src="https://files.manuscdn.com/user_upload_by_module/session_file/310519663188415081/xRYfqyUGHSJUlDcu.png" alt="BooGMe" className="h-6 w-auto" />
+            <img src="https://files.manuscdn.com/user_upload_by_module/session_file/310519663188415081/xRYfqyUGHSJUlDcu.png" alt="BooGMe" className="h-6 w-auto" loading="lazy" />
           </div>
           <div className="flex items-center gap-6">
             <a href="/privacy" className="text-sm font-light text-muted-foreground hover:text-foreground transition-colors">

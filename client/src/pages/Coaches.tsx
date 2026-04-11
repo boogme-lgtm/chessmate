@@ -339,7 +339,7 @@ function EarningsCalculator() {
                         ${takeHome.weekly.toLocaleString("en-US", { maximumFractionDigits: 0 })}
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        after 15% platform fee
+                        after minimal platform fee
                       </div>
                     </div>
                     <div className="text-center space-y-2">
@@ -350,7 +350,7 @@ function EarningsCalculator() {
                         ${takeHome.monthly.toLocaleString("en-US", { maximumFractionDigits: 0 })}
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        after 15% platform fee
+                        after minimal platform fee
                       </div>
                     </div>
                     <div className="text-center space-y-2">
@@ -361,7 +361,7 @@ function EarningsCalculator() {
                         ${takeHome.yearly.toLocaleString("en-US", { maximumFractionDigits: 0 })}
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        after 15% platform fee
+                        after minimal platform fee
                       </div>
                     </div>
                   </div>
@@ -576,7 +576,7 @@ function FAQSection() {
     {
       question: "What's the platform commission?",
       answer:
-        "We take 15-20% depending on your lesson volume. This covers payment processing, AI matching, escrow protection, customer support, and platform maintenance. Unlike listing-only services, we handle the entire transaction flow.",
+        "We keep platform fees minimal and transparent — you keep more of your earnings with us than most listing-only services. Your take-home rate improves as your lesson volume grows. Platform fees cover payment processing, AI matching, escrow protection, and customer support.",
     },
     {
       question: "How does the escrow system work?",
