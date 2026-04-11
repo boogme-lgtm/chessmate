@@ -935,7 +935,8 @@ export const appRouter = router({
           payoutAt: new Date(),
         });
 
-        // Create review if provided
+        // Create review if provided. Also flip visibility on both reviews
+        // if the coach has already submitted theirs.
         if (input.rating) {
           await db.createReview({
             lessonId: input.lessonId,
@@ -945,6 +946,10 @@ export const appRouter = router({
             rating: input.rating,
             comment: input.comment || '',
           });
+          const counterpart = await db.getCounterpartReview(input.lessonId, "student");
+          if (counterpart) {
+            await db.setReviewsVisibleForLesson(input.lessonId);
+          }
         }
 
         // Award XP to student
@@ -992,6 +997,121 @@ export const appRouter = router({
         await db.updateLessonStatus(input.lessonId, "refunded");
 
         return { success: true, refundAmountCents: lesson.amountCents };
+      }),
+  }),
+
+  // ============ REVIEW OPERATIONS ============
+  review: router({
+    /**
+     * Submit a review for a lesson. Validates:
+     *   - the lesson is in a completion state (completed/released)
+     *   - the current user was a participant
+     *   - the user hasn't already submitted
+     * Once both parties have reviewed, both reviews become visible.
+     */
+    submit: protectedProcedure
+      .input(z.object({
+        lessonId: z.number(),
+        rating: z.number().int().min(1).max(5),
+        comment: z.string().max(2000).optional(),
+        knowledgeRating: z.number().int().min(1).max(5).optional(),
+        communicationRating: z.number().int().min(1).max(5).optional(),
+        preparednessRating: z.number().int().min(1).max(5).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const lesson = await db.getLessonById(input.lessonId);
+        if (!lesson) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
+        }
+
+        const isStudent = lesson.studentId === ctx.user.id;
+        const isCoach = lesson.coachId === ctx.user.id;
+        if (!isStudent && !isCoach) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Not your lesson" });
+        }
+
+        if (!["completed", "released"].includes(lesson.status)) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "Lesson is not completed yet",
+          });
+        }
+
+        const existing = await db.getReviewByLessonAndReviewer(input.lessonId, ctx.user.id);
+        if (existing) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "You have already reviewed this lesson",
+          });
+        }
+
+        const reviewerType: "student" | "coach" = isStudent ? "student" : "coach";
+        const revieweeId = isStudent ? lesson.coachId : lesson.studentId;
+
+        await db.createReview({
+          lessonId: input.lessonId,
+          reviewerId: ctx.user.id,
+          revieweeId,
+          reviewerType,
+          rating: input.rating,
+          comment: input.comment || "",
+          knowledgeRating: input.knowledgeRating,
+          communicationRating: input.communicationRating,
+          preparednessRating: input.preparednessRating,
+        });
+
+        // If the counterpart has already submitted, make both visible.
+        const counterpart = await db.getCounterpartReview(input.lessonId, reviewerType);
+        if (counterpart) {
+          await db.setReviewsVisibleForLesson(input.lessonId);
+        }
+
+        return { success: true, bothSubmitted: !!counterpart };
+      }),
+
+    /**
+     * Return completed lessons where the current user has not yet left a review.
+     * Includes the other party's name so the UI can prompt meaningfully.
+     */
+    getPending: protectedProcedure.query(async ({ ctx }) => {
+      const [asStudent, asCoach] = await Promise.all([
+        db.getLessonsByStudent(ctx.user.id, 100),
+        db.getLessonsByCoach(ctx.user.id, 100),
+      ]);
+
+      const completedLessons = [...asStudent, ...asCoach].filter((l: any) =>
+        ["completed", "released"].includes(l.status)
+      );
+
+      const pending: any[] = [];
+      for (const lesson of completedLessons) {
+        const existing = await db.getReviewByLessonAndReviewer(lesson.id, ctx.user.id);
+        if (existing) continue;
+        const otherUserId = lesson.studentId === ctx.user.id ? lesson.coachId : lesson.studentId;
+        const otherUser = await db.getUserById(otherUserId);
+        pending.push({
+          lessonId: lesson.id,
+          scheduledAt: lesson.scheduledAt,
+          durationMinutes: lesson.durationMinutes,
+          otherPartyName: otherUser?.name || "Unknown",
+          reviewingAs: lesson.studentId === ctx.user.id ? "student" : "coach",
+        });
+      }
+
+      return pending;
+    }),
+
+    /**
+     * Public: visible reviews for a coach (both-sides-submitted only).
+     * Reuses existing getReviewsByCoach helper which already filters on isVisible.
+     */
+    getForCoach: publicProcedure
+      .input(z.object({
+        coachId: z.number(),
+        limit: z.number().min(1).max(50).default(20),
+      }))
+      .query(async ({ input }) => {
+        return await db.getReviewsByCoach(input.coachId, input.limit);
       }),
   }),
 

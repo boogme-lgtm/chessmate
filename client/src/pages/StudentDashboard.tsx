@@ -31,6 +31,8 @@ import { toast } from "sonner";
 import { useLocation } from "wouter";
 import { useEffect, useState, useCallback } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
+import ReviewDialog from "@/components/ReviewDialog";
+import { Star } from "lucide-react";
 
 /**
  * Student Dashboard — Upcoming and past lessons with live countdown timers
@@ -83,7 +85,8 @@ export default function StudentDashboard() {
           </div>
         </div>
 
-        <div className="container py-8">
+        <div className="container py-8 space-y-6">
+          <PendingReviewsCard />
           <Tabs defaultValue="upcoming" className="space-y-6">
             <TabsList>
               <TabsTrigger value="upcoming">
@@ -568,5 +571,86 @@ function DashboardSkeleton() {
         ))}
       </div>
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Pending Reviews Card — prompts the user to review completed lessons
+// ─────────────────────────────────────────────────────────────────────────────
+
+function PendingReviewsCard() {
+  const { data: pending, isLoading } = trpc.review.getPending.useQuery();
+  const [openLessonId, setOpenLessonId] = useState<number | null>(null);
+  const [openMeta, setOpenMeta] = useState<{
+    name: string;
+    reviewingAs: "student" | "coach";
+  } | null>(null);
+
+  if (isLoading || !pending || pending.length === 0) return null;
+
+  return (
+    <>
+      <Card className="border-yellow-600/40 bg-yellow-50/50 dark:bg-yellow-950/10">
+        <CardContent className="p-6">
+          <div className="flex items-start gap-3 mb-4">
+            <Star className="h-5 w-5 text-yellow-600 mt-0.5" />
+            <div>
+              <h3 className="text-base font-semibold">
+                Pending Reviews ({pending.length})
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                You have completed lessons waiting for a review. Both sides stay
+                private until both parties submit.
+              </p>
+            </div>
+          </div>
+          <div className="space-y-2">
+            {pending.map((p: any) => (
+              <div
+                key={p.lessonId}
+                className="flex items-center justify-between p-3 rounded-md border border-border/60"
+              >
+                <div>
+                  <div className="font-medium text-sm">
+                    Lesson with {p.otherPartyName}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {format(new Date(p.scheduledAt), "MMMM d, yyyy")} ·{" "}
+                    {p.durationMinutes} min
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setOpenLessonId(p.lessonId);
+                    setOpenMeta({
+                      name: p.otherPartyName,
+                      reviewingAs: p.reviewingAs,
+                    });
+                  }}
+                >
+                  Leave Review
+                </Button>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {openLessonId !== null && openMeta && (
+        <ReviewDialog
+          open={openLessonId !== null}
+          onOpenChange={(open) => {
+            if (!open) {
+              setOpenLessonId(null);
+              setOpenMeta(null);
+            }
+          }}
+          lessonId={openLessonId}
+          otherPartyName={openMeta.name}
+          reviewingAs={openMeta.reviewingAs}
+        />
+      )}
+    </>
   );
 }

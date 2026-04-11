@@ -481,6 +481,55 @@ export async function getReviewsByCoach(coachId: number, limit: number = 20) {
     .limit(limit);
 }
 
+/**
+ * Look up the current user's review for a specific lesson (if any).
+ */
+export async function getReviewByLessonAndReviewer(
+  lessonId: number,
+  reviewerId: number
+) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(reviews)
+    .where(and(eq(reviews.lessonId, lessonId), eq(reviews.reviewerId, reviewerId)))
+    .limit(1);
+  return rows[0] || null;
+}
+
+/**
+ * Look up the "other side" review for a lesson — i.e. if the current reviewer
+ * is a student, find the coach's review for the same lesson (or vice versa).
+ */
+export async function getCounterpartReview(
+  lessonId: number,
+  reviewerType: "student" | "coach"
+) {
+  const db = await getDb();
+  if (!db) return null;
+  const otherType = reviewerType === "student" ? "coach" : "student";
+  const rows = await db
+    .select()
+    .from(reviews)
+    .where(and(eq(reviews.lessonId, lessonId), eq(reviews.reviewerType, otherType)))
+    .limit(1);
+  return rows[0] || null;
+}
+
+/**
+ * Flip a review's visibility (used when both parties have submitted).
+ */
+export async function setReviewsVisibleForLesson(lessonId: number) {
+  const db = await getDb();
+  if (!db) return;
+  const now = new Date();
+  await db
+    .update(reviews)
+    .set({ isVisible: true, visibleAt: now })
+    .where(eq(reviews.lessonId, lessonId));
+}
+
 // ============ ACHIEVEMENT OPERATIONS ============
 
 export async function getAllAchievements() {
