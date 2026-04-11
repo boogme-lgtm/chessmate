@@ -9,7 +9,6 @@ import { TRPCError } from "@trpc/server";
 import * as db from "./db";
 import * as stripeService from "./stripe";
 import { ENV } from "./_core/env";
-import { Chess } from "chess.js";
 import {
   sendEmail,
   getWaitlistConfirmationEmail,
@@ -100,53 +99,92 @@ export const appRouter = router({
 
   // ============ LICHESS PUZZLES ============
   puzzle: router({
+    /**
+     * Fetch the next puzzle for the student. Uses the Lichess daily puzzle
+     * and a curated rotation of public puzzle IDs via server/lichess.ts.
+     * The `difficulty` input is accepted for backwards compatibility with
+     * the client but Lichess does not expose a public rating filter for
+     * puzzles, so it's used only as part of the rotation seed.
+     */
     getNext: publicProcedure
       .input(z.object({
         difficulty: z.enum(["easiest", "easier", "normal", "harder", "hardest"]).optional(),
         theme: z.string().optional(),
       }).optional())
       .query(async ({ input }) => {
-        const params = new URLSearchParams();
-        if (input?.difficulty) params.append("difficulty", input.difficulty);
-        if (input?.theme) params.append("angle", input.theme);
-        
-        const url = `https://lichess.org/api/puzzle/next${params.toString() ? `?${params.toString()}` : ''}`;
-        
         try {
-          const response = await fetch(url);
-          if (!response.ok) {
-            throw new TRPCError({
-              code: "INTERNAL_SERVER_ERROR",
-              message: "Failed to fetch puzzle from Lichess",
-            });
-          }
-          const puzzleData = await response.json();
-          
-          // Parse PGN to get FEN at the puzzle start position
-          const chess = new Chess();
-          const moves = puzzleData.game.pgn.split(' ');
-          const initialPly = puzzleData.puzzle.initialPly;
-          
-          // Play moves up to the puzzle start
-          for (let i = 0; i < initialPly && i < moves.length; i++) {
-            try {
-              chess.move(moves[i]);
-            } catch (e) {
-              // Skip invalid moves
-              console.warn(`[Lichess] Skipping invalid move: ${moves[i]}`);
-            }
-          }
-          
-          // Add FEN to the response
-          return {
-            ...puzzleData,
-            fen: chess.fen(),
-          };
+          const { getRotatingPuzzle } = await import("./lichess");
+          // Mix in the difficulty string so different selections give
+          // different seeds, and a coarse time slot so "refetch" rotates.
+          const difficultySeed =
+            (input?.difficulty?.length ?? 0) * 31 + (input?.theme?.length ?? 0) * 17;
+          const timeSlot = Math.floor(Date.now() / (60 * 1000));
+          return await getRotatingPuzzle(timeSlot + difficultySeed);
         } catch (error) {
           console.error("[Lichess API] Error fetching puzzle:", error);
           throw new TRPCError({
             code: "INTERNAL_SERVER_ERROR",
             message: "Failed to fetch puzzle",
+          });
+        }
+      }),
+
+    /** Explicit daily puzzle endpoint. */
+    getDaily: publicProcedure.query(async () => {
+      try {
+        const { getDailyPuzzle } = await import("./lichess");
+        return await getDailyPuzzle();
+      } catch (error) {
+        console.error("[Lichess API] Error fetching daily puzzle:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to fetch daily puzzle",
+        });
+      }
+    }),
+
+    /** Fetch a specific puzzle by Lichess ID (used for replays). */
+    getById: publicProcedure
+      .input(z.object({ id: z.string().min(1).max(16) }))
+      .query(async ({ input }) => {
+        try {
+          const { getPuzzleById } = await import("./lichess");
+          return await getPuzzleById(input.id);
+        } catch (error) {
+          console.error("[Lichess API] Error fetching puzzle by id:", error);
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Puzzle not found",
+          });
+        }
+      }),
+  }),
+
+  // ============ LICHESS USER PROFILES ============
+  lichess: router({
+    /**
+     * Fetch a Lichess user's public profile. Used by coach applications to
+     * verify claimed FIDE/rapid/blitz ratings and by the student onboarding
+     * questionnaire to pre-fill starting rating.
+     */
+    getProfile: publicProcedure
+      .input(z.object({ username: z.string().min(2).max(20) }))
+      .query(async ({ input }) => {
+        try {
+          const { getPlayerProfile, summarizeRatings } = await import("./lichess");
+          const profile = await getPlayerProfile(input.username);
+          return {
+            id: profile.id,
+            username: profile.username,
+            country: profile.profile?.country,
+            bio: profile.profile?.bio,
+            ratings: summarizeRatings(profile),
+          };
+        } catch (error) {
+          console.error("[Lichess API] Error fetching user profile:", error);
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Lichess user not found",
           });
         }
       }),
