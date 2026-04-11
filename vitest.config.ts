@@ -15,5 +15,12 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["server/**/*.test.ts", "server/**/*.spec.ts"],
+    setupFiles: ["./test/setup.ts"],
+    exclude: [
+      "**/node_modules/**",
+      "**/dist/**",
+      // Integration tests that require a running server on localhost:3000
+      "server/webhook.test.ts",
+    ],
   },
 });
