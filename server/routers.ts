@@ -1234,6 +1234,141 @@ export const appRouter = router({
       }),
   }),
 
+  // ============ GROUP LESSONS (Sprint 10) ============
+  // Minimal backend scaffolding — organizer creates a group lesson, others
+  // join via an invite token. Full UI + payment-split checkout flow is a
+  // future phase per BUILD_PLAN.md. Uses raw SQL via db.execute for
+  // consistency with the rest of the lesson read path.
+  groupLesson: router({
+    /**
+     * Create a group lesson and return its invite token.
+     * Only the organizer's price share is committed up-front — other
+     * participants pay when they join.
+     */
+    create: protectedProcedure
+      .input(z.object({
+        coachId: z.number(),
+        scheduledAt: z.date().refine((d) => d > new Date(), {
+          message: "Group lesson must be scheduled in the future",
+        }),
+        durationMinutes: z.number().min(30).max(240).default(60),
+        maxParticipants: z.number().min(2).max(10),
+        topic: z.string().optional(),
+        timezone: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.user.id === input.coachId) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Cannot organize a group lesson with yourself" });
+        }
+        const coachProfile = await db.getCoachProfileByUserId(input.coachId);
+        if (!coachProfile) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Coach not found" });
+        }
+
+        const hourlyRate = coachProfile.hourlyRateCents || 5000;
+        const totalAmountCents = Math.round((hourlyRate * input.durationMinutes) / 60);
+        const perParticipantCents = Math.ceil(totalAmountCents / input.maxParticipants);
+        const commissionRate = coachProfile.commissionRate || 15;
+        const commissionCents = Math.round(totalAmountCents * (commissionRate / 100));
+        const coachPayoutCents = totalAmountCents - commissionCents;
+
+        const crypto = await import("crypto");
+        const inviteToken = crypto.randomBytes(24).toString("hex");
+
+        const database = await db.getDb();
+        if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
+
+        const { sql } = await import("drizzle-orm");
+        const result: any = await database.execute(sql`
+          INSERT INTO group_lessons (
+            coachId, organizerId, scheduledAt, durationMinutes, timezone,
+            topic, maxParticipants, totalAmountCents, perParticipantCents,
+            commissionCents, coachPayoutCents, inviteToken, status
+          ) VALUES (
+            ${input.coachId}, ${ctx.user.id}, ${input.scheduledAt}, ${input.durationMinutes}, ${input.timezone || null},
+            ${input.topic || null}, ${input.maxParticipants}, ${totalAmountCents}, ${perParticipantCents},
+            ${commissionCents}, ${coachPayoutCents}, ${inviteToken}, 'forming'
+          )
+        `);
+        const groupLessonId = Number(result[0]?.insertId);
+
+        // Organizer is automatically a participant.
+        await database.execute(sql`
+          INSERT INTO group_lesson_participants (groupLessonId, studentId)
+          VALUES (${groupLessonId}, ${ctx.user.id})
+        `);
+
+        return { success: true, groupLessonId, inviteToken, perParticipantCents };
+      }),
+
+    /** Get a group lesson by invite token (public — used on join page). */
+    getByInviteToken: publicProcedure
+      .input(z.object({ inviteToken: z.string().min(10).max(64) }))
+      .query(async ({ input }) => {
+        const database = await db.getDb();
+        if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
+        const { sql } = await import("drizzle-orm");
+        const result: any = await database.execute(sql`
+          SELECT * FROM group_lessons WHERE inviteToken = ${input.inviteToken} LIMIT 1
+        `);
+        const rows = result[0];
+        if (!rows || rows.length === 0) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Group lesson not found" });
+        }
+        return rows[0];
+      }),
+
+    /**
+     * Join a group lesson as a participant using the invite token.
+     * Returns the participant row; actual payment happens via a separate
+     * checkout flow (future phase).
+     */
+    join: protectedProcedure
+      .input(z.object({ inviteToken: z.string().min(10).max(64) }))
+      .mutation(async ({ ctx, input }) => {
+        const database = await db.getDb();
+        if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
+        const { sql } = await import("drizzle-orm");
+
+        const lookup: any = await database.execute(sql`
+          SELECT * FROM group_lessons WHERE inviteToken = ${input.inviteToken} LIMIT 1
+        `);
+        const lesson = lookup[0]?.[0];
+        if (!lesson) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Group lesson not found" });
+        }
+        if (lesson.status !== "forming") {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Group lesson is no longer accepting participants" });
+        }
+
+        // Check capacity
+        const countResult: any = await database.execute(sql`
+          SELECT COUNT(*) AS c FROM group_lesson_participants
+          WHERE groupLessonId = ${lesson.id} AND dropped = 0
+        `);
+        const current = Number(countResult[0]?.[0]?.c ?? 0);
+        if (current >= lesson.maxParticipants) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Group lesson is full" });
+        }
+
+        // Prevent duplicate join
+        const existingResult: any = await database.execute(sql`
+          SELECT id FROM group_lesson_participants
+          WHERE groupLessonId = ${lesson.id} AND studentId = ${ctx.user.id} AND dropped = 0
+        `);
+        if (existingResult[0]?.length > 0) {
+          throw new TRPCError({ code: "CONFLICT", message: "Already joined this group lesson" });
+        }
+
+        await database.execute(sql`
+          INSERT INTO group_lesson_participants (groupLessonId, studentId)
+          VALUES (${lesson.id}, ${ctx.user.id})
+        `);
+
+        return { success: true, groupLessonId: lesson.id, perParticipantCents: lesson.perParticipantCents };
+      }),
+  }),
+
   // ============ PAYMENT OPERATIONS ============
   payment: router({
     // Create checkout session for a lesson

@@ -608,3 +608,71 @@ export const messages = mysqlTable("messages", {
 
 export type Message = typeof messages.$inferSelect;
 export type InsertMessage = typeof messages.$inferInsert;
+
+/**
+ * Group lessons — multi-student sessions with a coach. Organizer books
+ * the session; other participants join via an invite token and pay their
+ * share of the split price.
+ */
+export const groupLessons = mysqlTable("group_lessons", {
+  id: int("id").autoincrement().primaryKey(),
+  coachId: int("coachId").notNull(),
+  organizerId: int("organizerId").notNull(),
+
+  scheduledAt: timestamp("scheduledAt").notNull(),
+  durationMinutes: int("durationMinutes").default(60).notNull(),
+  timezone: varchar("timezone", { length: 64 }),
+  topic: varchar("topic", { length: 255 }),
+  notes: text("notes"),
+  meetingUrl: text("meetingUrl"),
+
+  // Capacity
+  maxParticipants: int("maxParticipants").notNull(),
+
+  // Pricing (split across participants)
+  totalAmountCents: int("totalAmountCents").notNull(),
+  perParticipantCents: int("perParticipantCents").notNull(),
+  commissionCents: int("commissionCents").notNull(),
+  coachPayoutCents: int("coachPayoutCents").notNull(),
+  currency: varchar("currency", { length: 3 }).default("USD"),
+
+  // Invite token — shared via link
+  inviteToken: varchar("inviteToken", { length: 64 }).notNull().unique(),
+
+  status: mysqlEnum("status", [
+    "forming",     // organizer created, awaiting participants
+    "confirmed",   // min participant threshold met, coach confirmed
+    "in_progress",
+    "completed",
+    "cancelled",
+  ]).default("forming").notNull(),
+
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type GroupLesson = typeof groupLessons.$inferSelect;
+export type InsertGroupLesson = typeof groupLessons.$inferInsert;
+
+/**
+ * Group lesson participants — each student who has joined a group lesson,
+ * including their payment status.
+ */
+export const groupLessonParticipants = mysqlTable("group_lesson_participants", {
+  id: int("id").autoincrement().primaryKey(),
+  groupLessonId: int("groupLessonId").notNull(),
+  studentId: int("studentId").notNull(),
+
+  // Payment tracking (one Stripe payment intent per participant)
+  stripePaymentIntentId: varchar("stripePaymentIntentId", { length: 64 }),
+  paid: boolean("paid").default(false).notNull(),
+  paidAt: timestamp("paidAt"),
+
+  // Tracking
+  joinedAt: timestamp("joinedAt").defaultNow().notNull(),
+  dropped: boolean("dropped").default(false).notNull(),
+  droppedAt: timestamp("droppedAt"),
+});
+
+export type GroupLessonParticipant = typeof groupLessonParticipants.$inferSelect;
+export type InsertGroupLessonParticipant = typeof groupLessonParticipants.$inferInsert;
