@@ -1369,6 +1369,119 @@ export const appRouter = router({
       }),
   }),
 
+  // ============ CONTENT MONETIZATION (Sprint 11 — future phase) ============
+  // Minimal backend scaffold for pay-per-view content. Full upload flow,
+  // subscription tiers, and content library UI are deferred per
+  // BUILD_PLAN.md (Phase 4). This commit establishes the schema + the
+  // list/get/purchase endpoints so those features can be built
+  // incrementally without schema churn.
+  content: router({
+    /** Public: list published content, optionally filtered by coach. */
+    list: publicProcedure
+      .input(z.object({
+        coachId: z.number().optional(),
+        kind: z.enum(["course", "video", "pdf", "pgn", "bundle"]).optional(),
+        limit: z.number().min(1).max(100).default(20),
+      }).optional())
+      .query(async ({ input }) => {
+        const database = await db.getDb();
+        if (!database) return [];
+        const { sql } = await import("drizzle-orm");
+
+        const coachFilter = input?.coachId ? sql`AND coachId = ${input.coachId}` : sql``;
+        const kindFilter = input?.kind ? sql`AND kind = ${input.kind}` : sql``;
+        const limit = input?.limit ?? 20;
+
+        const result: any = await database.execute(sql`
+          SELECT id, coachId, title, description, kind, thumbnailUrl,
+                 priceCents, currency, previewContent, publishedAt
+          FROM content_items
+          WHERE published = 1
+            ${coachFilter}
+            ${kindFilter}
+          ORDER BY publishedAt DESC
+          LIMIT ${limit}
+        `);
+        return (result[0] || []) as any[];
+      }),
+
+    /**
+     * Get a single content item. Returns the preview by default; the
+     * unlocked payload (storageKey -> presigned URL) is only included
+     * if the caller has purchased or owns the content.
+     */
+    getById: publicProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ ctx, input }) => {
+        const database = await db.getDb();
+        if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
+        const { sql } = await import("drizzle-orm");
+
+        const itemResult: any = await database.execute(sql`
+          SELECT * FROM content_items WHERE id = ${input.id} AND published = 1 LIMIT 1
+        `);
+        const item = itemResult[0]?.[0];
+        if (!item) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Content not found" });
+        }
+
+        // Check if the current user has unlocked it
+        let unlocked = item.priceCents === 0 || ctx.user?.id === item.coachId;
+        if (!unlocked && ctx.user?.id) {
+          const purchaseResult: any = await database.execute(sql`
+            SELECT id FROM content_purchases
+            WHERE contentItemId = ${item.id} AND userId = ${ctx.user.id}
+            LIMIT 1
+          `);
+          unlocked = (purchaseResult[0]?.length ?? 0) > 0;
+        }
+
+        // Only expose the raw storage key to unlocked users; otherwise
+        // return the preview only.
+        const { storageKey, ...publicFields } = item as any;
+        return {
+          ...publicFields,
+          unlocked,
+          storageKey: unlocked ? storageKey : undefined,
+        };
+      }),
+
+    /**
+     * Mark content as purchased for the current user. Stripe checkout is
+     * expected to have completed before calling this — the actual payment
+     * flow will be wired up when the checkout endpoint lands.
+     */
+    recordPurchase: protectedProcedure
+      .input(z.object({
+        contentItemId: z.number(),
+        stripePaymentIntentId: z.string(),
+        amountPaidCents: z.number().int().nonnegative(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const database = await db.getDb();
+        if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
+        const { sql } = await import("drizzle-orm");
+
+        // Idempotency — don't double-insert if the user already owns it
+        const existingResult: any = await database.execute(sql`
+          SELECT id FROM content_purchases
+          WHERE contentItemId = ${input.contentItemId} AND userId = ${ctx.user.id}
+          LIMIT 1
+        `);
+        if ((existingResult[0]?.length ?? 0) > 0) {
+          return { success: true, alreadyOwned: true };
+        }
+
+        await database.execute(sql`
+          INSERT INTO content_purchases
+            (contentItemId, userId, unlockMethod, amountPaidCents, stripePaymentIntentId)
+          VALUES
+            (${input.contentItemId}, ${ctx.user.id}, 'purchase', ${input.amountPaidCents}, ${input.stripePaymentIntentId})
+        `);
+        return { success: true, alreadyOwned: false };
+      }),
+  }),
+
   // ============ PAYMENT OPERATIONS ============
   payment: router({
     // Create checkout session for a lesson

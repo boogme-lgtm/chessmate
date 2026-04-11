@@ -676,3 +676,58 @@ export const groupLessonParticipants = mysqlTable("group_lesson_participants", {
 
 export type GroupLessonParticipant = typeof groupLessonParticipants.$inferSelect;
 export type InsertGroupLessonParticipant = typeof groupLessonParticipants.$inferInsert;
+
+/**
+ * Content items — coach-authored premium content (courses, videos, PDFs,
+ * PGN files). Priced per item or free. S3 keys are stored here and
+ * resolved to signed URLs only for unlocked users.
+ */
+export const contentItems = mysqlTable("content_items", {
+  id: int("id").autoincrement().primaryKey(),
+  coachId: int("coachId").notNull(),
+
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description"),
+  kind: mysqlEnum("kind", ["course", "video", "pdf", "pgn", "bundle"]).notNull(),
+
+  // S3 storage key — resolved via presigned URL on unlock
+  storageKey: varchar("storageKey", { length: 512 }),
+  thumbnailUrl: text("thumbnailUrl"),
+
+  // Pricing — 0 = free
+  priceCents: int("priceCents").default(0).notNull(),
+  currency: varchar("currency", { length: 3 }).default("USD"),
+
+  // Optional preview/teaser snippet (video clip URL, excerpt text, etc.)
+  previewContent: text("previewContent"),
+
+  // Visibility
+  published: boolean("published").default(false).notNull(),
+  publishedAt: timestamp("publishedAt"),
+
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type ContentItem = typeof contentItems.$inferSelect;
+export type InsertContentItem = typeof contentItems.$inferInsert;
+
+/**
+ * Content purchases — tracks pay-per-view unlocks and subscription-granted
+ * access. A row exists for every user-content pairing that's been unlocked.
+ */
+export const contentPurchases = mysqlTable("content_purchases", {
+  id: int("id").autoincrement().primaryKey(),
+  contentItemId: int("contentItemId").notNull(),
+  userId: int("userId").notNull(),
+
+  // How it was unlocked
+  unlockMethod: mysqlEnum("unlockMethod", ["purchase", "subscription", "free", "gift"]).notNull(),
+  amountPaidCents: int("amountPaidCents").default(0).notNull(),
+  stripePaymentIntentId: varchar("stripePaymentIntentId", { length: 64 }),
+
+  unlockedAt: timestamp("unlockedAt").defaultNow().notNull(),
+});
+
+export type ContentPurchase = typeof contentPurchases.$inferSelect;
+export type InsertContentPurchase = typeof contentPurchases.$inferInsert;
