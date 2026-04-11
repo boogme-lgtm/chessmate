@@ -381,11 +381,18 @@ export const appRouter = router({
             : {};
         } catch { /* malformed JSON, use empty schedule */ }
 
-        // Get existing bookings to exclude
-        const bookings = await db.getLessonsByCoach(input.coachId, 100);
+        // Get existing bookings to exclude. Return {start, durationMinutes}
+        // so the client can compute real overlap (previously only timestamps
+        // were returned, making overlap detection impossible for non-uniform
+        // durations).
+        const bookings = await db.getLessonsByCoach(input.coachId, 200);
+        const EXCLUDED_STATUSES = new Set(["cancelled", "refunded", "declined"]);
         const bookedSlots = bookings
-          .filter((l: any) => l.status !== "cancelled" && l.status !== "refunded")
-          .map((l: any) => l.scheduledAt);
+          .filter((l: any) => !EXCLUDED_STATUSES.has(l.status))
+          .map((l: any) => ({
+            start: l.scheduledAt,
+            durationMinutes: l.durationMinutes || 60,
+          }));
 
         let lessonDurations = [60];
         try {
