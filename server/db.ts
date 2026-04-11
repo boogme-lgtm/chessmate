@@ -1,25 +1,27 @@
 import { eq, and, desc, sql, gte, lte } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
-import { 
-  InsertUser, 
-  users, 
-  coachProfiles, 
-  studentProfiles, 
-  lessons, 
-  reviews, 
-  achievements, 
+import {
+  InsertUser,
+  users,
+  coachProfiles,
+  studentProfiles,
+  lessons,
+  reviews,
+  achievements,
   userAchievements,
   coachMatches,
   waitlist,
   coachApplications,
+  messages,
   InsertCoachProfile,
   InsertStudentProfile,
   InsertLesson,
   InsertReview,
   InsertWaitlist,
   InsertCoachMatch,
-  InsertCoachApplication
+  InsertCoachApplication,
+  InsertMessage,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -1119,4 +1121,85 @@ export async function verifyCancellationToken(lessonId: number, token: string): 
   const b = Buffer.from(token);
   if (a.length !== b.length) return false;
   return crypto.timingSafeEqual(a, b);
+}
+
+// ============ MESSAGE OPERATIONS ============
+
+export async function createMessage(message: InsertMessage) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const result: any = await db.execute(sql`
+    INSERT INTO messages (lessonId, senderId, contentType, content)
+    VALUES (${message.lessonId}, ${message.senderId}, ${message.contentType || "text"}, ${message.content})
+  `);
+  const insertId = Number(result[0]?.insertId);
+  return {
+    id: insertId,
+    lessonId: message.lessonId,
+    senderId: message.senderId,
+    contentType: message.contentType || "text",
+    content: message.content,
+    readAt: null as Date | null,
+    createdAt: new Date(),
+  };
+}
+
+export async function getMessagesForLesson(lessonId: number, limit: number = 200) {
+  const db = await getDb();
+  if (!db) return [] as any[];
+
+  const result: any = await db.execute(sql`
+    SELECT * FROM messages
+    WHERE lessonId = ${lessonId}
+    ORDER BY createdAt ASC
+    LIMIT ${limit}
+  `);
+  return (result[0] || []) as any[];
+}
+
+/**
+ * Mark all messages in a lesson as read for everyone except the specified user.
+ * (The user opening the thread marks the counterpart's messages as read.)
+ */
+export async function markLessonMessagesRead(lessonId: number, readerId: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.execute(sql`
+    UPDATE messages
+    SET readAt = NOW()
+    WHERE lessonId = ${lessonId}
+      AND senderId <> ${readerId}
+      AND readAt IS NULL
+  `);
+}
+
+/**
+ * Count unread messages per lesson for a given reader. Returns a Map of
+ * lessonId -> unread count.
+ */
+export async function getUnreadMessageCountsForUser(
+  userId: number,
+  lessonIds: number[]
+): Promise<Map<number, number>> {
+  const counts = new Map<number, number>();
+  if (lessonIds.length === 0) return counts;
+
+  const db = await getDb();
+  if (!db) return counts;
+
+  // mysql2 interpolates arrays as a comma list when passed via sql.join
+  const result: any = await db.execute(sql`
+    SELECT lessonId, COUNT(*) AS unread
+    FROM messages
+    WHERE readAt IS NULL
+      AND senderId <> ${userId}
+      AND lessonId IN (${sql.join(lessonIds.map(id => sql`${id}`), sql`, `)})
+    GROUP BY lessonId
+  `);
+  const rows = (result[0] || []) as { lessonId: number; unread: number | string }[];
+  for (const row of rows) {
+    counts.set(Number(row.lessonId), Number(row.unread));
+  }
+  return counts;
 }

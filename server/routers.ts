@@ -1153,6 +1153,87 @@ export const appRouter = router({
       }),
   }),
 
+  // ============ IN-APP MESSAGING ============
+  messages: router({
+    /**
+     * Send a message on a specific lesson. Requires the sender to be the
+     * student or coach for that lesson.
+     */
+    send: protectedProcedure
+      .input(z.object({
+        lessonId: z.number(),
+        content: z.string().min(1).max(4000),
+        contentType: z.enum(["text", "pgn"]).default("text"),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const lesson = await db.getLessonById(input.lessonId);
+        if (!lesson) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
+        }
+        if (lesson.studentId !== ctx.user.id && lesson.coachId !== ctx.user.id) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Not your lesson" });
+        }
+        return await db.createMessage({
+          lessonId: input.lessonId,
+          senderId: ctx.user.id,
+          content: input.content,
+          contentType: input.contentType,
+        });
+      }),
+
+    /**
+     * Get the message thread for a lesson. Also marks the counterpart's
+     * messages as read for the current user as a side effect.
+     */
+    getForLesson: protectedProcedure
+      .input(z.object({ lessonId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        const lesson = await db.getLessonById(input.lessonId);
+        if (!lesson) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
+        }
+        if (lesson.studentId !== ctx.user.id && lesson.coachId !== ctx.user.id) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Not your lesson" });
+        }
+        // Fire-and-forget read marker — don't block the response on it.
+        db.markLessonMessagesRead(input.lessonId, ctx.user.id).catch(err =>
+          console.error("[messages.getForLesson] markRead failed:", err)
+        );
+        return await db.getMessagesForLesson(input.lessonId);
+      }),
+
+    /**
+     * Explicit mark-as-read (used if the user revisits a tab).
+     */
+    markRead: protectedProcedure
+      .input(z.object({ lessonId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const lesson = await db.getLessonById(input.lessonId);
+        if (!lesson) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
+        }
+        if (lesson.studentId !== ctx.user.id && lesson.coachId !== ctx.user.id) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Not your lesson" });
+        }
+        await db.markLessonMessagesRead(input.lessonId, ctx.user.id);
+        return { success: true };
+      }),
+
+    /**
+     * Unread counts per lesson for the current user, keyed by lessonId.
+     * Client passes the list of lessonIds visible on the dashboard.
+     */
+    getUnreadCounts: protectedProcedure
+      .input(z.object({ lessonIds: z.array(z.number()).max(200) }))
+      .query(async ({ ctx, input }) => {
+        const counts = await db.getUnreadMessageCountsForUser(ctx.user.id, input.lessonIds);
+        // Serialize Map -> plain object for tRPC
+        const result: Record<number, number> = {};
+        counts.forEach((v, k) => { result[k] = v; });
+        return result;
+      }),
+  }),
+
   // ============ PAYMENT OPERATIONS ============
   payment: router({
     // Create checkout session for a lesson

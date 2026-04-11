@@ -32,7 +32,8 @@ import { useLocation } from "wouter";
 import { useEffect, useState, useCallback } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import ReviewDialog from "@/components/ReviewDialog";
-import { Star } from "lucide-react";
+import MessageThread from "@/components/MessageThread";
+import { Star, MessageCircle } from "lucide-react";
 
 /**
  * Student Dashboard — Upcoming and past lessons with live countdown timers
@@ -45,6 +46,12 @@ export default function StudentDashboard() {
   const { data: lessons, isLoading } = trpc.lesson.myLessons.useQuery(
     { limit: 50 },
     { enabled: !!user }
+  );
+
+  const lessonIds = (lessons || []).map((l: any) => l.id);
+  const { data: unreadCounts } = trpc.messages.getUnreadCounts.useQuery(
+    { lessonIds },
+    { enabled: lessonIds.length > 0, refetchInterval: 30000 }
   );
 
   useEffect(() => {
@@ -66,6 +73,9 @@ export default function StudentDashboard() {
   const pastLessons = lessons?.filter((l: any) =>
     isPast(new Date(l.scheduledAt)) || l.status === "completed" || l.status === "cancelled"
   ) || [];
+
+  const unreadForLesson = (lessonId: number) =>
+    (unreadCounts as Record<number, number> | undefined)?.[lessonId] || 0;
 
   return (
     <DashboardLayout>
@@ -113,7 +123,11 @@ export default function StudentDashboard() {
                 </Card>
               ) : (
                 upcomingLessons.map((lesson: any) => (
-                  <LessonCard key={lesson.id} lesson={lesson} />
+                  <LessonCard
+                    key={lesson.id}
+                    lesson={lesson}
+                    unreadCount={unreadForLesson(lesson.id)}
+                  />
                 ))
               )}
             </TabsContent>
@@ -131,7 +145,12 @@ export default function StudentDashboard() {
                 </Card>
               ) : (
                 pastLessons.map((lesson: any) => (
-                  <LessonCard key={lesson.id} lesson={lesson} isPast />
+                  <LessonCard
+                    key={lesson.id}
+                    lesson={lesson}
+                    isPast
+                    unreadCount={unreadForLesson(lesson.id)}
+                  />
                 ))
               )}
             </TabsContent>
@@ -358,11 +377,13 @@ function CountdownBanner({ scheduledAt, status }: CountdownBannerProps) {
 interface LessonCardProps {
   lesson: any;
   isPast?: boolean;
+  unreadCount?: number;
 }
 
-function LessonCard({ lesson, isPast = false }: LessonCardProps) {
+function LessonCard({ lesson, isPast = false, unreadCount = 0 }: LessonCardProps) {
   const [, setLocation] = useLocation();
   const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [showMessageThread, setShowMessageThread] = useState(false);
   const utils = trpc.useUtils();
 
   const cancelMutation = trpc.lesson.cancel.useMutation({
@@ -513,6 +534,21 @@ function LessonCard({ lesson, isPast = false }: LessonCardProps) {
                   </Button>
                 )}
 
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-2 relative"
+                  onClick={() => setShowMessageThread(true)}
+                >
+                  <MessageCircle className="h-4 w-4" />
+                  Messages
+                  {unreadCount > 0 && (
+                    <span className="ml-1 rounded-full bg-primary text-primary-foreground text-[10px] font-semibold px-1.5 py-0.5 min-w-[18px] text-center">
+                      {unreadCount}
+                    </span>
+                  )}
+                </Button>
+
                 {canCancel && (
                   <Button
                     size="sm"
@@ -557,6 +593,13 @@ function LessonCard({ lesson, isPast = false }: LessonCardProps) {
           isPending={cancelMutation.isPending}
         />
       )}
+
+      <MessageThread
+        open={showMessageThread}
+        onOpenChange={setShowMessageThread}
+        lessonId={lesson.id}
+        otherPartyName={`Coach #${lesson.coachId}`}
+      />
     </>
   );
 }

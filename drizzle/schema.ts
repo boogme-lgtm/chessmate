@@ -589,3 +589,22 @@ export const payouts = mysqlTable("payouts", {
 
 export type Payout = typeof payouts.$inferSelect;
 export type InsertPayout = typeof payouts.$inferInsert;
+
+/**
+ * Messages - per-lesson chat between student and coach
+ */
+export const messages = mysqlTable("messages", {
+  id: int("id").autoincrement().primaryKey(),
+  lessonId: int("lessonId").notNull(),
+  senderId: int("senderId").notNull(),
+
+  // Content type — "text" for plain chat, "pgn" for attached chess games
+  contentType: mysqlEnum("contentType", ["text", "pgn"]).default("text").notNull(),
+  content: text("content").notNull(),
+
+  readAt: timestamp("readAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type Message = typeof messages.$inferSelect;
+export type InsertMessage = typeof messages.$inferInsert;
