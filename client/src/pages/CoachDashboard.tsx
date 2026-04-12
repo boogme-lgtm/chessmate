@@ -27,7 +27,8 @@ import {
   Timer,
   XCircle,
   Ban,
-  MessageCircle
+  MessageCircle,
+  Zap
 } from "lucide-react";
 import { Link } from "wouter";
 import { toast } from "sonner";
@@ -39,6 +40,13 @@ import { format } from "date-fns";
 export default function CoachDashboard() {
   const { user, loading: authLoading, isAuthenticated } = useAuth();
   
+  // Fetch coach profile to check onboarding status
+  const { data: profileData } = trpc.coach.getMyProfile.useQuery(
+    undefined,
+    { enabled: isAuthenticated }
+  );
+  const onboardingIncomplete = profileData?.profile && !profileData.profile.onboardingCompleted;
+
   // Fetch coach earnings data
   const { data: earnings, isLoading: earningsLoading } = trpc.coach.getEarnings.useQuery(
     undefined,
@@ -186,6 +194,32 @@ export default function CoachDashboard() {
           </div>
         ) : (
           <div className="space-y-8">
+            {/* Complete Profile Banner */}
+            {onboardingIncomplete && (
+              <Card className="border-amber-500/50 bg-amber-500/5">
+                <CardContent className="p-6">
+                  <div className="flex items-start gap-4">
+                    <div className="w-12 h-12 rounded-full bg-amber-500/10 flex items-center justify-center flex-shrink-0">
+                      <Star className="w-6 h-6 text-amber-500" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-lg mb-1">Complete Your Coach Profile</h3>
+                      <p className="text-muted-foreground mb-4">
+                        Finish setting up your profile so students can find and book you.
+                        Set your availability, pricing, and credentials.
+                      </p>
+                      <Link href="/coach/onboarding">
+                        <Button className="bg-amber-600 hover:bg-amber-700 text-white gap-2">
+                          <Zap className="w-4 h-4" />
+                          Continue Setup
+                        </Button>
+                      </Link>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Stripe Onboarding Alert */}
             {earnings?.needsOnboarding && (
               <Card className="border-burgundy/50 bg-burgundy/5">

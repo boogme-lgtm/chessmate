@@ -168,6 +168,11 @@ export default function CoachOnboarding() {
 
   const updateProfile = trpc.coach.updateProfile.useMutation();
   const startStripeOnboarding = trpc.coach.startOnboarding.useMutation();
+  const stripeStatus = trpc.coach.getOnboardingStatus.useQuery(undefined, {
+    enabled: isAuthenticated,
+    refetchOnWindowFocus: true,
+  });
+  const confirmStripeOnboarded = trpc.coach.confirmStripeOnboarded.useMutation();
 
   // ── Save current step and advance ──
   async function saveAndNext() {
@@ -246,11 +251,29 @@ export default function CoachOnboarding() {
     }
   }
 
-  // ── Check for Stripe return ──
+  // ── Check for Stripe return / refresh ──
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("stripe_return") === "1") {
-      toast.success("Stripe setup completed! Review your profile and go live.");
+      // Verify Stripe account is actually onboarded and persist the flag
+      stripeStatus.refetch().then(({ data }) => {
+        if (data?.onboarded) {
+          confirmStripeOnboarded.mutate(undefined, {
+            onSuccess: () => toast.success("Stripe setup completed! Review your profile and go live."),
+            onError: () => toast.success("Stripe setup completed! You can go live now."),
+          });
+        } else {
+          toast.info("Stripe setup in progress — you may need to complete additional verification steps.");
+        }
+      });
+      // Clean the URL to prevent re-processing on refresh
+      window.history.replaceState({}, "", "/coach/onboarding");
+      setStep(7);
+    }
+    if (params.get("stripe_refresh") === "1") {
+      toast.error("Your Stripe setup session expired. Please try again.");
+      window.history.replaceState({}, "", "/coach/onboarding");
+      setStep(7);
     }
   }, []);
 

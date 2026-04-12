@@ -65,12 +65,37 @@ const DEFAULT_SCHEDULE: WeeklySchedule = {
   friday: [{ start: "09:00", end: "17:00" }],
 };
 
+/**
+ * Parse the schedule from the DB into the flat WeeklySchedule format.
+ * Handles two shapes:
+ *   - Flat (Sprint 2): { monday: [{start, end}], ... }
+ *   - Nested (onboarding wizard): { monday: { enabled: true, slots: [{start, end}] }, ... }
+ * Falls back to DEFAULT_SCHEDULE if nothing usable is found.
+ */
 function parseSchedule(raw: unknown): WeeklySchedule {
   if (!raw || typeof raw !== "object") return DEFAULT_SCHEDULE;
   const schedule = raw as Record<string, unknown>;
-  const hasAnyDay = WEEKDAY_NAMES.some(day => Array.isArray(schedule[day]) && (schedule[day] as unknown[]).length > 0);
-  if (!hasAnyDay) return DEFAULT_SCHEDULE;
-  return schedule as WeeklySchedule;
+  const result: WeeklySchedule = {};
+  let foundAny = false;
+
+  for (const day of WEEKDAY_NAMES) {
+    const val = schedule[day];
+    if (Array.isArray(val) && val.length > 0) {
+      // Flat format: already TimeWindow[]
+      result[day] = val as TimeWindow[];
+      foundAny = true;
+    } else if (val && typeof val === "object" && !Array.isArray(val)) {
+      // Nested format from onboarding wizard: { enabled: bool, slots: [{start, end}] }
+      const nested = val as { enabled?: boolean; slots?: TimeWindow[] };
+      if (nested.enabled && Array.isArray(nested.slots) && nested.slots.length > 0) {
+        result[day] = nested.slots;
+        foundAny = true;
+      }
+      // If enabled === false, omit the day (coach marked it as unavailable)
+    }
+  }
+
+  return foundAny ? result : DEFAULT_SCHEDULE;
 }
 
 function parseHHMM(hhmm: string): { hour: number; minute: number } | null {

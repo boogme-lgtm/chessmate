@@ -2,7 +2,7 @@ import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { authRouter } from "./authRouter";
-import { router, publicProcedure, protectedProcedure } from "./_core/trpc";
+import { router, publicProcedure, protectedProcedure, coachProcedure } from "./_core/trpc";
 import { vetCoachApplication } from "./aiVettingService";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
@@ -580,7 +580,7 @@ export const appRouter = router({
       }),
 
     // Start Stripe Connect onboarding
-    startOnboarding: protectedProcedure.mutation(async ({ ctx }) => {
+    startOnboarding: coachProcedure.mutation(async ({ ctx }) => {
       const user = await db.getUserById(ctx.user.id);
       if (!user) {
         throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
@@ -613,8 +613,25 @@ export const appRouter = router({
       return { url: onboardingLink.url };
     }),
 
+    /**
+     * After Stripe redirect, the client calls this to verify the Connect
+     * account is fully onboarded and persist the flag to the DB.
+     */
+    confirmStripeOnboarded: coachProcedure.mutation(async ({ ctx }) => {
+      const user = await db.getUserById(ctx.user.id);
+      if (!user?.stripeConnectAccountId) {
+        return { onboarded: false };
+      }
+      const status = await stripeService.getConnectAccountStatus(user.stripeConnectAccountId);
+      const onboarded = status.chargesEnabled && status.payoutsEnabled;
+      if (onboarded && !user.stripeConnectOnboarded) {
+        await db.updateUserStripeConnectAccount(ctx.user.id, user.stripeConnectAccountId, true);
+      }
+      return { onboarded };
+    }),
+
     // Check onboarding status
-    getOnboardingStatus: protectedProcedure.query(async ({ ctx }) => {
+    getOnboardingStatus: coachProcedure.query(async ({ ctx }) => {
       const user = await db.getUserById(ctx.user.id);
       if (!user?.stripeConnectAccountId) {
         return { onboarded: false, status: null };
@@ -628,7 +645,7 @@ export const appRouter = router({
     }),
 
     // Get dashboard link for coaches
-    getDashboardLink: protectedProcedure.query(async ({ ctx }) => {
+    getDashboardLink: coachProcedure.query(async ({ ctx }) => {
       const user = await db.getUserById(ctx.user.id);
       if (!user?.stripeConnectAccountId) {
         throw new TRPCError({
@@ -642,7 +659,7 @@ export const appRouter = router({
     }),
 
     // Get coach earnings summary (for delayed signup flow)
-    getEarnings: protectedProcedure.query(async ({ ctx }) => {
+    getEarnings: coachProcedure.query(async ({ ctx }) => {
       const earnings = await db.getCoachEarningsSummary(ctx.user.id);
       const user = await db.getUserById(ctx.user.id);
       
@@ -654,14 +671,14 @@ export const appRouter = router({
     }),
 
     // Get my own coach profile (for wizard pre-filling)
-    getMyProfile: protectedProcedure.query(async ({ ctx }) => {
+    getMyProfile: coachProcedure.query(async ({ ctx }) => {
       const profile = await db.getCoachProfileByUserId(ctx.user.id);
       const user = await db.getUserById(ctx.user.id);
       return { profile, user };
     }),
 
     // Update coach profile (used by onboarding wizard)
-    updateProfile: protectedProcedure
+    updateProfile: coachProcedure
       .input(z.object({
         // User-level fields
         name: z.string().min(2).max(100).optional(),
@@ -697,9 +714,25 @@ export const appRouter = router({
       .mutation(async ({ ctx, input }) => {
         const { name, bio, avatarUrl, country, timezone, specialties, languages, lessonDurations, availabilitySchedule, ...coachFields } = input;
 
-        // Update user-level fields
-        if (name || bio || avatarUrl || country || timezone) {
+        // Update user-level fields — check !== undefined (not falsy) so empty strings can clear values
+        if (name !== undefined || bio !== undefined || avatarUrl !== undefined || country !== undefined || timezone !== undefined) {
           await db.updateUserProfile(ctx.user.id, { name, bio, avatarUrl, country, timezone });
+        }
+
+        // Server-side validation when going live
+        if (input.onboardingCompleted || input.profileActive) {
+          const profile = await db.getCoachProfileByUserId(ctx.user.id);
+          const user = await db.getUserById(ctx.user.id);
+          if (!user?.name) {
+            throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Please set your name before going live" });
+          }
+          if (!profile?.hourlyRateCents) {
+            throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Please set your hourly rate before going live" });
+          }
+          const durations = profile?.lessonDurations ? JSON.parse(profile.lessonDurations) : [];
+          if (!Array.isArray(durations) || durations.length === 0) {
+            throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Please select at least one lesson duration" });
+          }
         }
 
         // Update coach profile fields
@@ -720,7 +753,7 @@ export const appRouter = router({
       }),
 
     // Check if coach needs to complete Stripe onboarding
-    checkOnboardingRequired: protectedProcedure.query(async ({ ctx }) => {
+    checkOnboardingRequired: coachProcedure.query(async ({ ctx }) => {
       const user = await db.getUserById(ctx.user.id);
       if (user?.stripeConnectOnboarded) {
         return { required: false, reason: "already_onboarded" };
@@ -880,7 +913,7 @@ export const appRouter = router({
       }),
 
     // Get coach's lessons
-    coachLessons: protectedProcedure
+    coachLessons: coachProcedure
       .input(z.object({
         limit: z.number().min(1).max(100).default(50),
       }).optional())
@@ -889,7 +922,7 @@ export const appRouter = router({
       }),
 
     // Confirm lesson (coach)
-    confirmAsCoach: protectedProcedure
+    confirmAsCoach: coachProcedure
       .input(z.object({ lessonId: z.number() }))
       .mutation(async ({ ctx, input }) => {
         const lesson = await db.getLessonById(input.lessonId);
@@ -943,7 +976,7 @@ export const appRouter = router({
       }),
 
     // Decline lesson (coach)
-    declineAsCoach: protectedProcedure
+    declineAsCoach: coachProcedure
       .input(z.object({
         lessonId: z.number(),
         reason: z.string().optional(),
