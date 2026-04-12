@@ -9,11 +9,13 @@
  */
 
 import { sql } from "drizzle-orm";
-import { getDb } from "./db";
+import { getDb, cancelLesson } from "./db";
 import {
   sendEmail,
   getStudentLessonReminderEmail,
   getCoachLessonReminderEmail,
+  getStudentCancellationEmail,
+  getCoachCancellationEmail,
 } from "./emailService";
 
 interface LessonReminderRow {
@@ -179,23 +181,116 @@ export async function sendPendingReminders(): Promise<void> {
 }
 
 /**
+ * Auto-decline pending_confirmation lessons whose confirmationDeadline
+ * has passed. Sends a cancellation email to both parties explaining
+ * the coach didn't respond in time.
+ */
+export async function autoDeclineStaleBookings(): Promise<void> {
+  const dbInstance = await getDb();
+  if (!dbInstance) {
+    console.warn("[Auto-Decline] Database not available, skipping.");
+    return;
+  }
+
+  // Find pending_confirmation lessons whose deadline has expired
+  const result: any = await dbInstance.execute(sql`
+    SELECT id FROM lessons
+    WHERE status = 'pending_confirmation'
+      AND confirmationDeadline IS NOT NULL
+      AND confirmationDeadline <= NOW()
+  `);
+
+  const rows = result[0] as { id: number }[];
+  if (!rows || rows.length === 0) {
+    console.log("[Auto-Decline] No stale pending_confirmation lessons.");
+    return;
+  }
+
+  console.log(`[Auto-Decline] Found ${rows.length} lesson(s) past confirmation deadline.`);
+
+  for (const row of rows) {
+    try {
+      const cancelResult = await cancelLesson(
+        row.id,
+        "system",
+        "Coach did not respond within 24 hours"
+      );
+      console.log(`[Auto-Decline] Lesson ${row.id} auto-declined`);
+
+      // Notify both parties. Best-effort — log but don't throw.
+      const { getLessonById, getUserById } = await import("./db");
+      const lesson = await getLessonById(row.id);
+      if (!lesson) continue;
+      const [student, coach] = await Promise.all([
+        getUserById(lesson.studentId),
+        getUserById(lesson.coachId),
+      ]);
+      if (!student?.email || !coach?.email) continue;
+
+      const lessonDate = new Date(lesson.scheduledAt).toLocaleDateString("en-US", {
+        weekday: "long", year: "numeric", month: "long", day: "numeric",
+      });
+      const lessonTime = new Date(lesson.scheduledAt).toLocaleTimeString("en-US", {
+        hour: "numeric", minute: "2-digit", hour12: true,
+      });
+
+      await sendEmail({
+        to: student.email,
+        subject: `Lesson request not confirmed — ${lessonDate}`,
+        html: getStudentCancellationEmail({
+          studentName: student.name || "Student",
+          coachName: coach.name || "Coach",
+          lessonDate,
+          lessonTime,
+          durationMinutes: lesson.durationMinutes ?? 60,
+          amountPaid: `$${(lesson.amountCents / 100).toFixed(2)}`,
+          refundAmount: `$${(cancelResult.refundAmountCents / 100).toFixed(2)}`,
+          refundPercentage: 100, // no payment was ever taken for pending_confirmation
+          cancelledBy: "system",
+          cancellationReason: "Coach did not respond within 24 hours",
+        }),
+      });
+
+      await sendEmail({
+        to: coach.email,
+        subject: `Lesson request auto-declined — ${lessonDate}`,
+        html: getCoachCancellationEmail({
+          coachName: coach.name || "Coach",
+          studentName: student.name || "Student",
+          lessonDate,
+          lessonTime,
+          durationMinutes: lesson.durationMinutes ?? 60,
+          cancelledBy: "system",
+          cancellationReason: "You didn't respond within 24 hours. The student will be offered other coaches.",
+        }),
+      });
+    } catch (err) {
+      console.error(`[Auto-Decline] Failed for lesson ${row.id}:`, err);
+    }
+  }
+}
+
+/**
  * Start the hourly reminder scheduler.
  * Call once at server startup.
  */
 export function startReminderScheduler(): void {
   const INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 
-  // Run immediately on startup to catch any missed reminders
-  sendPendingReminders().catch((err) =>
-    console.error("[Reminder Scheduler] Startup run failed:", err)
-  );
+  const runAll = async () => {
+    await sendPendingReminders().catch((err) =>
+      console.error("[Reminder Scheduler] Reminder run failed:", err)
+    );
+    await autoDeclineStaleBookings().catch((err) =>
+      console.error("[Reminder Scheduler] Auto-decline run failed:", err)
+    );
+  };
+
+  // Run immediately on startup to catch any missed reminders / stale bookings
+  runAll();
 
   // Then run every hour
-  setInterval(() => {
-    sendPendingReminders().catch((err) =>
-      console.error("[Reminder Scheduler] Scheduled run failed:", err)
-    );
-  }, INTERVAL_MS);
+  setInterval(runAll, INTERVAL_MS);
 
-  console.log("[Reminder Scheduler] Started — running every hour.");
+  console.log("[Reminder Scheduler] Started — running every hour (reminders + auto-decline).");
 }

@@ -14,12 +14,15 @@ import {
   Menu
 } from "lucide-react";
 import { useLocation } from "wouter";
+import Footer from "@/components/Footer";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 /**
  * Coach Browse Page - Students discover and select coaches
  * Simple grid layout with key coach information
  */
 export default function CoachBrowse() {
+  useDocumentTitle("Browse Chess Coaches · BooGMe");
   const [, setLocation] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const { data: coaches, isLoading } = trpc.coach.listActive.useQuery();
@@ -90,6 +93,8 @@ export default function CoachBrowse() {
           </div>
         )}
       </div>
+
+      <Footer />
     </div>
   );
 }

@@ -1295,3 +1295,329 @@ export function getCoachLessonReminderEmail(
 </html>
   `;
 }
+
+/**
+ * Cancellation confirmation email — sent to the student after a lesson is cancelled.
+ * Includes the refund breakdown based on cancellation timing.
+ */
+export function getStudentCancellationEmail(params: {
+  studentName: string;
+  coachName: string;
+  lessonDate: string;
+  lessonTime: string;
+  durationMinutes: number;
+  amountPaid: string;
+  refundAmount: string;
+  refundPercentage: number;
+  cancelledBy: "student" | "coach" | "system";
+  cancellationReason?: string | null;
+}): string {
+  const {
+    studentName,
+    coachName,
+    lessonDate,
+    lessonTime,
+    durationMinutes,
+    amountPaid,
+    refundAmount,
+    refundPercentage,
+    cancelledBy,
+    cancellationReason,
+  } = params;
+
+  const refundLine =
+    refundPercentage === 100
+      ? `You will receive a full refund of <strong>${refundAmount}</strong>.`
+      : refundPercentage > 0
+        ? `You will receive a ${refundPercentage}% refund of <strong>${refundAmount}</strong>.`
+        : `No refund will be issued (cancellation was within 24 hours of the lesson).`;
+
+  const cancelledByLine =
+    cancelledBy === "coach"
+      ? `Unfortunately your coach ${coachName} had to cancel this lesson. You will receive a full refund regardless of timing.`
+      : cancelledBy === "system"
+        ? `This lesson was automatically cancelled by BooGMe.`
+        : `Your cancellation has been processed.`;
+
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson Cancelled</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #0a0a0a; color: #ffffff;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #0a0a0a;">
+    <tr>
+      <td align="center" style="padding: 40px 20px;">
+        <table width="600" cellpadding="0" cellspacing="0" style="background-color: #1a1a1a; border-radius: 8px; overflow: hidden;">
+          <tr>
+            <td style="padding: 40px 40px 20px 40px; text-align: center;">
+              <img src="https://files.manuscdn.com/user_upload_by_module/session_file/310519663188415081/xRYfqyUGHSJUlDcu.png" alt="BooGMe" style="height: 48px; width: auto; margin-bottom: 20px;" />
+              <h1 style="margin: 0; font-size: 32px; font-weight: 300; color: #ffffff; letter-spacing: -0.5px;">Lesson Cancelled</h1>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 0 40px 40px 40px;">
+              <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">Hi ${studentName},</p>
+              <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">${cancelledByLine}</p>
+              <div style="background-color: #2a2a2a; padding: 25px; margin: 30px 0; border-radius: 8px; border-left: 4px solid #8b4513;">
+                <h2 style="margin: 0 0 20px 0; font-size: 20px; font-weight: 600; color: #ffffff;">Lesson Details</h2>
+                <table width="100%" cellpadding="8" cellspacing="0">
+                  <tr><td style="font-size: 15px; color: #a0a0a0; padding: 8px 0;">Coach:</td><td style="font-size: 15px; color: #ffffff; font-weight: 600; padding: 8px 0; text-align: right;">${coachName}</td></tr>
+                  <tr><td style="font-size: 15px; color: #a0a0a0; padding: 8px 0;">Date:</td><td style="font-size: 15px; color: #ffffff; font-weight: 600; padding: 8px 0; text-align: right;">${lessonDate}</td></tr>
+                  <tr><td style="font-size: 15px; color: #a0a0a0; padding: 8px 0;">Time:</td><td style="font-size: 15px; color: #ffffff; font-weight: 600; padding: 8px 0; text-align: right;">${lessonTime}</td></tr>
+                  <tr><td style="font-size: 15px; color: #a0a0a0; padding: 8px 0;">Duration:</td><td style="font-size: 15px; color: #ffffff; font-weight: 600; padding: 8px 0; text-align: right;">${durationMinutes} minutes</td></tr>
+                  <tr><td style="font-size: 15px; color: #a0a0a0; padding: 8px 0;">Amount Paid:</td><td style="font-size: 15px; color: #ffffff; font-weight: 600; padding: 8px 0; text-align: right;">${amountPaid}</td></tr>
+                </table>
+              </div>
+              <div style="background-color: #2a2a2a; padding: 20px; margin: 20px 0; border-radius: 8px;">
+                <p style="margin: 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">${refundLine}</p>
+                ${refundPercentage > 0 ? `<p style="margin: 10px 0 0 0; font-size: 13px; color: #a0a0a0;">Refunds typically appear in your account within 5\u201310 business days.</p>` : ""}
+              </div>
+              ${cancellationReason ? `<p style="margin: 20px 0 0 0; font-size: 14px; color: #a0a0a0;"><em>Reason: ${cancellationReason}</em></p>` : ""}
+              <p style="margin: 30px 0 0 0; font-size: 14px; line-height: 1.6; color: #a0a0a0;">Questions? Reply to this email and we'll help.</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `;
+}
+
+/**
+ * Cancellation notification email — sent to the coach when a lesson is cancelled.
+ */
+export function getCoachCancellationEmail(params: {
+  coachName: string;
+  studentName: string;
+  lessonDate: string;
+  lessonTime: string;
+  durationMinutes: number;
+  cancelledBy: "student" | "coach" | "system";
+  cancellationReason?: string | null;
+}): string {
+  const {
+    coachName,
+    studentName,
+    lessonDate,
+    lessonTime,
+    durationMinutes,
+    cancelledBy,
+    cancellationReason,
+  } = params;
+
+  const cancelledByLine =
+    cancelledBy === "student"
+      ? `${studentName} has cancelled their upcoming lesson with you.`
+      : cancelledBy === "coach"
+        ? `You have cancelled this lesson. A confirmation has also been sent to ${studentName}.`
+        : `This lesson was automatically cancelled by BooGMe.`;
+
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson Cancelled</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #0a0a0a; color: #ffffff;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #0a0a0a;">
+    <tr>
+      <td align="center" style="padding: 40px 20px;">
+        <table width="600" cellpadding="0" cellspacing="0" style="background-color: #1a1a1a; border-radius: 8px; overflow: hidden;">
+          <tr>
+            <td style="padding: 40px 40px 20px 40px; text-align: center;">
+              <img src="https://files.manuscdn.com/user_upload_by_module/session_file/310519663188415081/xRYfqyUGHSJUlDcu.png" alt="BooGMe" style="height: 48px; width: auto; margin-bottom: 20px;" />
+              <h1 style="margin: 0; font-size: 32px; font-weight: 300; color: #ffffff; letter-spacing: -0.5px;">Lesson Cancelled</h1>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 0 40px 40px 40px;">
+              <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">Hi ${coachName},</p>
+              <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">${cancelledByLine}</p>
+              <div style="background-color: #2a2a2a; padding: 25px; margin: 30px 0; border-radius: 8px; border-left: 4px solid #8b4513;">
+                <h2 style="margin: 0 0 20px 0; font-size: 20px; font-weight: 600; color: #ffffff;">Lesson Details</h2>
+                <table width="100%" cellpadding="8" cellspacing="0">
+                  <tr><td style="font-size: 15px; color: #a0a0a0; padding: 8px 0;">Student:</td><td style="font-size: 15px; color: #ffffff; font-weight: 600; padding: 8px 0; text-align: right;">${studentName}</td></tr>
+                  <tr><td style="font-size: 15px; color: #a0a0a0; padding: 8px 0;">Date:</td><td style="font-size: 15px; color: #ffffff; font-weight: 600; padding: 8px 0; text-align: right;">${lessonDate}</td></tr>
+                  <tr><td style="font-size: 15px; color: #a0a0a0; padding: 8px 0;">Time:</td><td style="font-size: 15px; color: #ffffff; font-weight: 600; padding: 8px 0; text-align: right;">${lessonTime}</td></tr>
+                  <tr><td style="font-size: 15px; color: #a0a0a0; padding: 8px 0;">Duration:</td><td style="font-size: 15px; color: #ffffff; font-weight: 600; padding: 8px 0; text-align: right;">${durationMinutes} minutes</td></tr>
+                </table>
+              </div>
+              ${cancellationReason ? `<p style="margin: 20px 0 0 0; font-size: 14px; color: #a0a0a0;"><em>Reason: ${cancellationReason}</em></p>` : ""}
+              <p style="margin: 30px 0 0 0; font-size: 14px; line-height: 1.6; color: #a0a0a0;">Your availability has been freed up. Students can now book this slot again.</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `;
+}
+
+/**
+ * New booking request — sent to the coach when a student books a lesson.
+ * The coach must accept/decline within 24 hours or the system auto-declines.
+ */
+export function getCoachNewBookingRequestEmail(params: {
+  coachName: string;
+  studentName: string;
+  lessonDate: string;
+  lessonTime: string;
+  durationMinutes: number;
+  coachPayout: string;
+  confirmByDate: string;
+  confirmByTime: string;
+}): string {
+  const {
+    coachName,
+    studentName,
+    lessonDate,
+    lessonTime,
+    durationMinutes,
+    coachPayout,
+    confirmByDate,
+    confirmByTime,
+  } = params;
+  const frontendUrl = process.env.VITE_FRONTEND_URL || 'http://localhost:3000';
+
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>New Lesson Request</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #0a0a0a; color: #ffffff;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #0a0a0a;">
+    <tr>
+      <td align="center" style="padding: 40px 20px;">
+        <table width="600" cellpadding="0" cellspacing="0" style="background-color: #1a1a1a; border-radius: 8px; overflow: hidden;">
+          <tr>
+            <td style="padding: 40px 40px 20px 40px; text-align: center;">
+              <img src="https://files.manuscdn.com/user_upload_by_module/session_file/310519663188415081/xRYfqyUGHSJUlDcu.png" alt="BooGMe" style="height: 48px; width: auto; margin-bottom: 20px;" />
+              <h1 style="margin: 0; font-size: 32px; font-weight: 300; color: #ffffff; letter-spacing: -0.5px;">New Lesson Request</h1>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 0 40px 40px 40px;">
+              <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">Hi ${coachName},</p>
+              <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">
+                ${studentName} has requested a lesson with you. Please accept or decline in your coach dashboard so the student can complete payment.
+              </p>
+              <div style="background-color: #2a2a2a; padding: 25px; margin: 30px 0; border-radius: 8px; border-left: 4px solid #8b4513;">
+                <h2 style="margin: 0 0 20px 0; font-size: 20px; font-weight: 600; color: #ffffff;">Lesson Details</h2>
+                <table width="100%" cellpadding="8" cellspacing="0">
+                  <tr><td style="font-size: 15px; color: #a0a0a0; padding: 8px 0;">Student:</td><td style="font-size: 15px; color: #ffffff; font-weight: 600; padding: 8px 0; text-align: right;">${studentName}</td></tr>
+                  <tr><td style="font-size: 15px; color: #a0a0a0; padding: 8px 0;">Date:</td><td style="font-size: 15px; color: #ffffff; font-weight: 600; padding: 8px 0; text-align: right;">${lessonDate}</td></tr>
+                  <tr><td style="font-size: 15px; color: #a0a0a0; padding: 8px 0;">Time:</td><td style="font-size: 15px; color: #ffffff; font-weight: 600; padding: 8px 0; text-align: right;">${lessonTime}</td></tr>
+                  <tr><td style="font-size: 15px; color: #a0a0a0; padding: 8px 0;">Duration:</td><td style="font-size: 15px; color: #ffffff; font-weight: 600; padding: 8px 0; text-align: right;">${durationMinutes} minutes</td></tr>
+                  <tr><td style="font-size: 15px; color: #a0a0a0; padding: 8px 0;">Your payout:</td><td style="font-size: 15px; color: #ffffff; font-weight: 600; padding: 8px 0; text-align: right;">${coachPayout}</td></tr>
+                </table>
+              </div>
+              <div style="background-color: #2a2a2a; padding: 20px; margin: 20px 0; border-radius: 8px; border-left: 4px solid #b8860b;">
+                <p style="margin: 0; font-size: 15px; line-height: 1.6; color: #e0e0e0;">
+                  <strong>Action required by ${confirmByDate} at ${confirmByTime}.</strong><br />
+                  If you don't respond within 24 hours, the booking will be automatically declined and the student will be notified.
+                </p>
+              </div>
+              <div style="text-align: center; margin: 30px 0;">
+                <a href="${frontendUrl}/coach/dashboard" style="display: inline-block; padding: 14px 32px; background-color: #8b4513; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px;">Open Coach Dashboard</a>
+              </div>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `;
+}
+
+/**
+ * Coach accepted the booking — sent to the student with a payment link.
+ * After Sprint 4, students pay AFTER the coach confirms.
+ */
+export function getStudentCoachConfirmedEmail(params: {
+  studentName: string;
+  coachName: string;
+  lessonDate: string;
+  lessonTime: string;
+  durationMinutes: number;
+  amount: string;
+  lessonId: number;
+}): string {
+  const {
+    studentName,
+    coachName,
+    lessonDate,
+    lessonTime,
+    durationMinutes,
+    amount,
+    lessonId,
+  } = params;
+  const frontendUrl = process.env.VITE_FRONTEND_URL || 'http://localhost:3000';
+
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Coach Confirmed — Complete Payment</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #0a0a0a; color: #ffffff;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #0a0a0a;">
+    <tr>
+      <td align="center" style="padding: 40px 20px;">
+        <table width="600" cellpadding="0" cellspacing="0" style="background-color: #1a1a1a; border-radius: 8px; overflow: hidden;">
+          <tr>
+            <td style="padding: 40px 40px 20px 40px; text-align: center;">
+              <img src="https://files.manuscdn.com/user_upload_by_module/session_file/310519663188415081/xRYfqyUGHSJUlDcu.png" alt="BooGMe" style="height: 48px; width: auto; margin-bottom: 20px;" />
+              <h1 style="margin: 0; font-size: 32px; font-weight: 300; color: #ffffff; letter-spacing: -0.5px;">Your coach said yes!</h1>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 0 40px 40px 40px;">
+              <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">Hi ${studentName},</p>
+              <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">
+                Great news — <strong>${coachName}</strong> has accepted your booking request. Complete payment to lock in your lesson.
+              </p>
+              <div style="background-color: #2a2a2a; padding: 25px; margin: 30px 0; border-radius: 8px; border-left: 4px solid #8b4513;">
+                <h2 style="margin: 0 0 20px 0; font-size: 20px; font-weight: 600; color: #ffffff;">Lesson Details</h2>
+                <table width="100%" cellpadding="8" cellspacing="0">
+                  <tr><td style="font-size: 15px; color: #a0a0a0; padding: 8px 0;">Coach:</td><td style="font-size: 15px; color: #ffffff; font-weight: 600; padding: 8px 0; text-align: right;">${coachName}</td></tr>
+                  <tr><td style="font-size: 15px; color: #a0a0a0; padding: 8px 0;">Date:</td><td style="font-size: 15px; color: #ffffff; font-weight: 600; padding: 8px 0; text-align: right;">${lessonDate}</td></tr>
+                  <tr><td style="font-size: 15px; color: #a0a0a0; padding: 8px 0;">Time:</td><td style="font-size: 15px; color: #ffffff; font-weight: 600; padding: 8px 0; text-align: right;">${lessonTime}</td></tr>
+                  <tr><td style="font-size: 15px; color: #a0a0a0; padding: 8px 0;">Duration:</td><td style="font-size: 15px; color: #ffffff; font-weight: 600; padding: 8px 0; text-align: right;">${durationMinutes} minutes</td></tr>
+                  <tr><td style="font-size: 15px; color: #a0a0a0; padding: 8px 0;">Total:</td><td style="font-size: 15px; color: #ffffff; font-weight: 600; padding: 8px 0; text-align: right;">${amount}</td></tr>
+                </table>
+              </div>
+              <div style="text-align: center; margin: 30px 0;">
+                <a href="${frontendUrl}/dashboard" style="display: inline-block; padding: 14px 32px; background-color: #8b4513; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px;">Complete Payment</a>
+              </div>
+              <div style="background-color: #2a2a2a; padding: 20px; margin: 20px 0; border-radius: 8px;">
+                <p style="margin: 0; font-size: 14px; line-height: 1.6; color: #a0a0a0;">
+                  Your payment is held securely in escrow until after your lesson. You can cancel for a full refund up to 48 hours before the lesson.
+                </p>
+              </div>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `;
+}

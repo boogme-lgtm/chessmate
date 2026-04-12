@@ -31,6 +31,9 @@ import { toast } from "sonner";
 import { useLocation } from "wouter";
 import { useEffect, useState, useCallback } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
+import ReviewDialog from "@/components/ReviewDialog";
+import MessageThread from "@/components/MessageThread";
+import { Star, MessageCircle } from "lucide-react";
 
 /**
  * Student Dashboard — Upcoming and past lessons with live countdown timers
@@ -43,6 +46,12 @@ export default function StudentDashboard() {
   const { data: lessons, isLoading } = trpc.lesson.myLessons.useQuery(
     { limit: 50 },
     { enabled: !!user }
+  );
+
+  const lessonIds = (lessons || []).map((l: any) => l.id);
+  const { data: unreadCounts } = trpc.messages.getUnreadCounts.useQuery(
+    { lessonIds },
+    { enabled: lessonIds.length > 0, refetchInterval: 30000 }
   );
 
   useEffect(() => {
@@ -65,6 +74,9 @@ export default function StudentDashboard() {
     isPast(new Date(l.scheduledAt)) || l.status === "completed" || l.status === "cancelled"
   ) || [];
 
+  const unreadForLesson = (lessonId: number) =>
+    (unreadCounts as Record<number, number> | undefined)?.[lessonId] || 0;
+
   return (
     <DashboardLayout>
       <div className="min-h-screen bg-background">
@@ -83,7 +95,8 @@ export default function StudentDashboard() {
           </div>
         </div>
 
-        <div className="container py-8">
+        <div className="container py-8 space-y-6">
+          <PendingReviewsCard />
           <Tabs defaultValue="upcoming" className="space-y-6">
             <TabsList>
               <TabsTrigger value="upcoming">
@@ -110,7 +123,11 @@ export default function StudentDashboard() {
                 </Card>
               ) : (
                 upcomingLessons.map((lesson: any) => (
-                  <LessonCard key={lesson.id} lesson={lesson} />
+                  <LessonCard
+                    key={lesson.id}
+                    lesson={lesson}
+                    unreadCount={unreadForLesson(lesson.id)}
+                  />
                 ))
               )}
             </TabsContent>
@@ -128,7 +145,12 @@ export default function StudentDashboard() {
                 </Card>
               ) : (
                 pastLessons.map((lesson: any) => (
-                  <LessonCard key={lesson.id} lesson={lesson} isPast />
+                  <LessonCard
+                    key={lesson.id}
+                    lesson={lesson}
+                    isPast
+                    unreadCount={unreadForLesson(lesson.id)}
+                  />
                 ))
               )}
             </TabsContent>
@@ -355,11 +377,13 @@ function CountdownBanner({ scheduledAt, status }: CountdownBannerProps) {
 interface LessonCardProps {
   lesson: any;
   isPast?: boolean;
+  unreadCount?: number;
 }
 
-function LessonCard({ lesson, isPast = false }: LessonCardProps) {
+function LessonCard({ lesson, isPast = false, unreadCount = 0 }: LessonCardProps) {
   const [, setLocation] = useLocation();
   const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [showMessageThread, setShowMessageThread] = useState(false);
   const utils = trpc.useUtils();
 
   const cancelMutation = trpc.lesson.cancel.useMutation({
@@ -378,6 +402,17 @@ function LessonCard({ lesson, isPast = false }: LessonCardProps) {
       toast.error(err.message);
       setShowCancelDialog(false);
     },
+  });
+
+  const createCheckout = trpc.payment.createCheckout.useMutation({
+    onSuccess: (data) => {
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        toast.error("Failed to start payment");
+      }
+    },
+    onError: (err) => toast.error(err.message),
   });
 
   const getStatusBadge = () => {
@@ -486,6 +521,34 @@ function LessonCard({ lesson, isPast = false }: LessonCardProps) {
                   </Button>
                 )}
 
+                {/* Coach has confirmed → student still needs to pay */}
+                {lesson.status === "confirmed" && !isPast && (
+                  <Button
+                    size="sm"
+                    className="gap-2"
+                    disabled={createCheckout.isPending}
+                    onClick={() => createCheckout.mutate({ lessonId: lesson.id })}
+                  >
+                    <DollarSign className="h-4 w-4" />
+                    {createCheckout.isPending ? "Redirecting…" : "Complete Payment"}
+                  </Button>
+                )}
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-2 relative"
+                  onClick={() => setShowMessageThread(true)}
+                >
+                  <MessageCircle className="h-4 w-4" />
+                  Messages
+                  {unreadCount > 0 && (
+                    <span className="ml-1 rounded-full bg-primary text-primary-foreground text-[10px] font-semibold px-1.5 py-0.5 min-w-[18px] text-center">
+                      {unreadCount}
+                    </span>
+                  )}
+                </Button>
+
                 {canCancel && (
                   <Button
                     size="sm"
@@ -530,6 +593,13 @@ function LessonCard({ lesson, isPast = false }: LessonCardProps) {
           isPending={cancelMutation.isPending}
         />
       )}
+
+      <MessageThread
+        open={showMessageThread}
+        onOpenChange={setShowMessageThread}
+        lessonId={lesson.id}
+        otherPartyName={`Coach #${lesson.coachId}`}
+      />
     </>
   );
 }
@@ -544,5 +614,86 @@ function DashboardSkeleton() {
         ))}
       </div>
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Pending Reviews Card — prompts the user to review completed lessons
+// ─────────────────────────────────────────────────────────────────────────────
+
+function PendingReviewsCard() {
+  const { data: pending, isLoading } = trpc.review.getPending.useQuery();
+  const [openLessonId, setOpenLessonId] = useState<number | null>(null);
+  const [openMeta, setOpenMeta] = useState<{
+    name: string;
+    reviewingAs: "student" | "coach";
+  } | null>(null);
+
+  if (isLoading || !pending || pending.length === 0) return null;
+
+  return (
+    <>
+      <Card className="border-yellow-600/40 bg-yellow-50/50 dark:bg-yellow-950/10">
+        <CardContent className="p-6">
+          <div className="flex items-start gap-3 mb-4">
+            <Star className="h-5 w-5 text-yellow-600 mt-0.5" />
+            <div>
+              <h3 className="text-base font-semibold">
+                Pending Reviews ({pending.length})
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                You have completed lessons waiting for a review. Both sides stay
+                private until both parties submit.
+              </p>
+            </div>
+          </div>
+          <div className="space-y-2">
+            {pending.map((p: any) => (
+              <div
+                key={p.lessonId}
+                className="flex items-center justify-between p-3 rounded-md border border-border/60"
+              >
+                <div>
+                  <div className="font-medium text-sm">
+                    Lesson with {p.otherPartyName}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {format(new Date(p.scheduledAt), "MMMM d, yyyy")} ·{" "}
+                    {p.durationMinutes} min
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setOpenLessonId(p.lessonId);
+                    setOpenMeta({
+                      name: p.otherPartyName,
+                      reviewingAs: p.reviewingAs,
+                    });
+                  }}
+                >
+                  Leave Review
+                </Button>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {openLessonId !== null && openMeta && (
+        <ReviewDialog
+          open={openLessonId !== null}
+          onOpenChange={(open) => {
+            if (!open) {
+              setOpenLessonId(null);
+              setOpenMeta(null);
+            }
+          }}
+          lessonId={openLessonId}
+          otherPartyName={openMeta.name}
+          reviewingAs={openMeta.reviewingAs}
+        />
+      )}
+    </>
   );
 }

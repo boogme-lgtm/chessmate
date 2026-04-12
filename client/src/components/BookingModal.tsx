@@ -50,7 +50,6 @@ export default function BookingModal({ open, onOpenChange, coach }: BookingModal
   const [notes, setNotes] = useState("");
 
   const createBooking = trpc.lesson.book.useMutation();
-  const createCheckout = trpc.payment.createCheckout.useMutation();
 
   const profile = coach.profile;
   const hourlyRateCents = profile?.hourlyRateCents || 5000;
@@ -83,29 +82,18 @@ export default function BookingModal({ open, onOpenChange, coach }: BookingModal
     try {
       setStep("payment");
 
-      // Create the booking
-      const booking = await createBooking.mutateAsync({
+      // Create the booking — status starts as 'pending_confirmation'.
+      // The coach must accept before the student can pay (Sprint 4).
+      await createBooking.mutateAsync({
         coachId: coach.id,
         scheduledAt: selectedSlot.start,
         durationMinutes: selectedDuration,
         topic: notes || undefined,
       });
 
-      // Create Stripe checkout session
-      const checkout = await createCheckout.mutateAsync({
-        lessonId: booking.lessonId,
-      });
+      toast.success("Booking request sent to your coach!");
 
-      // Redirect to Stripe checkout
-      if (checkout.url) {
-        window.open(checkout.url, "_blank");
-      } else {
-        throw new Error("Failed to create checkout session");
-      }
-      
-      toast.success("Redirecting to secure payment...");
-      
-      // Close modal after short delay
+      // Close modal after short delay so the user sees the success state
       setTimeout(() => {
         onOpenChange(false);
         resetModal();
@@ -136,12 +124,12 @@ export default function BookingModal({ open, onOpenChange, coach }: BookingModal
           <DialogTitle>
             {step === "calendar" && "Select a Time"}
             {step === "details" && "Booking Details"}
-            {step === "payment" && "Processing..."}
+            {step === "payment" && "Request Sent"}
           </DialogTitle>
           <DialogDescription>
             {step === "calendar" && `Choose an available time slot with ${coach.name}`}
             {step === "details" && "Review your booking and add any notes for your coach"}
-            {step === "payment" && "Creating your booking and redirecting to payment..."}
+            {step === "payment" && "Waiting for the coach to confirm your request..."}
           </DialogDescription>
         </DialogHeader>
 
@@ -218,35 +206,33 @@ export default function BookingModal({ open, onOpenChange, coach }: BookingModal
               </Button>
               <Button
                 onClick={handleConfirmBooking}
-                disabled={createBooking.isPending || createCheckout.isPending}
+                disabled={createBooking.isPending}
                 className="flex-1"
               >
-                {createBooking.isPending || createCheckout.isPending ? (
+                {createBooking.isPending ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Processing...
+                    Sending Request...
                   </>
                 ) : (
-                  "Continue to Payment"
+                  "Send Booking Request"
                 )}
               </Button>
             </div>
           </div>
         )}
 
-        {/* Step 3: Payment Processing */}
+        {/* Step 3: Request sent — waiting for coach confirmation */}
         {step === "payment" && (
           <div className="py-12 text-center space-y-4">
             <div className="flex justify-center">
-              <div className="relative">
-                <Loader2 className="h-16 w-16 animate-spin text-primary" />
-                <CheckCircle2 className="h-8 w-8 text-green-600 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
-              </div>
+              <CheckCircle2 className="h-16 w-16 text-green-600" />
             </div>
             <div>
-              <h3 className="text-lg font-semibold mb-2">Creating your booking...</h3>
-              <p className="text-sm text-muted-foreground">
-                You'll be redirected to our secure payment page in a moment.
+              <h3 className="text-lg font-semibold mb-2">Request sent!</h3>
+              <p className="text-sm text-muted-foreground max-w-md mx-auto">
+                {coach.name} has 24 hours to accept your request. You'll receive
+                an email to complete payment once they confirm.
               </p>
             </div>
           </div>

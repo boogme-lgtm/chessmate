@@ -1,15 +1,27 @@
 import { useState, useMemo } from "react";
+import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { 
-  ChevronLeft, 
-  ChevronRight, 
-  Clock, 
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Clock,
   Calendar as CalendarIcon,
-  Zap
+  Zap,
 } from "lucide-react";
-import { format, addDays, startOfWeek, isSameDay, isAfter, isBefore, addMinutes, startOfDay } from "date-fns";
+import {
+  format,
+  addDays,
+  startOfWeek,
+  isSameDay,
+  isAfter,
+  isBefore,
+  addMinutes,
+  startOfDay,
+  endOfDay,
+} from "date-fns";
 import { toast } from "sonner";
 
 interface TimeSlot {
@@ -28,10 +40,105 @@ interface BookingCalendarProps {
   onSelectSlot: (slot: TimeSlot, duration: number) => void;
 }
 
+// Schedule format: map of weekday name (lowercase) to list of time windows.
+// Each window is `{ start: "HH:MM", end: "HH:MM" }` in the coach's local time.
+// Empty or missing schedule falls back to Mon-Fri 09:00-17:00.
+type DayName = "sunday" | "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday";
+type TimeWindow = { start: string; end: string };
+type WeeklySchedule = Partial<Record<DayName, TimeWindow[]>>;
+
+const WEEKDAY_NAMES: DayName[] = [
+  "sunday",
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+];
+
+const DEFAULT_SCHEDULE: WeeklySchedule = {
+  monday: [{ start: "09:00", end: "17:00" }],
+  tuesday: [{ start: "09:00", end: "17:00" }],
+  wednesday: [{ start: "09:00", end: "17:00" }],
+  thursday: [{ start: "09:00", end: "17:00" }],
+  friday: [{ start: "09:00", end: "17:00" }],
+};
+
+function parseSchedule(raw: unknown): WeeklySchedule {
+  if (!raw || typeof raw !== "object") return DEFAULT_SCHEDULE;
+  const schedule = raw as Record<string, unknown>;
+  const hasAnyDay = WEEKDAY_NAMES.some(day => Array.isArray(schedule[day]) && (schedule[day] as unknown[]).length > 0);
+  if (!hasAnyDay) return DEFAULT_SCHEDULE;
+  return schedule as WeeklySchedule;
+}
+
+function parseHHMM(hhmm: string): { hour: number; minute: number } | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm);
+  if (!m) return null;
+  const hour = Number(m[1]);
+  const minute = Number(m[2]);
+  if (Number.isNaN(hour) || Number.isNaN(minute)) return null;
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+  return { hour, minute };
+}
+
 /**
- * Booking Calendar Component
- * Shows available time slots for a coach and allows students to select a time
- * Simple, clean design focusing on ease of use
+ * Build all candidate slots for a given day from the schedule.
+ * Respects coach's schedule windows and the requested slot duration.
+ */
+function buildSlotsForDay(
+  date: Date,
+  schedule: WeeklySchedule,
+  durationMinutes: number,
+  stepMinutes: number
+): { start: Date; end: Date }[] {
+  const dayName = WEEKDAY_NAMES[date.getDay()];
+  const windows = schedule[dayName];
+  if (!windows || windows.length === 0) return [];
+
+  const slots: { start: Date; end: Date }[] = [];
+
+  for (const window of windows) {
+    const start = parseHHMM(window.start);
+    const end = parseHHMM(window.end);
+    if (!start || !end) continue;
+
+    const windowStart = new Date(date);
+    windowStart.setHours(start.hour, start.minute, 0, 0);
+    const windowEnd = new Date(date);
+    windowEnd.setHours(end.hour, end.minute, 0, 0);
+
+    let cursor = windowStart;
+    while (addMinutes(cursor, durationMinutes) <= windowEnd) {
+      const slotEnd = addMinutes(cursor, durationMinutes);
+      slots.push({ start: cursor, end: slotEnd });
+      cursor = addMinutes(cursor, stepMinutes);
+    }
+  }
+
+  return slots;
+}
+
+interface BookedSlot {
+  start: Date;
+  end: Date;
+}
+
+function slotsOverlap(
+  aStart: Date,
+  aEnd: Date,
+  bStart: Date,
+  bEnd: Date
+): boolean {
+  return aStart < bEnd && aEnd > bStart;
+}
+
+/**
+ * Booking Calendar — fetches real coach availability and renders time slots
+ * for the selected date, filtering out booked lessons + past/out-of-window
+ * slots. Falls back to a Mon-Fri 9-5 default schedule if the coach hasn't
+ * configured one yet.
  */
 export default function BookingCalendar({
   coachId,
@@ -61,41 +168,83 @@ export default function BookingCalendar({
     return addDays(new Date(), days);
   }, [maxAdvanceDays]);
 
+  // Fetch real availability data covering the full bookable window
+  const availabilityRange = useMemo(
+    () => ({
+      startDate: startOfDay(new Date()).toISOString(),
+      endDate: endOfDay(latestBookable).toISOString(),
+    }),
+    [latestBookable]
+  );
+
+  const { data: availability, isLoading: availabilityLoading } =
+    trpc.coach.getAvailability.useQuery(
+      {
+        coachId,
+        startDate: availabilityRange.startDate,
+        endDate: availabilityRange.endDate,
+      },
+      { enabled: !!coachId }
+    );
+
+  const schedule = useMemo(
+    () => parseSchedule(availability?.schedule),
+    [availability?.schedule]
+  );
+
+  const bookedSlots: BookedSlot[] = useMemo(() => {
+    if (!availability?.bookedSlots) return [];
+    return availability.bookedSlots.map((b: any) => {
+      const start = new Date(b.start);
+      const end = addMinutes(start, b.durationMinutes || 60);
+      return { start, end };
+    });
+  }, [availability?.bookedSlots]);
+
   // Generate week days for calendar
   const weekDays = useMemo(() => {
     return Array.from({ length: 7 }, (_, i) => addDays(currentWeekStart, i));
   }, [currentWeekStart]);
 
-  // TODO: Fetch actual availability from backend
-  // For now, generate mock availability (9am-5pm, every hour)
-  const generateMockSlots = (date: Date): TimeSlot[] => {
-    const slots: TimeSlot[] = [];
-    const dayStart = startOfDay(date);
-    
-    // Generate slots from 9am to 5pm
-    for (let hour = 9; hour < 17; hour++) {
-      const slotStart = new Date(dayStart);
-      slotStart.setHours(hour, 0, 0, 0);
-      
-      const slotEnd = addMinutes(slotStart, selectedDuration);
-      
-      // Check if slot is in valid booking window
-      const isInFuture = isAfter(slotStart, earliestBookable);
-      const isBeforeMax = isBefore(slotStart, latestBookable);
-      
-      slots.push({
-        start: slotStart,
-        end: slotEnd,
-        available: isInFuture && isBeforeMax,
-      });
-    }
-    
-    return slots;
-  };
+  // Compute slots for the selected date, filtering out booked, past, and
+  // out-of-window slots. Respects coach's bufferMinutes.
+  const availableSlots = useMemo<TimeSlot[]>(() => {
+    const buffer = bufferMinutes ?? 15;
+    const stepMinutes = Math.max(15, selectedDuration); // one slot per duration block
 
-  const availableSlots = useMemo(() => {
-    return generateMockSlots(selectedDate);
-  }, [selectedDate, selectedDuration, earliestBookable, latestBookable]);
+    const rawSlots = buildSlotsForDay(
+      selectedDate,
+      schedule,
+      selectedDuration,
+      stepMinutes
+    );
+
+    return rawSlots.map(slot => {
+      const inFuture = isAfter(slot.start, earliestBookable);
+      const beforeMax = isBefore(slot.start, latestBookable);
+
+      // Check for overlap with any booked slot (including buffer padding)
+      const blockedByBooking = bookedSlots.some(booked => {
+        const paddedStart = addMinutes(booked.start, -buffer);
+        const paddedEnd = addMinutes(booked.end, buffer);
+        return slotsOverlap(slot.start, slot.end, paddedStart, paddedEnd);
+      });
+
+      return {
+        start: slot.start,
+        end: slot.end,
+        available: inFuture && beforeMax && !blockedByBooking,
+      };
+    });
+  }, [
+    selectedDate,
+    selectedDuration,
+    schedule,
+    bookedSlots,
+    earliestBookable,
+    latestBookable,
+    bufferMinutes,
+  ]);
 
   const handlePreviousWeek = () => {
     setCurrentWeekStart(addDays(currentWeekStart, -7));
@@ -114,24 +263,41 @@ export default function BookingCalendar({
     onSelectSlot(slot, selectedDuration);
   };
 
-  // Find next available slot across all future days
+  // Find next available slot across future days (using real schedule + bookings)
   const findNextAvailableSlot = () => {
     const maxDaysToCheck = maxAdvanceDays || 30;
-    
+    const buffer = bufferMinutes ?? 15;
+    const stepMinutes = Math.max(15, selectedDuration);
+
     for (let dayOffset = 0; dayOffset <= maxDaysToCheck; dayOffset++) {
       const checkDate = addDays(new Date(), dayOffset);
-      const slots = generateMockSlots(checkDate);
-      
-      const availableSlot = slots.find(slot => slot.available);
+      const rawSlots = buildSlotsForDay(
+        checkDate,
+        schedule,
+        selectedDuration,
+        stepMinutes
+      );
+
+      const availableSlot = rawSlots.find(slot => {
+        const inFuture = isAfter(slot.start, earliestBookable);
+        const beforeMax = isBefore(slot.start, latestBookable);
+        if (!inFuture || !beforeMax) return false;
+
+        const blockedByBooking = bookedSlots.some(booked => {
+          const paddedStart = addMinutes(booked.start, -buffer);
+          const paddedEnd = addMinutes(booked.end, buffer);
+          return slotsOverlap(slot.start, slot.end, paddedStart, paddedEnd);
+        });
+        return !blockedByBooking;
+      });
+
       if (availableSlot) {
-        // Set the week and date to show this slot
         setCurrentWeekStart(startOfWeek(checkDate, { weekStartsOn: 1 }));
         setSelectedDate(checkDate);
         return;
       }
     }
-    
-    // No available slots found
+
     toast.error("No available slots found in the next " + maxDaysToCheck + " days");
   };
 
@@ -147,6 +313,7 @@ export default function BookingCalendar({
           variant="outline"
           size="sm"
           onClick={findNextAvailableSlot}
+          disabled={availabilityLoading}
           className="gap-2 font-light"
         >
           <Zap className="w-4 h-4" />
@@ -211,12 +378,12 @@ export default function BookingCalendar({
                   disabled={isDisabled}
                   className={`
                     p-3 rounded-lg border-2 transition-all
-                    ${isSelected 
-                      ? "border-primary bg-primary text-primary-foreground" 
+                    ${isSelected
+                      ? "border-primary bg-primary text-primary-foreground"
                       : "border-border hover:border-primary/50"
                     }
-                    ${isDisabled 
-                      ? "opacity-40 cursor-not-allowed" 
+                    ${isDisabled
+                      ? "opacity-40 cursor-not-allowed"
                       : "cursor-pointer"
                     }
                   `}
@@ -240,9 +407,13 @@ export default function BookingCalendar({
                 Available Times for {format(selectedDate, "EEEE, MMMM d")}
               </span>
             </div>
-            
+
             <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-[300px] overflow-y-auto">
-              {availableSlots.length === 0 ? (
+              {availabilityLoading ? (
+                Array.from({ length: 8 }).map((_, i) => (
+                  <Skeleton key={i} className="h-9 w-full" />
+                ))
+              ) : availableSlots.length === 0 ? (
                 <div className="col-span-full text-center py-8 text-muted-foreground">
                   No available slots for this date
                 </div>
@@ -255,9 +426,9 @@ export default function BookingCalendar({
                     disabled={!slot.available}
                     onClick={() => handleSelectSlot(slot)}
                     className={`
-                      ${slot.available 
-                        ? "hover:bg-primary hover:text-primary-foreground" 
-                        : "opacity-40 cursor-not-allowed"
+                      ${slot.available
+                        ? "hover:bg-primary hover:text-primary-foreground"
+                        : "opacity-40 cursor-not-allowed line-through"
                       }
                     `}
                   >

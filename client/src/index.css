@@ -324,3 +324,13 @@
     margin-top: 5rem;
   }
 }
+
+/* Sprint 8 — on coarse pointers (phones/tablets) bump interactive button
+ * heights to meet the 44px minimum touch target recommendation. The shadcn
+ * button component sets data-slot="button" on all variants so this scopes
+ * cleanly without affecting other elements. */
+@media (pointer: coarse) {
+  button[data-slot="button"] {
+    min-height: 44px;
+  }
+}

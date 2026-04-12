@@ -1,25 +1,27 @@
 import { eq, and, desc, sql, gte, lte } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
-import { 
-  InsertUser, 
-  users, 
-  coachProfiles, 
-  studentProfiles, 
-  lessons, 
-  reviews, 
-  achievements, 
+import {
+  InsertUser,
+  users,
+  coachProfiles,
+  studentProfiles,
+  lessons,
+  reviews,
+  achievements,
   userAchievements,
   coachMatches,
   waitlist,
   coachApplications,
+  messages,
   InsertCoachProfile,
   InsertStudentProfile,
   InsertLesson,
   InsertReview,
   InsertWaitlist,
   InsertCoachMatch,
-  InsertCoachApplication
+  InsertCoachApplication,
+  InsertMessage,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -302,17 +304,22 @@ export async function createLesson(lesson: Omit<InsertLesson, 'id'>) {
   const crypto = await import('crypto');
   const cancellationToken = crypto.randomBytes(32).toString('hex');
 
+  // Default the confirmation deadline to 24h from now if the caller doesn't
+  // provide one (Sprint 4 — auto-decline stale pending_confirmation lessons).
+  const confirmationDeadline = lesson.confirmationDeadline
+    ?? new Date(Date.now() + 24 * 60 * 60 * 1000);
+
   // Use raw SQL to bypass Drizzle's automatic field inclusion
   // Only include the fields we actually want to insert
   const result = await db.execute(sql`
     INSERT INTO lessons (
       studentId, coachId, scheduledAt, durationMinutes,
       status, amountCents, commissionCents, coachPayoutCents,
-      cancellationToken
+      cancellationToken, confirmationDeadline
     ) VALUES (
       ${lesson.studentId}, ${lesson.coachId}, ${lesson.scheduledAt}, ${lesson.durationMinutes},
       ${lesson.status}, ${lesson.amountCents}, ${lesson.commissionCents}, ${lesson.coachPayoutCents},
-      ${cancellationToken}
+      ${cancellationToken}, ${confirmationDeadline}
     )
   `);
   
@@ -340,7 +347,7 @@ export async function createLesson(lesson: Omit<InsertLesson, 'id'>) {
     stripeTransferId: lesson.stripeTransferId || null,
     coachConfirmedAt: lesson.coachConfirmedAt || null,
     coachDeclinedAt: lesson.coachDeclinedAt || null,
-    confirmationDeadline: lesson.confirmationDeadline || null,
+    confirmationDeadline: confirmationDeadline,
     studentConfirmedAt: lesson.studentConfirmedAt || null,
     completedAt: lesson.completedAt || null,
     payoutAt: lesson.payoutAt || null,
@@ -433,12 +440,14 @@ export async function getLessonByPaymentIntent(paymentIntentId: string) {
   const db = await getDb();
   if (!db) return null;
 
-  const result = await db.select()
-    .from(lessons)
-    .where(eq(lessons.stripePaymentIntentId, paymentIntentId))
-    .limit(1);
-  
-  return result[0] || null;
+  // Raw SQL for consistency with other lesson reads that bypass Drizzle
+  // transaction isolation quirks.
+  const result: any = await db.execute(sql`
+    SELECT * FROM lessons WHERE stripePaymentIntentId = ${paymentIntentId} LIMIT 1
+  `);
+
+  const rows = result[0];
+  return rows && rows.length > 0 ? rows[0] : null;
 }
 
 // ============ REVIEW OPERATIONS ============
@@ -472,6 +481,55 @@ export async function getReviewsByCoach(coachId: number, limit: number = 20) {
     ))
     .orderBy(desc(reviews.createdAt))
     .limit(limit);
+}
+
+/**
+ * Look up the current user's review for a specific lesson (if any).
+ */
+export async function getReviewByLessonAndReviewer(
+  lessonId: number,
+  reviewerId: number
+) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(reviews)
+    .where(and(eq(reviews.lessonId, lessonId), eq(reviews.reviewerId, reviewerId)))
+    .limit(1);
+  return rows[0] || null;
+}
+
+/**
+ * Look up the "other side" review for a lesson — i.e. if the current reviewer
+ * is a student, find the coach's review for the same lesson (or vice versa).
+ */
+export async function getCounterpartReview(
+  lessonId: number,
+  reviewerType: "student" | "coach"
+) {
+  const db = await getDb();
+  if (!db) return null;
+  const otherType = reviewerType === "student" ? "coach" : "student";
+  const rows = await db
+    .select()
+    .from(reviews)
+    .where(and(eq(reviews.lessonId, lessonId), eq(reviews.reviewerType, otherType)))
+    .limit(1);
+  return rows[0] || null;
+}
+
+/**
+ * Flip a review's visibility (used when both parties have submitted).
+ */
+export async function setReviewsVisibleForLesson(lessonId: number) {
+  const db = await getDb();
+  if (!db) return;
+  const now = new Date();
+  await db
+    .update(reviews)
+    .set({ isVisible: true, visibleAt: now })
+    .where(eq(reviews.lessonId, lessonId));
 }
 
 // ============ ACHIEVEMENT OPERATIONS ============
@@ -1063,4 +1121,85 @@ export async function verifyCancellationToken(lessonId: number, token: string): 
   const b = Buffer.from(token);
   if (a.length !== b.length) return false;
   return crypto.timingSafeEqual(a, b);
+}
+
+// ============ MESSAGE OPERATIONS ============
+
+export async function createMessage(message: InsertMessage) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const result: any = await db.execute(sql`
+    INSERT INTO messages (lessonId, senderId, contentType, content)
+    VALUES (${message.lessonId}, ${message.senderId}, ${message.contentType || "text"}, ${message.content})
+  `);
+  const insertId = Number(result[0]?.insertId);
+  return {
+    id: insertId,
+    lessonId: message.lessonId,
+    senderId: message.senderId,
+    contentType: message.contentType || "text",
+    content: message.content,
+    readAt: null as Date | null,
+    createdAt: new Date(),
+  };
+}
+
+export async function getMessagesForLesson(lessonId: number, limit: number = 200) {
+  const db = await getDb();
+  if (!db) return [] as any[];
+
+  const result: any = await db.execute(sql`
+    SELECT * FROM messages
+    WHERE lessonId = ${lessonId}
+    ORDER BY createdAt ASC
+    LIMIT ${limit}
+  `);
+  return (result[0] || []) as any[];
+}
+
+/**
+ * Mark all messages in a lesson as read for everyone except the specified user.
+ * (The user opening the thread marks the counterpart's messages as read.)
+ */
+export async function markLessonMessagesRead(lessonId: number, readerId: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.execute(sql`
+    UPDATE messages
+    SET readAt = NOW()
+    WHERE lessonId = ${lessonId}
+      AND senderId <> ${readerId}
+      AND readAt IS NULL
+  `);
+}
+
+/**
+ * Count unread messages per lesson for a given reader. Returns a Map of
+ * lessonId -> unread count.
+ */
+export async function getUnreadMessageCountsForUser(
+  userId: number,
+  lessonIds: number[]
+): Promise<Map<number, number>> {
+  const counts = new Map<number, number>();
+  if (lessonIds.length === 0) return counts;
+
+  const db = await getDb();
+  if (!db) return counts;
+
+  // mysql2 interpolates arrays as a comma list when passed via sql.join
+  const result: any = await db.execute(sql`
+    SELECT lessonId, COUNT(*) AS unread
+    FROM messages
+    WHERE readAt IS NULL
+      AND senderId <> ${userId}
+      AND lessonId IN (${sql.join(lessonIds.map(id => sql`${id}`), sql`, `)})
+    GROUP BY lessonId
+  `);
+  const rows = (result[0] || []) as { lessonId: number; unread: number | string }[];
+  for (const row of rows) {
+    counts.set(Number(row.lessonId), Number(row.unread));
+  }
+  return counts;
 }

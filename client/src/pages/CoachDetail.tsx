@@ -17,7 +17,9 @@ import {
 import { useState } from "react";
 import { toast } from "sonner";
 import BookingModal from "@/components/BookingModal";
+import Footer from "@/components/Footer";
 import { useAuth } from "@/_core/hooks/useAuth";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 /**
  * Coach Detail Page - Shows coach profile and booking CTA
@@ -41,6 +43,8 @@ export default function CoachDetail() {
 
   const { data: coach, isLoading } = trpc.coach.getById.useQuery({ id: coachId });
   const { data: reviews } = trpc.coach.getReviews.useQuery({ coachId, limit: 5 });
+
+  useDocumentTitle(coach?.name ? `${coach.name} · Chess Coach · BooGMe` : "Chess Coach · BooGMe");
 
   if (isLoading) {
     return <CoachDetailSkeleton />;
@@ -280,6 +284,8 @@ export default function CoachDetail() {
         onOpenChange={setBookingModalOpen}
         coach={coach}
       />
+
+      <Footer />
     </div>
   );
 }

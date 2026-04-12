@@ -99,28 +99,37 @@ async function handleCheckoutCompleted(event: Stripe.Event) {
 
   // Update lesson status based on payment status
   if (session.payment_status === 'paid') {
-    // Idempotency: skip if lesson is already confirmed or further along
+    // Idempotency: skip if lesson has already been processed past the payment stage.
+    // "paid" must be in this list because handlePaymentSucceeded or a retried
+    // checkout.session.completed event would otherwise reprocess and re-send emails.
     const currentLesson = await db.getLessonById(lessonId);
-    if (currentLesson && ['confirmed', 'completed', 'released', 'cancelled', 'refunded'].includes(currentLesson.status)) {
+    if (!currentLesson) {
+      console.error(`[Webhook] Lesson ${lessonId} not found in DB (metadata points to missing record)`);
+      return;
+    }
+    if (currentLesson.status && ['paid', 'confirmed', 'in_progress', 'completed', 'released', 'cancelled', 'refunded'].includes(currentLesson.status)) {
       console.log(`[Webhook] Lesson ${lessonId} already in state '${currentLesson.status}', skipping duplicate event`);
       return;
     }
 
-    console.log(`[Webhook] Updating lesson ${lessonId} to confirmed status`);
+    // Extract the payment intent ID from the session payload
+    const paymentIntentId = session.payment_intent
+      ? (typeof session.payment_intent === 'string'
+          ? session.payment_intent
+          : session.payment_intent.id)
+      : null;
 
-    await db.updateLessonStatus(lessonId, 'confirmed');
-
-    // Store the Stripe payment intent ID
-    if (session.payment_intent) {
-      const paymentIntentId = typeof session.payment_intent === 'string'
-        ? session.payment_intent
-        : session.payment_intent.id;
-
-      await db.updateLessonPaymentIntent(lessonId, paymentIntentId);
-      console.log(`[Webhook] Stored payment intent ${paymentIntentId} for lesson ${lessonId}`);
+    if (!paymentIntentId) {
+      console.error(`[Webhook] checkout.session.completed for lesson ${lessonId} had no payment_intent — cannot record payment`);
+      return;
     }
 
-    console.log(`[Webhook] Lesson ${lessonId} confirmed and payment recorded`);
+    // Atomic update: set status = 'paid' AND store payment intent in a single DB call.
+    // Previously this was two sequential updates which left a brief window where the
+    // lesson was `confirmed` without a payment intent, causing "Lesson not found" race
+    // on the success page.
+    await db.updateLessonPaymentIntent(lessonId, paymentIntentId);
+    console.log(`[Webhook] Lesson ${lessonId} marked 'paid' with payment intent ${paymentIntentId}`);
 
     // Send confirmation emails to student and coach
     try {
@@ -193,24 +202,27 @@ async function handleCheckoutCompleted(event: Stripe.Event) {
  */
 async function handlePaymentSucceeded(event: Stripe.Event) {
   const paymentIntent = event.data.object as Stripe.PaymentIntent;
-  
-  console.log(`[Webhook] Payment succeeded: ${paymentIntent.id}`);
-  console.log(`[Webhook] Amount: $${paymentIntent.amount / 100}`);
-  
-  // Find lesson by payment intent ID
+
+  console.log(`[Webhook] payment_intent.succeeded: ${paymentIntent.id}`);
+
+  // Find lesson by payment intent ID (raw SQL read for transaction-isolation consistency)
   const lesson = await db.getLessonByPaymentIntent(paymentIntent.id);
-  
-  if (lesson) {
-    console.log(`[Webhook] Found lesson ${lesson.id} for payment ${paymentIntent.id}`);
-    
-    // Ensure lesson is marked as confirmed
-    if (lesson.status !== 'confirmed') {
-      await db.updateLessonStatus(lesson.id, 'confirmed');
-      console.log(`[Webhook] ✅ Lesson ${lesson.id} confirmed via payment_intent.succeeded`);
-    }
-  } else {
-    console.log(`[Webhook] No lesson found for payment intent ${paymentIntent.id}`);
+
+  if (!lesson) {
+    console.log(`[Webhook] No lesson found for payment intent ${paymentIntent.id}. This is expected if checkout.session.completed hasn't fired yet.`);
+    return;
   }
+
+  console.log(`[Webhook] Found lesson ${lesson.id} for payment ${paymentIntent.id} (current status: ${lesson.status})`);
+
+  // Only promote to 'paid' if not already at or past it. Idempotency guard.
+  if (lesson.status && ['paid', 'in_progress', 'completed', 'released', 'cancelled', 'refunded'].includes(lesson.status)) {
+    console.log(`[Webhook] Lesson ${lesson.id} already in state '${lesson.status}', no action`);
+    return;
+  }
+
+  await db.updateLessonStatus(lesson.id, 'paid');
+  console.log(`[Webhook] Lesson ${lesson.id} marked 'paid' via payment_intent.succeeded`);
 }
 
 /**

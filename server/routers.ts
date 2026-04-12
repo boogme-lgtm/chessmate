@@ -9,10 +9,88 @@ import { TRPCError } from "@trpc/server";
 import * as db from "./db";
 import * as stripeService from "./stripe";
 import { ENV } from "./_core/env";
-import { Chess } from "chess.js";
-import { sendEmail, getWaitlistConfirmationEmail } from "./emailService";
+import {
+  sendEmail,
+  getWaitlistConfirmationEmail,
+  getStudentCancellationEmail,
+  getCoachCancellationEmail,
+  getCoachNewBookingRequestEmail,
+  getStudentCoachConfirmedEmail,
+} from "./emailService";
 import { sendNurtureEmails, sendNurtureEmailsManual } from "./nurtureEmailScheduler";
 import { resendWelcomeEmails } from "./resendWelcomeEmails";
+
+/**
+ * Send cancellation confirmation emails to both student and coach.
+ * Best-effort — logs errors but does not throw (cancellation itself already succeeded).
+ */
+async function sendCancellationEmails(
+  lessonId: number,
+  cancelledBy: "student" | "coach" | "system",
+  cancellationReason: string | null | undefined,
+  refundAmountCents: number,
+  refundPercentage: number,
+): Promise<void> {
+  try {
+    const lesson = await db.getLessonById(lessonId);
+    if (!lesson) return;
+    const [student, coach] = await Promise.all([
+      db.getUserById(lesson.studentId),
+      db.getUserById(lesson.coachId),
+    ]);
+    if (!student?.email || !coach?.email) return;
+
+    const lessonDate = new Date(lesson.scheduledAt).toLocaleDateString("en-US", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+    const lessonTime = new Date(lesson.scheduledAt).toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+    const amountPaid = `$${(lesson.amountCents / 100).toFixed(2)}`;
+    const refundAmount = `$${(refundAmountCents / 100).toFixed(2)}`;
+
+    // When coach cancels, student gets a full refund regardless of timing.
+    const effectiveRefundPct = cancelledBy === "coach" ? 100 : refundPercentage;
+
+    await sendEmail({
+      to: student.email,
+      subject: `Lesson Cancelled — ${lessonDate}`,
+      html: getStudentCancellationEmail({
+        studentName: student.name || "Student",
+        coachName: coach.name || "Your Coach",
+        lessonDate,
+        lessonTime,
+        durationMinutes: lesson.durationMinutes ?? 60,
+        amountPaid,
+        refundAmount,
+        refundPercentage: effectiveRefundPct,
+        cancelledBy,
+        cancellationReason,
+      }),
+    });
+
+    await sendEmail({
+      to: coach.email,
+      subject: `Lesson Cancelled — ${lessonDate}`,
+      html: getCoachCancellationEmail({
+        coachName: coach.name || "Coach",
+        studentName: student.name || "Student",
+        lessonDate,
+        lessonTime,
+        durationMinutes: lesson.durationMinutes ?? 60,
+        cancelledBy,
+        cancellationReason,
+      }),
+    });
+  } catch (err) {
+    console.error(`[cancellation email] Failed for lesson ${lessonId}:`, err);
+  }
+}
 
 export const appRouter = router({
   system: systemRouter,
@@ -21,53 +99,92 @@ export const appRouter = router({
 
   // ============ LICHESS PUZZLES ============
   puzzle: router({
+    /**
+     * Fetch the next puzzle for the student. Uses the Lichess daily puzzle
+     * and a curated rotation of public puzzle IDs via server/lichess.ts.
+     * The `difficulty` input is accepted for backwards compatibility with
+     * the client but Lichess does not expose a public rating filter for
+     * puzzles, so it's used only as part of the rotation seed.
+     */
     getNext: publicProcedure
       .input(z.object({
         difficulty: z.enum(["easiest", "easier", "normal", "harder", "hardest"]).optional(),
         theme: z.string().optional(),
       }).optional())
       .query(async ({ input }) => {
-        const params = new URLSearchParams();
-        if (input?.difficulty) params.append("difficulty", input.difficulty);
-        if (input?.theme) params.append("angle", input.theme);
-        
-        const url = `https://lichess.org/api/puzzle/next${params.toString() ? `?${params.toString()}` : ''}`;
-        
         try {
-          const response = await fetch(url);
-          if (!response.ok) {
-            throw new TRPCError({
-              code: "INTERNAL_SERVER_ERROR",
-              message: "Failed to fetch puzzle from Lichess",
-            });
-          }
-          const puzzleData = await response.json();
-          
-          // Parse PGN to get FEN at the puzzle start position
-          const chess = new Chess();
-          const moves = puzzleData.game.pgn.split(' ');
-          const initialPly = puzzleData.puzzle.initialPly;
-          
-          // Play moves up to the puzzle start
-          for (let i = 0; i < initialPly && i < moves.length; i++) {
-            try {
-              chess.move(moves[i]);
-            } catch (e) {
-              // Skip invalid moves
-              console.warn(`[Lichess] Skipping invalid move: ${moves[i]}`);
-            }
-          }
-          
-          // Add FEN to the response
-          return {
-            ...puzzleData,
-            fen: chess.fen(),
-          };
+          const { getRotatingPuzzle } = await import("./lichess");
+          // Mix in the difficulty string so different selections give
+          // different seeds, and a coarse time slot so "refetch" rotates.
+          const difficultySeed =
+            (input?.difficulty?.length ?? 0) * 31 + (input?.theme?.length ?? 0) * 17;
+          const timeSlot = Math.floor(Date.now() / (60 * 1000));
+          return await getRotatingPuzzle(timeSlot + difficultySeed);
         } catch (error) {
           console.error("[Lichess API] Error fetching puzzle:", error);
           throw new TRPCError({
             code: "INTERNAL_SERVER_ERROR",
             message: "Failed to fetch puzzle",
+          });
+        }
+      }),
+
+    /** Explicit daily puzzle endpoint. */
+    getDaily: publicProcedure.query(async () => {
+      try {
+        const { getDailyPuzzle } = await import("./lichess");
+        return await getDailyPuzzle();
+      } catch (error) {
+        console.error("[Lichess API] Error fetching daily puzzle:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to fetch daily puzzle",
+        });
+      }
+    }),
+
+    /** Fetch a specific puzzle by Lichess ID (used for replays). */
+    getById: publicProcedure
+      .input(z.object({ id: z.string().min(1).max(16) }))
+      .query(async ({ input }) => {
+        try {
+          const { getPuzzleById } = await import("./lichess");
+          return await getPuzzleById(input.id);
+        } catch (error) {
+          console.error("[Lichess API] Error fetching puzzle by id:", error);
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Puzzle not found",
+          });
+        }
+      }),
+  }),
+
+  // ============ LICHESS USER PROFILES ============
+  lichess: router({
+    /**
+     * Fetch a Lichess user's public profile. Used by coach applications to
+     * verify claimed FIDE/rapid/blitz ratings and by the student onboarding
+     * questionnaire to pre-fill starting rating.
+     */
+    getProfile: publicProcedure
+      .input(z.object({ username: z.string().min(2).max(20) }))
+      .query(async ({ input }) => {
+        try {
+          const { getPlayerProfile, summarizeRatings } = await import("./lichess");
+          const profile = await getPlayerProfile(input.username);
+          return {
+            id: profile.id,
+            username: profile.username,
+            country: profile.profile?.country,
+            bio: profile.profile?.bio,
+            ratings: summarizeRatings(profile),
+          };
+        } catch (error) {
+          console.error("[Lichess API] Error fetching user profile:", error);
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Lichess user not found",
           });
         }
       }),
@@ -381,11 +498,18 @@ export const appRouter = router({
             : {};
         } catch { /* malformed JSON, use empty schedule */ }
 
-        // Get existing bookings to exclude
-        const bookings = await db.getLessonsByCoach(input.coachId, 100);
+        // Get existing bookings to exclude. Return {start, durationMinutes}
+        // so the client can compute real overlap (previously only timestamps
+        // were returned, making overlap detection impossible for non-uniform
+        // durations).
+        const bookings = await db.getLessonsByCoach(input.coachId, 200);
+        const EXCLUDED_STATUSES = new Set(["cancelled", "refunded", "declined"]);
         const bookedSlots = bookings
-          .filter((l: any) => l.status !== "cancelled" && l.status !== "refunded")
-          .map((l: any) => l.scheduledAt);
+          .filter((l: any) => !EXCLUDED_STATUSES.has(l.status))
+          .map((l: any) => ({
+            start: l.scheduledAt,
+            durationMinutes: l.durationMinutes || 60,
+          }));
 
         let lessonDurations = [60];
         try {
@@ -622,7 +746,7 @@ export const appRouter = router({
         const commissionCents = Math.round(amountCents * (commissionRate / 100));
         const coachPayoutCents = amountCents - commissionCents;
 
-        // Create lesson
+        // Create lesson (db.createLesson auto-sets confirmationDeadline to now+24h)
         const lesson = await db.createLesson({
           studentId: ctx.user.id,
           coachId: input.coachId,
@@ -635,6 +759,46 @@ export const appRouter = router({
           coachPayoutCents,
           status: "pending_confirmation",
         });
+
+        // Best-effort "new booking request" email to the coach.
+        (async () => {
+          try {
+            const [coach, student] = await Promise.all([
+              db.getUserById(input.coachId),
+              db.getUserById(ctx.user.id),
+            ]);
+            if (!coach?.email) return;
+            const lessonDate = new Date(input.scheduledAt).toLocaleDateString("en-US", {
+              weekday: "long", year: "numeric", month: "long", day: "numeric",
+            });
+            const lessonTime = new Date(input.scheduledAt).toLocaleTimeString("en-US", {
+              hour: "numeric", minute: "2-digit", hour12: true,
+            });
+            const deadline = new Date(Date.now() + 24 * 60 * 60 * 1000);
+            const confirmByDate = deadline.toLocaleDateString("en-US", {
+              weekday: "long", month: "long", day: "numeric",
+            });
+            const confirmByTime = deadline.toLocaleTimeString("en-US", {
+              hour: "numeric", minute: "2-digit", hour12: true,
+            });
+            await sendEmail({
+              to: coach.email,
+              subject: `New lesson request from ${student?.name || "a student"}`,
+              html: getCoachNewBookingRequestEmail({
+                coachName: coach.name || "Coach",
+                studentName: student?.name || "Student",
+                lessonDate,
+                lessonTime,
+                durationMinutes: input.durationMinutes,
+                coachPayout: `$${(coachPayoutCents / 100).toFixed(2)}`,
+                confirmByDate,
+                confirmByTime,
+              }),
+            });
+          } catch (err) {
+            console.error(`[lesson.book] Failed to send coach new-booking email for lesson ${lesson.id}:`, err);
+          }
+        })();
 
         // Return complete lesson object to avoid transaction isolation issues
         return { success: true, lessonId: lesson.id, lesson };
@@ -677,6 +841,38 @@ export const appRouter = router({
           coachConfirmedAt: new Date(),
         });
 
+        // Notify the student that they can now complete payment.
+        (async () => {
+          try {
+            const [student, coach] = await Promise.all([
+              db.getUserById(lesson.studentId),
+              db.getUserById(lesson.coachId),
+            ]);
+            if (!student?.email) return;
+            const lessonDate = new Date(lesson.scheduledAt).toLocaleDateString("en-US", {
+              weekday: "long", year: "numeric", month: "long", day: "numeric",
+            });
+            const lessonTime = new Date(lesson.scheduledAt).toLocaleTimeString("en-US", {
+              hour: "numeric", minute: "2-digit", hour12: true,
+            });
+            await sendEmail({
+              to: student.email,
+              subject: `${coach?.name || "Your coach"} accepted your lesson — complete payment`,
+              html: getStudentCoachConfirmedEmail({
+                studentName: student.name || "Student",
+                coachName: coach?.name || "Your Coach",
+                lessonDate,
+                lessonTime,
+                durationMinutes: lesson.durationMinutes ?? 60,
+                amount: `$${(lesson.amountCents / 100).toFixed(2)}`,
+                lessonId: lesson.id,
+              }),
+            });
+          } catch (err) {
+            console.error(`[confirmAsCoach] Failed to send student confirmation email for lesson ${input.lessonId}:`, err);
+          }
+        })();
+
         return { success: true };
       }),
 
@@ -699,6 +895,16 @@ export const appRouter = router({
         }
 
         const result = await db.cancelLesson(input.lessonId, 'coach', input.reason || 'Declined by coach');
+        // Best-effort cancellation confirmation emails. Awaited so errors are
+        // visible in logs, but wrapped in try/catch inside the helper so they
+        // can't fail the mutation.
+        await sendCancellationEmails(
+          input.lessonId,
+          'coach',
+          input.reason || 'Declined by coach',
+          result.refundAmountCents,
+          result.refundPercentage,
+        );
         return { success: true, refundAmountCents: result.refundAmountCents };
       }),
 
@@ -718,6 +924,13 @@ export const appRouter = router({
         }
 
         const result = await db.cancelLesson(input.lessonId, 'student', input.reason);
+        await sendCancellationEmails(
+          input.lessonId,
+          'student',
+          input.reason,
+          result.refundAmountCents,
+          result.refundPercentage,
+        );
         return {
           success: true,
           refundAmountCents: result.refundAmountCents,
@@ -760,7 +973,8 @@ export const appRouter = router({
           payoutAt: new Date(),
         });
 
-        // Create review if provided
+        // Create review if provided. Also flip visibility on both reviews
+        // if the coach has already submitted theirs.
         if (input.rating) {
           await db.createReview({
             lessonId: input.lessonId,
@@ -770,6 +984,10 @@ export const appRouter = router({
             rating: input.rating,
             comment: input.comment || '',
           });
+          const counterpart = await db.getCounterpartReview(input.lessonId, "student");
+          if (counterpart) {
+            await db.setReviewsVisibleForLesson(input.lessonId);
+          }
         }
 
         // Award XP to student
@@ -817,6 +1035,450 @@ export const appRouter = router({
         await db.updateLessonStatus(input.lessonId, "refunded");
 
         return { success: true, refundAmountCents: lesson.amountCents };
+      }),
+  }),
+
+  // ============ REVIEW OPERATIONS ============
+  review: router({
+    /**
+     * Submit a review for a lesson. Validates:
+     *   - the lesson is in a completion state (completed/released)
+     *   - the current user was a participant
+     *   - the user hasn't already submitted
+     * Once both parties have reviewed, both reviews become visible.
+     */
+    submit: protectedProcedure
+      .input(z.object({
+        lessonId: z.number(),
+        rating: z.number().int().min(1).max(5),
+        comment: z.string().max(2000).optional(),
+        knowledgeRating: z.number().int().min(1).max(5).optional(),
+        communicationRating: z.number().int().min(1).max(5).optional(),
+        preparednessRating: z.number().int().min(1).max(5).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const lesson = await db.getLessonById(input.lessonId);
+        if (!lesson) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
+        }
+
+        const isStudent = lesson.studentId === ctx.user.id;
+        const isCoach = lesson.coachId === ctx.user.id;
+        if (!isStudent && !isCoach) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Not your lesson" });
+        }
+
+        if (!["completed", "released"].includes(lesson.status)) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "Lesson is not completed yet",
+          });
+        }
+
+        const existing = await db.getReviewByLessonAndReviewer(input.lessonId, ctx.user.id);
+        if (existing) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "You have already reviewed this lesson",
+          });
+        }
+
+        const reviewerType: "student" | "coach" = isStudent ? "student" : "coach";
+        const revieweeId = isStudent ? lesson.coachId : lesson.studentId;
+
+        await db.createReview({
+          lessonId: input.lessonId,
+          reviewerId: ctx.user.id,
+          revieweeId,
+          reviewerType,
+          rating: input.rating,
+          comment: input.comment || "",
+          knowledgeRating: input.knowledgeRating,
+          communicationRating: input.communicationRating,
+          preparednessRating: input.preparednessRating,
+        });
+
+        // If the counterpart has already submitted, make both visible.
+        const counterpart = await db.getCounterpartReview(input.lessonId, reviewerType);
+        if (counterpart) {
+          await db.setReviewsVisibleForLesson(input.lessonId);
+        }
+
+        return { success: true, bothSubmitted: !!counterpart };
+      }),
+
+    /**
+     * Return completed lessons where the current user has not yet left a review.
+     * Includes the other party's name so the UI can prompt meaningfully.
+     */
+    getPending: protectedProcedure.query(async ({ ctx }) => {
+      const [asStudent, asCoach] = await Promise.all([
+        db.getLessonsByStudent(ctx.user.id, 100),
+        db.getLessonsByCoach(ctx.user.id, 100),
+      ]);
+
+      const completedLessons = [...asStudent, ...asCoach].filter((l: any) =>
+        ["completed", "released"].includes(l.status)
+      );
+
+      const pending: any[] = [];
+      for (const lesson of completedLessons) {
+        const existing = await db.getReviewByLessonAndReviewer(lesson.id, ctx.user.id);
+        if (existing) continue;
+        const otherUserId = lesson.studentId === ctx.user.id ? lesson.coachId : lesson.studentId;
+        const otherUser = await db.getUserById(otherUserId);
+        pending.push({
+          lessonId: lesson.id,
+          scheduledAt: lesson.scheduledAt,
+          durationMinutes: lesson.durationMinutes,
+          otherPartyName: otherUser?.name || "Unknown",
+          reviewingAs: lesson.studentId === ctx.user.id ? "student" : "coach",
+        });
+      }
+
+      return pending;
+    }),
+
+    /**
+     * Public: visible reviews for a coach (both-sides-submitted only).
+     * Reuses existing getReviewsByCoach helper which already filters on isVisible.
+     */
+    getForCoach: publicProcedure
+      .input(z.object({
+        coachId: z.number(),
+        limit: z.number().min(1).max(50).default(20),
+      }))
+      .query(async ({ input }) => {
+        return await db.getReviewsByCoach(input.coachId, input.limit);
+      }),
+  }),
+
+  // ============ IN-APP MESSAGING ============
+  messages: router({
+    /**
+     * Send a message on a specific lesson. Requires the sender to be the
+     * student or coach for that lesson.
+     */
+    send: protectedProcedure
+      .input(z.object({
+        lessonId: z.number(),
+        content: z.string().min(1).max(4000),
+        contentType: z.enum(["text", "pgn"]).default("text"),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const lesson = await db.getLessonById(input.lessonId);
+        if (!lesson) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
+        }
+        if (lesson.studentId !== ctx.user.id && lesson.coachId !== ctx.user.id) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Not your lesson" });
+        }
+        return await db.createMessage({
+          lessonId: input.lessonId,
+          senderId: ctx.user.id,
+          content: input.content,
+          contentType: input.contentType,
+        });
+      }),
+
+    /**
+     * Get the message thread for a lesson. Also marks the counterpart's
+     * messages as read for the current user as a side effect.
+     */
+    getForLesson: protectedProcedure
+      .input(z.object({ lessonId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        const lesson = await db.getLessonById(input.lessonId);
+        if (!lesson) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
+        }
+        if (lesson.studentId !== ctx.user.id && lesson.coachId !== ctx.user.id) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Not your lesson" });
+        }
+        // Fire-and-forget read marker — don't block the response on it.
+        db.markLessonMessagesRead(input.lessonId, ctx.user.id).catch(err =>
+          console.error("[messages.getForLesson] markRead failed:", err)
+        );
+        return await db.getMessagesForLesson(input.lessonId);
+      }),
+
+    /**
+     * Explicit mark-as-read (used if the user revisits a tab).
+     */
+    markRead: protectedProcedure
+      .input(z.object({ lessonId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const lesson = await db.getLessonById(input.lessonId);
+        if (!lesson) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
+        }
+        if (lesson.studentId !== ctx.user.id && lesson.coachId !== ctx.user.id) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Not your lesson" });
+        }
+        await db.markLessonMessagesRead(input.lessonId, ctx.user.id);
+        return { success: true };
+      }),
+
+    /**
+     * Unread counts per lesson for the current user, keyed by lessonId.
+     * Client passes the list of lessonIds visible on the dashboard.
+     */
+    getUnreadCounts: protectedProcedure
+      .input(z.object({ lessonIds: z.array(z.number()).max(200) }))
+      .query(async ({ ctx, input }) => {
+        const counts = await db.getUnreadMessageCountsForUser(ctx.user.id, input.lessonIds);
+        // Serialize Map -> plain object for tRPC
+        const result: Record<number, number> = {};
+        counts.forEach((v, k) => { result[k] = v; });
+        return result;
+      }),
+  }),
+
+  // ============ GROUP LESSONS (Sprint 10) ============
+  // Minimal backend scaffolding — organizer creates a group lesson, others
+  // join via an invite token. Full UI + payment-split checkout flow is a
+  // future phase per BUILD_PLAN.md. Uses raw SQL via db.execute for
+  // consistency with the rest of the lesson read path.
+  groupLesson: router({
+    /**
+     * Create a group lesson and return its invite token.
+     * Only the organizer's price share is committed up-front — other
+     * participants pay when they join.
+     */
+    create: protectedProcedure
+      .input(z.object({
+        coachId: z.number(),
+        scheduledAt: z.date().refine((d) => d > new Date(), {
+          message: "Group lesson must be scheduled in the future",
+        }),
+        durationMinutes: z.number().min(30).max(240).default(60),
+        maxParticipants: z.number().min(2).max(10),
+        topic: z.string().optional(),
+        timezone: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.user.id === input.coachId) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Cannot organize a group lesson with yourself" });
+        }
+        const coachProfile = await db.getCoachProfileByUserId(input.coachId);
+        if (!coachProfile) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Coach not found" });
+        }
+
+        const hourlyRate = coachProfile.hourlyRateCents || 5000;
+        const totalAmountCents = Math.round((hourlyRate * input.durationMinutes) / 60);
+        const perParticipantCents = Math.ceil(totalAmountCents / input.maxParticipants);
+        const commissionRate = coachProfile.commissionRate || 15;
+        const commissionCents = Math.round(totalAmountCents * (commissionRate / 100));
+        const coachPayoutCents = totalAmountCents - commissionCents;
+
+        const crypto = await import("crypto");
+        const inviteToken = crypto.randomBytes(24).toString("hex");
+
+        const database = await db.getDb();
+        if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
+
+        const { sql } = await import("drizzle-orm");
+        const result: any = await database.execute(sql`
+          INSERT INTO group_lessons (
+            coachId, organizerId, scheduledAt, durationMinutes, timezone,
+            topic, maxParticipants, totalAmountCents, perParticipantCents,
+            commissionCents, coachPayoutCents, inviteToken, status
+          ) VALUES (
+            ${input.coachId}, ${ctx.user.id}, ${input.scheduledAt}, ${input.durationMinutes}, ${input.timezone || null},
+            ${input.topic || null}, ${input.maxParticipants}, ${totalAmountCents}, ${perParticipantCents},
+            ${commissionCents}, ${coachPayoutCents}, ${inviteToken}, 'forming'
+          )
+        `);
+        const groupLessonId = Number(result[0]?.insertId);
+
+        // Organizer is automatically a participant.
+        await database.execute(sql`
+          INSERT INTO group_lesson_participants (groupLessonId, studentId)
+          VALUES (${groupLessonId}, ${ctx.user.id})
+        `);
+
+        return { success: true, groupLessonId, inviteToken, perParticipantCents };
+      }),
+
+    /** Get a group lesson by invite token (public — used on join page). */
+    getByInviteToken: publicProcedure
+      .input(z.object({ inviteToken: z.string().min(10).max(64) }))
+      .query(async ({ input }) => {
+        const database = await db.getDb();
+        if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
+        const { sql } = await import("drizzle-orm");
+        const result: any = await database.execute(sql`
+          SELECT * FROM group_lessons WHERE inviteToken = ${input.inviteToken} LIMIT 1
+        `);
+        const rows = result[0];
+        if (!rows || rows.length === 0) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Group lesson not found" });
+        }
+        return rows[0];
+      }),
+
+    /**
+     * Join a group lesson as a participant using the invite token.
+     * Returns the participant row; actual payment happens via a separate
+     * checkout flow (future phase).
+     */
+    join: protectedProcedure
+      .input(z.object({ inviteToken: z.string().min(10).max(64) }))
+      .mutation(async ({ ctx, input }) => {
+        const database = await db.getDb();
+        if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
+        const { sql } = await import("drizzle-orm");
+
+        const lookup: any = await database.execute(sql`
+          SELECT * FROM group_lessons WHERE inviteToken = ${input.inviteToken} LIMIT 1
+        `);
+        const lesson = lookup[0]?.[0];
+        if (!lesson) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Group lesson not found" });
+        }
+        if (lesson.status !== "forming") {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Group lesson is no longer accepting participants" });
+        }
+
+        // Check capacity
+        const countResult: any = await database.execute(sql`
+          SELECT COUNT(*) AS c FROM group_lesson_participants
+          WHERE groupLessonId = ${lesson.id} AND dropped = 0
+        `);
+        const current = Number(countResult[0]?.[0]?.c ?? 0);
+        if (current >= lesson.maxParticipants) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Group lesson is full" });
+        }
+
+        // Prevent duplicate join
+        const existingResult: any = await database.execute(sql`
+          SELECT id FROM group_lesson_participants
+          WHERE groupLessonId = ${lesson.id} AND studentId = ${ctx.user.id} AND dropped = 0
+        `);
+        if (existingResult[0]?.length > 0) {
+          throw new TRPCError({ code: "CONFLICT", message: "Already joined this group lesson" });
+        }
+
+        await database.execute(sql`
+          INSERT INTO group_lesson_participants (groupLessonId, studentId)
+          VALUES (${lesson.id}, ${ctx.user.id})
+        `);
+
+        return { success: true, groupLessonId: lesson.id, perParticipantCents: lesson.perParticipantCents };
+      }),
+  }),
+
+  // ============ CONTENT MONETIZATION (Sprint 11 — future phase) ============
+  // Minimal backend scaffold for pay-per-view content. Full upload flow,
+  // subscription tiers, and content library UI are deferred per
+  // BUILD_PLAN.md (Phase 4). This commit establishes the schema + the
+  // list/get/purchase endpoints so those features can be built
+  // incrementally without schema churn.
+  content: router({
+    /** Public: list published content, optionally filtered by coach. */
+    list: publicProcedure
+      .input(z.object({
+        coachId: z.number().optional(),
+        kind: z.enum(["course", "video", "pdf", "pgn", "bundle"]).optional(),
+        limit: z.number().min(1).max(100).default(20),
+      }).optional())
+      .query(async ({ input }) => {
+        const database = await db.getDb();
+        if (!database) return [];
+        const { sql } = await import("drizzle-orm");
+
+        const coachFilter = input?.coachId ? sql`AND coachId = ${input.coachId}` : sql``;
+        const kindFilter = input?.kind ? sql`AND kind = ${input.kind}` : sql``;
+        const limit = input?.limit ?? 20;
+
+        const result: any = await database.execute(sql`
+          SELECT id, coachId, title, description, kind, thumbnailUrl,
+                 priceCents, currency, previewContent, publishedAt
+          FROM content_items
+          WHERE published = 1
+            ${coachFilter}
+            ${kindFilter}
+          ORDER BY publishedAt DESC
+          LIMIT ${limit}
+        `);
+        return (result[0] || []) as any[];
+      }),
+
+    /**
+     * Get a single content item. Returns the preview by default; the
+     * unlocked payload (storageKey -> presigned URL) is only included
+     * if the caller has purchased or owns the content.
+     */
+    getById: publicProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ ctx, input }) => {
+        const database = await db.getDb();
+        if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
+        const { sql } = await import("drizzle-orm");
+
+        const itemResult: any = await database.execute(sql`
+          SELECT * FROM content_items WHERE id = ${input.id} AND published = 1 LIMIT 1
+        `);
+        const item = itemResult[0]?.[0];
+        if (!item) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Content not found" });
+        }
+
+        // Check if the current user has unlocked it
+        let unlocked = item.priceCents === 0 || ctx.user?.id === item.coachId;
+        if (!unlocked && ctx.user?.id) {
+          const purchaseResult: any = await database.execute(sql`
+            SELECT id FROM content_purchases
+            WHERE contentItemId = ${item.id} AND userId = ${ctx.user.id}
+            LIMIT 1
+          `);
+          unlocked = (purchaseResult[0]?.length ?? 0) > 0;
+        }
+
+        // Only expose the raw storage key to unlocked users; otherwise
+        // return the preview only.
+        const { storageKey, ...publicFields } = item as any;
+        return {
+          ...publicFields,
+          unlocked,
+          storageKey: unlocked ? storageKey : undefined,
+        };
+      }),
+
+    /**
+     * Mark content as purchased for the current user. Stripe checkout is
+     * expected to have completed before calling this — the actual payment
+     * flow will be wired up when the checkout endpoint lands.
+     */
+    recordPurchase: protectedProcedure
+      .input(z.object({
+        contentItemId: z.number(),
+        stripePaymentIntentId: z.string(),
+        amountPaidCents: z.number().int().nonnegative(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const database = await db.getDb();
+        if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
+        const { sql } = await import("drizzle-orm");
+
+        // Idempotency — don't double-insert if the user already owns it
+        const existingResult: any = await database.execute(sql`
+          SELECT id FROM content_purchases
+          WHERE contentItemId = ${input.contentItemId} AND userId = ${ctx.user.id}
+          LIMIT 1
+        `);
+        if ((existingResult[0]?.length ?? 0) > 0) {
+          return { success: true, alreadyOwned: true };
+        }
+
+        await database.execute(sql`
+          INSERT INTO content_purchases
+            (contentItemId, userId, unlockMethod, amountPaidCents, stripePaymentIntentId)
+          VALUES
+            (${input.contentItemId}, ${ctx.user.id}, 'purchase', ${input.amountPaidCents}, ${input.stripePaymentIntentId})
+        `);
+        return { success: true, alreadyOwned: false };
       }),
   }),
 
