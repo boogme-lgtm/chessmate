@@ -10,11 +10,11 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { trpc } from "@/lib/trpc";
 import { getLoginUrl } from "@/const";
-import { 
-  DollarSign, 
-  Clock, 
-  Users, 
-  TrendingUp, 
+import {
+  DollarSign,
+  Clock,
+  Users,
+  TrendingUp,
   ExternalLink,
   AlertCircle,
   CheckCircle2,
@@ -26,10 +26,15 @@ import {
   ThumbsDown,
   Timer,
   XCircle,
-  Ban
+  Ban,
+  MessageCircle
 } from "lucide-react";
 import { Link } from "wouter";
 import { toast } from "sonner";
+import { useState } from "react";
+import MessageThread from "@/components/MessageThread";
+import ReviewDialog from "@/components/ReviewDialog";
+import { format } from "date-fns";
 
 export default function CoachDashboard() {
   const { user, loading: authLoading, isAuthenticated } = useAuth();
@@ -46,7 +51,18 @@ export default function CoachDashboard() {
     { enabled: isAuthenticated }
   );
 
-  // Note: accept/decline mutations moved to PendingLessonCard component below
+  // Unread message counts for all visible lessons
+  const lessonIds = (lessons || []).map((l: any) => l.id);
+  const { data: unreadCounts } = trpc.messages.getUnreadCounts.useQuery(
+    { lessonIds },
+    { enabled: lessonIds.length > 0, refetchInterval: 30000 }
+  );
+
+  // Pending reviews
+  const { data: pendingReviews } = trpc.review.getPending.useQuery(
+    undefined,
+    { enabled: isAuthenticated }
+  );
 
   // Start Stripe onboarding mutation
   const startOnboarding = trpc.coach.startOnboarding.useMutation({
@@ -314,6 +330,11 @@ export default function CoachDashboard() {
               </Card>
             )}
 
+            {/* Pending Reviews */}
+            {pendingReviews && pendingReviews.length > 0 && (
+              <CoachPendingReviewsCard reviews={pendingReviews} />
+            )}
+
             {/* Recent Lessons */}
             <Card>
               <CardHeader>
@@ -326,6 +347,7 @@ export default function CoachDashboard() {
                 {lessons && lessons.length > 0 ? (
                   <div className="space-y-4">
                     {lessons.map((lesson: any) => {
+                      const unread = (unreadCounts as Record<number, number> | undefined)?.[lesson.id] || 0;
                       const getStatusBadge = () => {
                         switch (lesson.status) {
                           case "completed":
@@ -380,32 +402,13 @@ export default function CoachDashboard() {
                       };
 
                       return (
-                        <div 
+                        <CoachLessonRow
                           key={lesson.id}
-                          className="flex items-center justify-between p-4 rounded-lg bg-stone dark:bg-secondary/30"
-                        >
-                          <div className="flex items-center gap-4">
-                            <div className="w-10 h-10 rounded-full bg-burgundy/10 flex items-center justify-center">
-                              <Users className="w-5 h-5 text-burgundy" />
-                            </div>
-                            <div>
-                              <div className="font-medium">
-                                {lesson.topic || "Chess Lesson"}
-                              </div>
-                              <div className="text-sm text-muted-foreground">
-                                {lesson.durationMinutes} min • {new Date(lesson.scheduledAt).toLocaleDateString()}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="text-right flex items-center gap-3">
-                            <div>
-                              <div className="font-semibold text-burgundy">
-                                {formatCurrency(lesson.coachPayoutCents || 0)}
-                              </div>
-                              {getStatusBadge()}
-                            </div>
-                          </div>
-                        </div>
+                          lesson={lesson}
+                          unreadCount={unread}
+                          formatCurrency={formatCurrency}
+                          getStatusBadge={getStatusBadge}
+                        />
                       );
                     })}
                   </div>
@@ -484,5 +487,141 @@ function PendingLessonCard({ lesson, formatCurrency, onActionComplete }: {
         </Button>
       </div>
     </div>
+  );
+}
+
+/**
+ * Individual lesson row with a Messages button + unread badge.
+ */
+function CoachLessonRow({ lesson, unreadCount, formatCurrency, getStatusBadge }: {
+  lesson: any;
+  unreadCount: number;
+  formatCurrency: (cents: number) => string;
+  getStatusBadge: () => React.ReactNode;
+}) {
+  const [showMessages, setShowMessages] = useState(false);
+
+  return (
+    <>
+      <div className="flex items-center justify-between p-4 rounded-lg bg-stone dark:bg-secondary/30">
+        <div className="flex items-center gap-4">
+          <div className="w-10 h-10 rounded-full bg-burgundy/10 flex items-center justify-center">
+            <Users className="w-5 h-5 text-burgundy" />
+          </div>
+          <div>
+            <div className="font-medium">
+              {lesson.topic || "Chess Lesson"}
+            </div>
+            <div className="text-sm text-muted-foreground">
+              {lesson.durationMinutes} min • {new Date(lesson.scheduledAt).toLocaleDateString()}
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5 relative"
+            onClick={() => setShowMessages(true)}
+          >
+            <MessageCircle className="w-4 h-4" />
+            Messages
+            {unreadCount > 0 && (
+              <span className="ml-1 rounded-full bg-primary text-primary-foreground text-[10px] font-semibold px-1.5 py-0.5 min-w-[18px] text-center">
+                {unreadCount}
+              </span>
+            )}
+          </Button>
+          <div className="text-right">
+            <div className="font-semibold text-burgundy">
+              {formatCurrency(lesson.coachPayoutCents || 0)}
+            </div>
+            {getStatusBadge()}
+          </div>
+        </div>
+      </div>
+      <MessageThread
+        open={showMessages}
+        onOpenChange={setShowMessages}
+        lessonId={lesson.id}
+        otherPartyName={`Student #${lesson.studentId}`}
+      />
+    </>
+  );
+}
+
+/**
+ * Pending reviews card for coaches — prompts to review students after
+ * completed lessons. Mirrors the student-side PendingReviewsCard.
+ */
+function CoachPendingReviewsCard({ reviews }: { reviews: any[] }) {
+  const [openLessonId, setOpenLessonId] = useState<number | null>(null);
+  const [openMeta, setOpenMeta] = useState<{
+    name: string;
+    reviewingAs: "student" | "coach";
+  } | null>(null);
+
+  return (
+    <>
+      <Card className="border-yellow-600/40 bg-yellow-50/50 dark:bg-yellow-950/10">
+        <CardContent className="p-6">
+          <div className="flex items-start gap-3 mb-4">
+            <Star className="h-5 w-5 text-yellow-600 mt-0.5" />
+            <div>
+              <h3 className="text-base font-semibold">
+                Pending Reviews ({reviews.length})
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                Review your students after completed lessons. Both reviews are private until both sides submit.
+              </p>
+            </div>
+          </div>
+          <div className="space-y-2">
+            {reviews.map((p: any) => (
+              <div
+                key={p.lessonId}
+                className="flex items-center justify-between p-3 rounded-md border border-border/60"
+              >
+                <div>
+                  <div className="font-medium text-sm">
+                    Lesson with {p.otherPartyName}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {format(new Date(p.scheduledAt), "MMMM d, yyyy")} · {p.durationMinutes} min
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setOpenLessonId(p.lessonId);
+                    setOpenMeta({
+                      name: p.otherPartyName,
+                      reviewingAs: p.reviewingAs,
+                    });
+                  }}
+                >
+                  Leave Review
+                </Button>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {openLessonId !== null && openMeta && (
+        <ReviewDialog
+          open={openLessonId !== null}
+          onOpenChange={(open) => {
+            if (!open) {
+              setOpenLessonId(null);
+              setOpenMeta(null);
+            }
+          }}
+          lessonId={openLessonId}
+          otherPartyName={openMeta.name}
+          reviewingAs={openMeta.reviewingAs}
+        />
+      )}
+    </>
   );
 }

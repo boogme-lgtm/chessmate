@@ -2,6 +2,7 @@ import "dotenv/config";
 import express from "express";
 import { createServer } from "http";
 import net from "net";
+import rateLimit from "express-rate-limit";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
@@ -66,6 +67,34 @@ async function startServer() {
     // Redirect to homepage with cache-busting parameter
     res.redirect("/?logout=" + Date.now());
   });
+  // Rate limiting on auth-sensitive tRPC endpoints.
+  // Limits login/register/password-reset to 10 requests per minute per IP.
+  // Other tRPC endpoints get a generous 200/min per IP.
+  const authLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    limit: 10,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    message: { error: "Too many requests, please try again later" },
+    keyGenerator: (req) => req.ip || req.socket.remoteAddress || "unknown",
+  });
+  const generalLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    limit: 200,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    keyGenerator: (req) => req.ip || req.socket.remoteAddress || "unknown",
+  });
+
+  // Apply strict limiter to auth procedures
+  app.use("/api/trpc/auth.login", authLimiter);
+  app.use("/api/trpc/auth.register", authLimiter);
+  app.use("/api/trpc/auth.requestPasswordReset", authLimiter);
+  app.use("/api/trpc/auth.resetPassword", authLimiter);
+
+  // General rate limit on all tRPC
+  app.use("/api/trpc", generalLimiter);
+
   // tRPC API
   app.use(
     "/api/trpc",
