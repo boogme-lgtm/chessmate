@@ -64,6 +64,13 @@
       "when": 1770562084244,
       "tag": "0008_mute_northstar",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "5",
+      "when": 1776013923672,
+      "tag": "0009_smart_lady_bullseye",
+      "breakpoints": true
     }
   ]
 }
