@@ -24,6 +24,7 @@ import VerifyEmail from "./pages/VerifyEmail";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import DevDashboard from "./pages/DevDashboard";
+import CoachOnboarding from "./pages/CoachOnboarding";
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
@@ -33,6 +34,9 @@ function Router() {
       <Route path={"/coaches"} component={CoachBrowse} />
       <Route path={"/for-coaches"} component={Coaches} />
       <Route path={"/coach/apply"} component={CoachApplicationPage} />
+      <Route path={"/coach/onboarding"} component={CoachOnboarding} />
+      <Route path={"/coach/onboarding/complete"} component={() => { window.location.href = "/coach/onboarding?stripe_return=1"; return null; }} />
+      <Route path={"/coach/onboarding/refresh"} component={() => { window.location.href = "/coach/onboarding?stripe_refresh=1"; return null; }} />
       <Route path={"/coach/dashboard"} component={CoachDashboard} />
       <Route path={"/coach/:id"} component={CoachDetail} />
       <Route path={"/dashboard"} component={StudentDashboard} />

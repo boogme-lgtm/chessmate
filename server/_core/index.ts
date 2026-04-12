@@ -2,7 +2,7 @@ import "dotenv/config";
 import express from "express";
 import { createServer } from "http";
 import net from "net";
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
@@ -76,14 +76,20 @@ async function startServer() {
     standardHeaders: "draft-7",
     legacyHeaders: false,
     message: { error: "Too many requests, please try again later" },
-    keyGenerator: (req) => req.ip || req.socket.remoteAddress || "unknown",
+    keyGenerator: (req) => {
+      const ip = req.ip ?? req.socket.remoteAddress ?? "127.0.0.1";
+      return ipKeyGenerator(ip);
+    },
   });
   const generalLimiter = rateLimit({
     windowMs: 60 * 1000,
     limit: 200,
     standardHeaders: "draft-7",
     legacyHeaders: false,
-    keyGenerator: (req) => req.ip || req.socket.remoteAddress || "unknown",
+    keyGenerator: (req) => {
+      const ip = req.ip ?? req.socket.remoteAddress ?? "127.0.0.1";
+      return ipKeyGenerator(ip);
+    },
   });
 
   // Apply strict limiter to auth procedures

@@ -161,6 +161,24 @@ export async function createCoachProfile(profile: InsertCoachProfile) {
   return result;
 }
 
+export async function updateCoachProfile(userId: number, data: Partial<InsertCoachProfile>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.update(coachProfiles)
+    .set({ ...data, updatedAt: new Date() })
+    .where(eq(coachProfiles.userId, userId));
+}
+
+export async function updateUserProfile(userId: number, data: { name?: string; bio?: string; avatarUrl?: string; country?: string; timezone?: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.update(users)
+    .set({ ...data })
+    .where(eq(users.id, userId));
+}
+
 export async function getCoachProfileByUserId(userId: number) {
   const db = await getDb();
   if (!db) return undefined;

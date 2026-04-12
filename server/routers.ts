@@ -653,6 +653,72 @@ export const appRouter = router({
       };
     }),
 
+    // Get my own coach profile (for wizard pre-filling)
+    getMyProfile: protectedProcedure.query(async ({ ctx }) => {
+      const profile = await db.getCoachProfileByUserId(ctx.user.id);
+      const user = await db.getUserById(ctx.user.id);
+      return { profile, user };
+    }),
+
+    // Update coach profile (used by onboarding wizard)
+    updateProfile: protectedProcedure
+      .input(z.object({
+        // User-level fields
+        name: z.string().min(2).max(100).optional(),
+        bio: z.string().max(2000).optional(),
+        avatarUrl: z.string().url().optional(),
+        country: z.string().optional(),
+        timezone: z.string().optional(),
+        // Coach profile fields
+        title: z.enum(["none", "CM", "FM", "IM", "GM", "WCM", "WFM", "WIM", "WGM"]).optional(),
+        fideRating: z.number().min(0).max(3000).optional(),
+        lichessUsername: z.string().max(64).optional(),
+        chesscomUsername: z.string().max(64).optional(),
+        specialties: z.array(z.string()).optional(),
+        teachingStyle: z.enum(["visual", "interactive", "analytical", "competitive"]).optional(),
+        experienceYears: z.number().min(0).max(50).optional(),
+        languages: z.array(z.string()).optional(),
+        hourlyRateCents: z.number().min(500).max(100000).optional(),
+        availabilitySchedule: z.record(z.string(), z.object({
+          enabled: z.boolean(),
+          slots: z.array(z.object({ start: z.string(), end: z.string() })),
+        })).optional(),
+        lessonDurations: z.array(z.number()).optional(),
+        minAdvanceHours: z.number().min(1).max(168).optional(),
+        maxAdvanceDays: z.number().min(1).max(90).optional(),
+        bufferMinutes: z.number().min(0).max(60).optional(),
+        packageDiscountEnabled: z.boolean().optional(),
+        packageDiscountPercent: z.number().min(0).max(50).optional(),
+        guidelinesAgreed: z.boolean().optional(),
+        onboardingStep: z.number().min(1).max(7).optional(),
+        onboardingCompleted: z.boolean().optional(),
+        profileActive: z.boolean().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { name, bio, avatarUrl, country, timezone, specialties, languages, lessonDurations, availabilitySchedule, ...coachFields } = input;
+
+        // Update user-level fields
+        if (name || bio || avatarUrl || country || timezone) {
+          await db.updateUserProfile(ctx.user.id, { name, bio, avatarUrl, country, timezone });
+        }
+
+        // Update coach profile fields
+        const coachUpdate: Record<string, unknown> = { ...coachFields };
+        if (specialties !== undefined) coachUpdate.specialties = JSON.stringify(specialties);
+        if (languages !== undefined) coachUpdate.languages = JSON.stringify(languages);
+        if (lessonDurations !== undefined) coachUpdate.lessonDurations = JSON.stringify(lessonDurations);
+        if (availabilitySchedule !== undefined) coachUpdate.availabilitySchedule = JSON.stringify(availabilitySchedule);
+        if (input.onboardingCompleted) coachUpdate.onboardingCompletedAt = new Date();
+        if (input.profileActive) coachUpdate.profileActivatedAt = new Date();
+        if (input.guidelinesAgreed) coachUpdate.guidelinesAgreedAt = new Date();
+
+        if (Object.keys(coachUpdate).length > 0) {
+          await db.updateCoachProfile(ctx.user.id, coachUpdate as any);
+        }
+
+        return { success: true };
+      }),
+
     // Check if coach needs to complete Stripe onboarding
     checkOnboardingRequired: protectedProcedure.query(async ({ ctx }) => {
       const user = await db.getUserById(ctx.user.id);
