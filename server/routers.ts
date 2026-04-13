@@ -19,6 +19,7 @@ import {
 } from "./emailService";
 import { sendNurtureEmails, sendNurtureEmailsManual } from "./nurtureEmailScheduler";
 import { resendWelcomeEmails } from "./resendWelcomeEmails";
+import { storagePut } from "./storage";
 
 /**
  * Send cancellation confirmation emails to both student and coach.
@@ -750,6 +751,40 @@ export const appRouter = router({
         }
 
         return { success: true };
+      }),
+
+    // Upload profile photo to S3 and return the public URL
+    uploadPhoto: coachProcedure
+      .input(z.object({
+        // Base64-encoded image data (without the data:image/...;base64, prefix)
+        base64Data: z.string().min(1).max(10_000_000), // ~7.5 MB max
+        mimeType: z.enum(["image/jpeg", "image/png", "image/webp", "image/gif"]),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { base64Data, mimeType } = input;
+
+        // Validate size (base64 is ~4/3 the binary size)
+        const estimatedBytes = Math.ceil(base64Data.length * 0.75);
+        if (estimatedBytes > 8_000_000) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Image must be smaller than 8 MB",
+          });
+        }
+
+        // Convert base64 to Buffer
+        const buffer = Buffer.from(base64Data, "base64");
+
+        // Build a unique S3 key so files can't be enumerated
+        const ext = mimeType.split("/")[1] ?? "jpg";
+        const key = `coach-photos/${ctx.user.id}-${Date.now()}.${ext}`;
+
+        const { url } = await storagePut(key, buffer, mimeType);
+
+        // Persist the URL on the user record immediately
+        await db.updateUserProfile(ctx.user.id, { avatarUrl: url });
+
+        return { url };
       }),
 
     // Check if coach needs to complete Stripe onboarding

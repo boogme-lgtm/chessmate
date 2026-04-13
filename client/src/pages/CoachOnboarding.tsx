@@ -10,7 +10,7 @@
  *   7. Stripe Connect & Go Live
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -38,6 +38,9 @@ import {
   Shield,
   Star,
   Zap,
+  Upload,
+  X,
+  Camera,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -118,6 +121,11 @@ export default function CoachOnboarding() {
   const [schedule, setSchedule] = useState<WeekSchedule>(defaultSchedule());
   const [guidelinesAgreed, setGuidelinesAgreed] = useState(false);
 
+  // ── Photo upload state ──
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const [photoDragOver, setPhotoDragOver] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+
   // ── Load existing profile ──
   const { data: profileData } = trpc.coach.getMyProfile.useQuery(undefined, {
     enabled: isAuthenticated,
@@ -168,6 +176,40 @@ export default function CoachOnboarding() {
 
   const updateProfile = trpc.coach.updateProfile.useMutation();
   const startStripeOnboarding = trpc.coach.startOnboarding.useMutation();
+  const uploadPhotoMutation = trpc.coach.uploadPhoto.useMutation();
+
+  // ── Photo upload handler ──
+  const handlePhotoUpload = useCallback(async (file: File) => {
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please select an image file (JPEG, PNG, WebP, or GIF).");
+      return;
+    }
+    if (file.size > 8_000_000) {
+      toast.error("Image must be smaller than 8 MB.");
+      return;
+    }
+    setPhotoUploading(true);
+    try {
+      const reader = new FileReader();
+      const base64Data = await new Promise<string>((resolve, reject) => {
+        reader.onload = () => {
+          const result = reader.result as string;
+          // Strip the data URI prefix ("data:image/jpeg;base64,")
+          resolve(result.split(",")[1] ?? "");
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const mimeType = file.type as "image/jpeg" | "image/png" | "image/webp" | "image/gif";
+      const { url } = await uploadPhotoMutation.mutateAsync({ base64Data, mimeType });
+      setAvatarUrl(url);
+      toast.success("Photo uploaded successfully!");
+    } catch (err: any) {
+      toast.error(err?.message ?? "Failed to upload photo. Please try again.");
+    } finally {
+      setPhotoUploading(false);
+    }
+  }, [uploadPhotoMutation]);
   const stripeStatus = trpc.coach.getOnboardingStatus.useQuery(undefined, {
     enabled: isAuthenticated,
     refetchOnWindowFocus: true,
@@ -408,12 +450,77 @@ export default function CoachOnboarding() {
                     maxLength={2000}
                   />
                 </div>
+                {/* Profile Photo Upload */}
                 <div>
-                  <Label className="text-slate-300 mb-1.5 block">Profile Photo URL</Label>
-                  <Input value={avatarUrl} onChange={(e) => setAvatarUrl(e.target.value)} placeholder="https://..." className="bg-slate-800 border-slate-700 text-white" />
-                  {avatarUrl && (
-                    <img src={avatarUrl} alt="Preview" className="mt-2 w-16 h-16 rounded-full object-cover border border-white/10" onError={() => setAvatarUrl("")} />
-                  )}
+                  <Label className="text-slate-300 mb-2 block">Profile Photo</Label>
+                  {/* Hidden file input */}
+                  <input
+                    ref={photoInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handlePhotoUpload(file);
+                      e.target.value = "";
+                    }}
+                  />
+                  <div className="flex items-start gap-4">
+                    {/* Avatar preview */}
+                    <div className="relative flex-shrink-0">
+                      {avatarUrl ? (
+                        <div className="relative">
+                          <img
+                            src={avatarUrl}
+                            alt="Profile preview"
+                            className="w-20 h-20 rounded-full object-cover border-2 border-amber-400/40"
+                            onError={() => setAvatarUrl("")}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setAvatarUrl("")}
+                            className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 flex items-center justify-center hover:bg-red-600 transition-colors"
+                          >
+                            <X className="w-3 h-3 text-white" />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="w-20 h-20 rounded-full bg-slate-800 border-2 border-dashed border-slate-600 flex items-center justify-center">
+                          <Camera className="w-7 h-7 text-slate-500" />
+                        </div>
+                      )}
+                    </div>
+                    {/* Drop zone */}
+                    <div
+                      className={`flex-1 border-2 border-dashed rounded-xl p-5 text-center cursor-pointer transition-all ${
+                        photoDragOver
+                          ? "border-amber-400 bg-amber-400/10"
+                          : "border-slate-700 hover:border-slate-500 bg-slate-800/50"
+                      }`}
+                      onClick={() => photoInputRef.current?.click()}
+                      onDragOver={(e) => { e.preventDefault(); setPhotoDragOver(true); }}
+                      onDragLeave={() => setPhotoDragOver(false)}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        setPhotoDragOver(false);
+                        const file = e.dataTransfer.files?.[0];
+                        if (file) handlePhotoUpload(file);
+                      }}
+                    >
+                      {photoUploading ? (
+                        <div className="flex flex-col items-center gap-2">
+                          <div className="w-7 h-7 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+                          <span className="text-sm text-slate-400">Uploading...</span>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center gap-2">
+                          <Upload className="w-6 h-6 text-slate-400" />
+                          <p className="text-sm text-slate-300 font-medium">Drop photo here or click to browse</p>
+                          <p className="text-xs text-slate-500">JPEG, PNG, WebP or GIF · max 8 MB</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
