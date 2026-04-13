@@ -271,6 +271,53 @@ export async function autoDeclineStaleBookings(): Promise<void> {
 }
 
 /**
+ * Auto-complete lessons whose scheduled time + duration has passed.
+ * Targets lessons in 'paid' or 'confirmed' status that are past their
+ * end time by at least 1 hour (grace period for late starts).
+ *
+ * This prevents stale "confirmed" / "paid" lessons from cluttering
+ * both the coach and student dashboards indefinitely.
+ */
+export async function autoCompletePastLessons(): Promise<void> {
+  const dbInstance = await getDb();
+  if (!dbInstance) {
+    console.warn("[Auto-Complete] Database not available, skipping.");
+    return;
+  }
+
+  // Find lessons whose scheduled end time + 1h grace is in the past
+  const result: any = await dbInstance.execute(sql`
+    SELECT id, studentId, coachId, durationMinutes, scheduledAt
+    FROM lessons
+    WHERE status IN ('paid', 'confirmed')
+      AND DATE_ADD(scheduledAt, INTERVAL (COALESCE(durationMinutes, 60) + 60) MINUTE) <= NOW()
+  `);
+
+  const rows = result[0] as any[];
+  if (!rows || rows.length === 0) {
+    console.log("[Auto-Complete] No past lessons to complete.");
+    return;
+  }
+
+  console.log(`[Auto-Complete] Found ${rows.length} lesson(s) past their end time.`);
+
+  for (const row of rows) {
+    try {
+      await dbInstance.execute(sql`
+        UPDATE lessons
+        SET status = 'completed',
+            completedAt = NOW()
+        WHERE id = ${row.id}
+          AND status IN ('paid', 'confirmed')
+      `);
+      console.log(`[Auto-Complete] Lesson ${row.id} marked completed`);
+    } catch (err) {
+      console.error(`[Auto-Complete] Failed for lesson ${row.id}:`, err);
+    }
+  }
+}
+
+/**
  * Start the hourly reminder scheduler.
  * Call once at server startup.
  */
@@ -284,6 +331,9 @@ export function startReminderScheduler(): void {
     await autoDeclineStaleBookings().catch((err) =>
       console.error("[Reminder Scheduler] Auto-decline run failed:", err)
     );
+    await autoCompletePastLessons().catch((err) =>
+      console.error("[Reminder Scheduler] Auto-complete run failed:", err)
+    );
   };
 
   // Run immediately on startup to catch any missed reminders / stale bookings
@@ -292,5 +342,5 @@ export function startReminderScheduler(): void {
   // Then run every hour
   setInterval(runAll, INTERVAL_MS);
 
-  console.log("[Reminder Scheduler] Started — running every hour (reminders + auto-decline).");
+  console.log("[Reminder Scheduler] Started — running every hour (reminders + auto-decline + auto-complete).");
 }

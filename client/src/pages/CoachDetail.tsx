@@ -44,6 +44,13 @@ export default function CoachDetail() {
   const { data: coach, isLoading } = trpc.coach.getById.useQuery({ id: coachId });
   const { data: reviews } = trpc.coach.getReviews.useQuery({ coachId, limit: 5 });
 
+  // Fetch Lichess stats if coach has a lichessUsername
+  const lichessUsername = coach?.profile?.lichessUsername;
+  const { data: lichessProfile } = trpc.lichess.getProfile.useQuery(
+    { username: lichessUsername! },
+    { enabled: !!lichessUsername }
+  );
+
   useDocumentTitle(coach?.name ? `${coach.name} · Chess Coach · BooGMe` : "Chess Coach · BooGMe");
 
   if (isLoading) {
@@ -187,6 +194,57 @@ export default function CoachDetail() {
                   <Badge variant="outline" className="text-sm">
                     {profile.teachingStyle.charAt(0).toUpperCase() + profile.teachingStyle.slice(1)} Learning
                   </Badge>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Lichess Verified Stats */}
+            {lichessProfile && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Globe className="h-5 w-5" />
+                    Lichess Profile
+                    <Badge variant="outline" className="text-xs ml-auto">Verified</Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    {lichessProfile.ratings.rapid && (
+                      <div className="text-center">
+                        <div className="text-2xl font-semibold">{lichessProfile.ratings.rapid}</div>
+                        <div className="text-xs text-muted-foreground">Rapid</div>
+                      </div>
+                    )}
+                    {lichessProfile.ratings.blitz && (
+                      <div className="text-center">
+                        <div className="text-2xl font-semibold">{lichessProfile.ratings.blitz}</div>
+                        <div className="text-xs text-muted-foreground">Blitz</div>
+                      </div>
+                    )}
+                    {lichessProfile.ratings.classical && (
+                      <div className="text-center">
+                        <div className="text-2xl font-semibold">{lichessProfile.ratings.classical}</div>
+                        <div className="text-xs text-muted-foreground">Classical</div>
+                      </div>
+                    )}
+                    {lichessProfile.ratings.totalGames && (
+                      <div className="text-center">
+                        <div className="text-2xl font-semibold">{lichessProfile.ratings.totalGames.toLocaleString()}</div>
+                        <div className="text-xs text-muted-foreground">Games</div>
+                      </div>
+                    )}
+                  </div>
+                  <div className="mt-3 text-center">
+                    <a
+                      href={`https://lichess.org/@/${lichessProfile.username}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-muted-foreground hover:text-foreground transition-colors underline"
+                    >
+                      View on Lichess
+                    </a>
+                  </div>
                 </CardContent>
               </Card>
             )}

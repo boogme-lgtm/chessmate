@@ -60,7 +60,11 @@ export async function handleStripeWebhook(req: Request, res: Response) {
       case 'payment_intent.payment_failed':
         await handlePaymentFailed(event);
         break;
-      
+
+      case 'account.updated':
+        await handleAccountUpdated(event);
+        break;
+
       default:
         console.log(`[Webhook] Unhandled event type: ${event.type}`);
     }
@@ -247,5 +251,56 @@ async function handlePaymentFailed(event: Stripe.Event) {
     } else {
       console.log(`[Webhook] Lesson ${lesson.id} already in state '${lesson.status}', ignoring payment failure`);
     }
+  }
+}
+
+/**
+ * Handle account.updated event (Stripe Connect)
+ *
+ * Fired when a Connect account's verification status changes. This catches
+ * the case where Stripe finishes verifying a coach *after* they returned to
+ * the wizard (e.g. KYC documents processed hours later).
+ *
+ * To receive this event, add "account.updated" to the webhook's event list
+ * in the Stripe Dashboard → Developers → Webhooks.
+ */
+async function handleAccountUpdated(event: Stripe.Event) {
+  const account = event.data.object as Stripe.Account;
+
+  console.log(`[Webhook] account.updated: ${account.id} (charges=${account.charges_enabled}, payouts=${account.payouts_enabled})`);
+
+  if (!account.charges_enabled || !account.payouts_enabled) {
+    // Not fully onboarded yet — nothing to do
+    return;
+  }
+
+  // Find the user with this Connect account ID and flip the flag
+  try {
+    // Look up user by stripeConnectAccountId via raw SQL
+    const database = (await import("./db")).getDb;
+    const dbInstance = await database();
+    if (!dbInstance) return;
+
+    const { sql } = await import("drizzle-orm");
+    const result: any = await dbInstance.execute(sql`
+      SELECT id, stripeConnectOnboarded FROM users
+      WHERE stripeConnectAccountId = ${account.id}
+      LIMIT 1
+    `);
+    const user = result[0]?.[0];
+    if (!user) {
+      console.log(`[Webhook] No user found for Connect account ${account.id}`);
+      return;
+    }
+
+    if (user.stripeConnectOnboarded) {
+      console.log(`[Webhook] User ${user.id} already marked onboarded, skipping`);
+      return;
+    }
+
+    await db.updateUserStripeConnectAccount(user.id, account.id, true);
+    console.log(`[Webhook] User ${user.id} stripeConnectOnboarded set to true via account.updated`);
+  } catch (err) {
+    console.error(`[Webhook] Failed to process account.updated for ${account.id}:`, err);
   }
 }
