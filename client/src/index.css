@@ -3,21 +3,24 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* 
- * DESIGN SYSTEM: Palantir-Inspired Minimalism
- * Ultra-thin typography, dark mode primary, generous whitespace
- * Inspired by: Palantir, Apple, Linear, Notion
+/*
+ * DESIGN SYSTEM: Glass Grandmaster
+ * Apple Vision Pro-inspired glassmorphism, gradient mesh backgrounds,
+ * frosted panels, 3D depth, and warm ambient light.
+ * Primary palette: Burgundy + Terracotta + Glass layers over #0A0A12.
  */
 
 @theme inline {
   --font-display: "Inter", system-ui, sans-serif;
   --font-body: "Inter", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", monospace;
-  
+
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+
+  /* shadcn tokens (kept for existing UI primitives) */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -50,67 +53,115 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+
+  /* Glass Grandmaster — primary palette (available as Tailwind utilities) */
+  --color-burgundy: #722F37;
+  --color-burgundy-light: #8B3A43;
+  --color-burgundy-dark: #5A252C;
+  --color-burgundy-muted: #D4A0A6;
+
+  --color-terracotta: #C27A4A;
+  --color-terracotta-light: #D08B5C;
+  --color-terracotta-muted: #F0E6D3;
+
+  --color-forest: #2D5A4A;
+  --color-forest-light: #3A7260;
+  --color-forest-muted: #7BB5A0;
+
+  --color-gold: #B8860B;
+  --color-gold-muted: #D4AA2B;
+
+  --color-iris: #7B68EE;
+
+  --color-obsidian: #0A0A12;
+  --color-charcoal: #111114;
+  --color-surface-elevated: #1A1A1E;
+  --color-warm-white: #FAF8F5;
+  --color-stone: #E8E4DF;
+  --color-slate: #6B6B6B;
 }
 
-/* Dark theme as default - Palantir Aesthetic */
+/* Dark theme as default — Glass Grandmaster */
 :root {
-  --radius: 0.5rem;
-  
-  --background: oklch(0.1 0.005 280);
-  --foreground: oklch(0.98 0.002 80);
-  --card: oklch(0.14 0.008 280);
-  --card-foreground: oklch(0.98 0.002 80);
-  --popover: oklch(0.12 0.006 280);
-  --popover-foreground: oklch(0.98 0.002 80);
-  --primary: oklch(0.98 0.002 80);
-  --primary-foreground: oklch(0.1 0.005 280);
-  --secondary: oklch(0.18 0.01 280);
-  --secondary-foreground: oklch(0.95 0.002 80);
-  --muted: oklch(0.2 0.01 280);
-  --muted-foreground: oklch(0.55 0.01 280);
-  --accent: oklch(0.25 0.015 280);
-  --accent-foreground: oklch(0.98 0.002 80);
-  --destructive: oklch(0.55 0.2 25);
-  --destructive-foreground: oklch(0.98 0.002 80);
-  --border: oklch(0.22 0.01 280);
-  --input: oklch(0.18 0.01 280);
-  --ring: oklch(0.98 0.002 80);
-  --chart-1: oklch(0.7 0.1 280);
-  --chart-2: oklch(0.6 0.12 200);
-  --chart-3: oklch(0.65 0.15 85);
-  --chart-4: oklch(0.6 0.14 55);
-  --chart-5: oklch(0.55 0.12 15);
-  --sidebar: oklch(0.12 0.006 280);
-  --sidebar-foreground: oklch(0.95 0.002 80);
-  --sidebar-primary: oklch(0.98 0.002 80);
-  --sidebar-primary-foreground: oklch(0.1 0.005 280);
-  --sidebar-accent: oklch(0.18 0.01 280);
-  --sidebar-accent-foreground: oklch(0.98 0.002 80);
-  --sidebar-border: oklch(0.22 0.01 280);
-  --sidebar-ring: oklch(0.98 0.002 80);
+  --radius: 0.625rem;
+
+  /* Core page / surface background (Glass Grandmaster) */
+  --background: #0A0A12;
+  --foreground: #FAF8F5;
+  --card: #111114;
+  --card-foreground: #FAF8F5;
+  --popover: #111114;
+  --popover-foreground: #FAF8F5;
+  --primary: #722F37;
+  --primary-foreground: #FAF8F5;
+  --secondary: #1A1A1E;
+  --secondary-foreground: #FAF8F5;
+  --muted: #1A1A1E;
+  --muted-foreground: rgba(255, 255, 255, 0.45);
+  --accent: #1A1A1E;
+  --accent-foreground: #FAF8F5;
+  --destructive: #DC2626;
+  --destructive-foreground: #FAF8F5;
+  --border: rgba(255, 255, 255, 0.08);
+  --input: rgba(255, 255, 255, 0.08);
+  --ring: #722F37;
+  --chart-1: #722F37;
+  --chart-2: #C27A4A;
+  --chart-3: #7B68EE;
+  --chart-4: #B8860B;
+  --chart-5: #2D5A4A;
+  --sidebar: #111114;
+  --sidebar-foreground: #FAF8F5;
+  --sidebar-primary: #722F37;
+  --sidebar-primary-foreground: #FAF8F5;
+  --sidebar-accent: #1A1A1E;
+  --sidebar-accent-foreground: #FAF8F5;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-ring: #722F37;
+
+  /* Glass Grandmaster — glass + mesh system */
+  --glass-bg: rgba(255, 255, 255, 0.04);
+  --glass-bg-hover: rgba(255, 255, 255, 0.06);
+  --glass-bg-active: rgba(255, 255, 255, 0.08);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-border-hover: rgba(255, 255, 255, 0.12);
+  --glass-border-active: rgba(255, 255, 255, 0.16);
+  --glass-blur: 16px;
+  --glass-blur-heavy: 24px;
+
+  /* Gradient mesh colors (for background blobs) */
+  --mesh-burgundy: rgba(114, 47, 55, 0.25);
+  --mesh-iris: rgba(123, 104, 238, 0.15);
+  --mesh-terracotta: rgba(194, 122, 74, 0.12);
+  --mesh-forest: rgba(45, 90, 74, 0.1);
+
+  /* Page background aliases */
+  --page-bg: #0A0A12;
+  --surface: #111114;
+  --surface-elevated: #1A1A1E;
 }
 
-/* Light theme fallback */
+/* Light theme fallback (kept for completeness; site defaults to dark) */
 .light {
-  --background: oklch(0.99 0.002 80);
-  --foreground: oklch(0.1 0.005 280);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.1 0.005 280);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.1 0.005 280);
-  --primary: oklch(0.1 0.005 280);
-  --primary-foreground: oklch(0.99 0.002 80);
-  --secondary: oklch(0.94 0.005 280);
-  --secondary-foreground: oklch(0.1 0.005 280);
-  --muted: oklch(0.96 0.005 280);
-  --muted-foreground: oklch(0.45 0.01 280);
-  --accent: oklch(0.92 0.008 280);
-  --accent-foreground: oklch(0.1 0.005 280);
-  --destructive: oklch(0.55 0.2 25);
-  --destructive-foreground: oklch(0.99 0.002 80);
-  --border: oklch(0.9 0.005 280);
-  --input: oklch(0.94 0.005 280);
-  --ring: oklch(0.1 0.005 280);
+  --background: #FAF8F5;
+  --foreground: #0A0A12;
+  --card: #FFFFFF;
+  --card-foreground: #0A0A12;
+  --popover: #FFFFFF;
+  --popover-foreground: #0A0A12;
+  --primary: #722F37;
+  --primary-foreground: #FAF8F5;
+  --secondary: #E8E4DF;
+  --secondary-foreground: #0A0A12;
+  --muted: #F0E6D3;
+  --muted-foreground: #6B6B6B;
+  --accent: #E8E4DF;
+  --accent-foreground: #0A0A12;
+  --destructive: #DC2626;
+  --destructive-foreground: #FAF8F5;
+  --border: rgba(10, 10, 18, 0.1);
+  --input: rgba(10, 10, 18, 0.1);
+  --ring: #722F37;
 }
 
 @layer base {
