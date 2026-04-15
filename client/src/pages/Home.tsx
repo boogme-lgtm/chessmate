@@ -543,81 +543,82 @@ function WaitlistSection() {
   };
 
   return (
-    <section id="waitlist" className="section bg-card/30">
-      <div className="container">
+    <section id="waitlist" className="mesh-bg section relative">
+      <div className="mesh-accent" />
+      <div className="container relative z-10">
         <motion.div
           initial="hidden"
           whileInView="visible"
           viewport={{ once: true, margin: "-100px" }}
           variants={staggerContainer}
-          className="max-w-2xl mx-auto text-center space-y-12"
+          className="max-w-[480px] mx-auto"
         >
-          <motion.div variants={fadeIn} className="space-y-6">
-            <h2 className="text-5xl md:text-6xl font-thin tracking-tighter leading-tight">
-              Join the Waitlist
-            </h2>
-            <p className="text-xl md:text-2xl font-light text-muted-foreground leading-relaxed">
-              We're launching soon. Be among the first to access elite chess coaching with payment protection.
-            </p>
-            <div className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 w-full sm:w-auto">
-              <span style={{ color: '#ffffff', fontWeight: 500, textShadow: '0 1px 2px rgba(0,0,0,0.5)' }} className="text-sm whitespace-nowrap">🔥 Limited spots for founding members</span>
+          <motion.div variants={fadeIn} className="glass-heavy rounded-[20px] p-7 md:p-10 space-y-6">
+            <div className="text-center space-y-3">
+              <span className="glass-badge">Founding members — limited spots</span>
+              <h2>Join the founding class</h2>
+              <p className="body-muted max-w-sm mx-auto">
+                We're launching soon. Be first to access elite chess coaching with payment protection.
+              </p>
             </div>
-          </motion.div>
 
-          <motion.form variants={fadeIn} onSubmit={handleSubmit} className="space-y-6">
-            <div className="flex flex-col sm:flex-row gap-3">
-              <div className="flex-1 relative">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="relative">
+                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
                 <input
                   type="email"
-                  placeholder="Enter your email"
+                  placeholder="you@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-11 pr-4 py-3 bg-background border border-border rounded-md text-sm font-light focus:outline-none focus:ring-1 focus:ring-foreground/20 transition-all"
+                  className="glass-input pl-11"
                 />
               </div>
-              <Button 
-                type="submit" 
-                size="lg"
+
+              <div className="flex items-center justify-center gap-5 text-[13px]">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="role"
+                    value="student"
+                    checked={userType === "student"}
+                    onChange={() => setUserType("student")}
+                    className="accent-[#722F37] w-3.5 h-3.5"
+                  />
+                  <span className="text-white/60">I'm a Student</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="role"
+                    value="coach"
+                    checked={userType === "coach"}
+                    onChange={() => setUserType("coach")}
+                    className="accent-[#722F37] w-3.5 h-3.5"
+                  />
+                  <span className="text-white/60">I'm a Coach</span>
+                </label>
+              </div>
+
+              <button
+                type="submit"
                 disabled={joinWaitlist.isPending}
-                className="btn-primary"
+                className="btn-glass-primary w-full disabled:opacity-60"
               >
                 {joinWaitlist.isPending ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Joining...
-                  </>
+                  <span className="inline-flex items-center gap-2 justify-center">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Joining…
+                  </span>
                 ) : (
                   "Join Waitlist"
                 )}
-              </Button>
-            </div>
+              </button>
 
-            <div className="flex items-center justify-center gap-6 text-sm">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="role"
-                  value="student"
-                  checked={userType === "student"}
-                  onChange={() => setUserType("student")}
-                  className="w-4 h-4"
-                />
-                <span className="font-light text-muted-foreground">I'm a Student</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="role"
-                  value="coach"
-                  checked={userType === "coach"}
-                  onChange={() => setUserType("coach")}
-                  className="w-4 h-4"
-                />
-                <span className="font-light text-muted-foreground">I'm a Coach</span>
-              </label>
-            </div>
-          </motion.form>
+              <p className="text-[10px] text-white/20 text-center">
+                No spam. Unsubscribe anytime.
+              </p>
+            </form>
+          </motion.div>
         </motion.div>
       </div>
     </section>
@@ -794,26 +795,58 @@ function MeetOurCoachesSection() {
   );
 }
 
-// Footer - Minimal
+// Footer — Glass Grandmaster editorial
 function Footer() {
   return (
-    <footer className="border-t border-border/50 py-12">
+    <footer className="bg-[#0A0A12] border-t border-white/[0.04] py-12 md:py-14">
       <div className="container">
-        <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-4">
-            <img src="https://files.manuscdn.com/user_upload_by_module/session_file/310519663188415081/xRYfqyUGHSJUlDcu.png" alt="BooGMe" className="h-6 w-auto" loading="lazy" />
+        <div className="grid md:grid-cols-[1fr_auto] gap-10 md:gap-16">
+          {/* Brand */}
+          <div className="space-y-3">
+            <img
+              src="https://d2xsxph8kpxj0f.cloudfront.net/310519663188415081/Xkyng35xnYFybYAdmyVo96/boogme-logo-transparent_1ab89b8a.svg"
+              alt="BooGMe"
+              className="h-6 w-auto opacity-40"
+              loading="lazy"
+            />
+            <p className="text-[11px] text-white/20">The chess coaching marketplace</p>
           </div>
-          <div className="flex items-center gap-6">
-            <a href="/privacy" className="text-sm font-light text-muted-foreground hover:text-foreground transition-colors">
-              Privacy Policy
-            </a>
-            <a href="/terms" className="text-sm font-light text-muted-foreground hover:text-foreground transition-colors">
-              Terms of Service
-            </a>
-          </div>
-          <p className="text-sm font-light text-muted-foreground">
-            © 2026 BooGMe. All rights reserved.
-          </p>
+
+          {/* Link columns */}
+          <nav aria-label="Footer" className="grid grid-cols-2 md:grid-cols-4 gap-8 md:gap-12">
+            <div className="space-y-3">
+              <div className="text-[11px] uppercase tracking-[1px] text-white/25">Platform</div>
+              <ul className="space-y-2">
+                <li><a href="/coaches" className="text-[13px] text-white/35 hover:text-white/60 transition-colors">Browse Coaches</a></li>
+                <li><a href="/for-coaches" className="text-[13px] text-white/35 hover:text-white/60 transition-colors">For Coaches</a></li>
+                <li><a href="/assessment" className="text-[13px] text-white/35 hover:text-white/60 transition-colors">AI Matching</a></li>
+              </ul>
+            </div>
+            <div className="space-y-3">
+              <div className="text-[11px] uppercase tracking-[1px] text-white/25">Company</div>
+              <ul className="space-y-2">
+                <li><a href="#" className="text-[13px] text-white/35 hover:text-white/60 transition-colors">About</a></li>
+                <li><a href="#" className="text-[13px] text-white/35 hover:text-white/60 transition-colors">Blog</a></li>
+              </ul>
+            </div>
+            <div className="space-y-3">
+              <div className="text-[11px] uppercase tracking-[1px] text-white/25">Legal</div>
+              <ul className="space-y-2">
+                <li><a href="/privacy" className="text-[13px] text-white/35 hover:text-white/60 transition-colors">Privacy Policy</a></li>
+                <li><a href="/terms" className="text-[13px] text-white/35 hover:text-white/60 transition-colors">Terms of Service</a></li>
+              </ul>
+            </div>
+            <div className="space-y-3">
+              <div className="text-[11px] uppercase tracking-[1px] text-white/25">Connect</div>
+              <ul className="space-y-2">
+                <li><a href="mailto:hello@boogme.com" className="text-[13px] text-white/35 hover:text-white/60 transition-colors">Email</a></li>
+              </ul>
+            </div>
+          </nav>
+        </div>
+
+        <div className="mt-12 pt-6 border-t border-white/[0.04]">
+          <p className="text-[11px] text-white/15">© 2026 BooGMe. All rights reserved.</p>
         </div>
       </div>
     </footer>
