@@ -349,7 +349,7 @@ export default function BookingCalendar({
       {lessonDurations.length > 1 && (
         <div>
           <label className="text-sm font-medium mb-2 block">Lesson Duration</label>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             {lessonDurations.map((duration) => (
               <Button
                 key={duration}

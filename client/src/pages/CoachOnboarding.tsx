@@ -522,7 +522,7 @@ export default function CoachOnboarding() {
                     </div>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <Label className="text-slate-300 mb-1.5 block">Country</Label>
                     <Input value={country} onChange={(e) => setCountry(e.target.value)} placeholder="e.g. United States" className="bg-slate-800 border-slate-700 text-white" />
@@ -574,7 +574,7 @@ export default function CoachOnboarding() {
                     max={3000}
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <Label className="text-slate-300 mb-1.5 block">Lichess Username</Label>
                     <Input value={lichessUsername} onChange={(e) => setLichessUsername(e.target.value)} placeholder="your-username" className="bg-slate-800 border-slate-700 text-white" />
@@ -629,7 +629,7 @@ export default function CoachOnboarding() {
               </div>
               <div>
                 <Label className="text-slate-300 mb-2 block">Teaching Style</Label>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {[
                     { value: "visual", label: "Visual", desc: "Diagrams, boards, visual patterns" },
                     { value: "interactive", label: "Interactive", desc: "Live analysis, Q&A, puzzles" },
@@ -740,7 +740,7 @@ export default function CoachOnboarding() {
                   </div>
                 )}
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <Label className="text-slate-300 mb-1.5 block text-xs">Min advance notice</Label>
                   <div className="flex items-center gap-1">
@@ -815,14 +815,14 @@ export default function CoachOnboarding() {
                               type="time"
                               value={slot.start}
                               onChange={(e) => updateSlot(day, idx, "start", e.target.value)}
-                              className="bg-slate-700 border-slate-600 text-white text-sm h-8 w-28"
+                              className="bg-slate-700 border-slate-600 text-white text-sm h-8 min-w-0 flex-1 max-w-[120px]"
                             />
                             <span className="text-slate-500 text-xs">to</span>
                             <Input
                               type="time"
                               value={slot.end}
                               onChange={(e) => updateSlot(day, idx, "end", e.target.value)}
-                              className="bg-slate-700 border-slate-600 text-white text-sm h-8 w-28"
+                              className="bg-slate-700 border-slate-600 text-white text-sm h-8 min-w-0 flex-1 max-w-[120px]"
                             />
                           </div>
                         ))}
