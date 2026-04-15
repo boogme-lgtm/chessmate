@@ -66,47 +66,55 @@ function Navigation() {
   };
 
   return (
-    <motion.nav 
+    <motion.nav
       initial={{ y: -20, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
-      transition={{ duration: 0.8 }}
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
-        isScrolled ? "bg-background/80 backdrop-blur-xl border-b border-border/50" : "bg-transparent"
-      }`}
+      transition={{ duration: 0.5, ease: "easeOut" }}
+      className="fixed top-0 left-0 right-0 z-50 transition-all duration-300"
+      style={{
+        background: isScrolled ? "rgba(10, 10, 18, 0.8)" : "transparent",
+        backdropFilter: isScrolled ? "blur(20px)" : "none",
+        WebkitBackdropFilter: isScrolled ? "blur(20px)" : "none",
+        borderBottom: isScrolled ? "0.5px solid rgba(255, 255, 255, 0.06)" : "0.5px solid transparent",
+      }}
     >
-      <div className="container flex items-center justify-between h-20">
+      <div className="container flex items-center justify-between h-[60px]">
         <div className="flex items-center gap-4">
-          <img src="https://files.manuscdn.com/user_upload_by_module/session_file/310519663188415081/xRYfqyUGHSJUlDcu.png" alt="BooGMe" className="h-10 w-auto drop-shadow-[0_2px_8px_rgba(255,255,255,0.15)]" />
+          <img
+            src="https://d2xsxph8kpxj0f.cloudfront.net/310519663188415081/Xkyng35xnYFybYAdmyVo96/boogme-logo-transparent_1ab89b8a.svg"
+            alt="BooGMe"
+            className="h-8 w-auto"
+          />
         </div>
-        
-        <div className="hidden md:flex items-center gap-12">
-          <a 
+
+        <div className="hidden md:flex items-center gap-10">
+          <a
             href="/assessment"
-            className="text-sm font-light text-muted-foreground hover:text-foreground transition-colors"
+            className="text-[13px] font-normal text-white/50 hover:text-[#FAF8F5] transition-colors duration-200"
           >
             Take AI Assessment
           </a>
-          <button 
+          <button
             onClick={() => handleNavClick("features")}
-            className="text-sm font-light text-muted-foreground hover:text-foreground transition-colors"
+            className="text-[13px] font-normal text-white/50 hover:text-[#FAF8F5] transition-colors duration-200"
           >
             Features
           </button>
-          <a 
+          <a
             href="/coaches"
-            className="text-sm font-light text-muted-foreground hover:text-foreground transition-colors"
+            className="text-[13px] font-normal text-white/50 hover:text-[#FAF8F5] transition-colors duration-200"
           >
             Browse Coaches
           </a>
-          <a 
+          <a
             href="/for-coaches"
-            className="text-sm font-light text-muted-foreground hover:text-foreground transition-colors"
+            className="text-[13px] font-normal text-white/50 hover:text-[#FAF8F5] transition-colors duration-200"
           >
             For Coaches
           </a>
-          <button 
+          <button
             onClick={() => handleNavClick("waitlist")}
-            className="text-sm font-light text-muted-foreground hover:text-foreground transition-colors"
+            className="text-[13px] font-normal text-white/50 hover:text-[#FAF8F5] transition-colors duration-200"
           >
             Join Waitlist
           </button>
@@ -119,74 +127,73 @@ function Navigation() {
               <UserMenu />
             ) : (
               <a href="/sign-in">
-                <Button 
-                  variant="ghost" 
-                  size="sm"
-                  className="font-light"
-                >
+                <button className="glass rounded-lg px-4 py-1.5 text-[13px] text-[#FAF8F5] transition-all duration-200">
                   Sign In
-                </Button>
+                </button>
               </a>
             )
           )}
         </div>
 
         <button
-          className="md:hidden"
+          className="md:hidden text-[#FAF8F5]"
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
         >
           {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
         </button>
       </div>
 
-      {/* Mobile Menu */}
+      {/* Mobile Menu — full-width frosted overlay */}
       {mobileMenuOpen && (
         <motion.div
           initial={{ opacity: 0, height: 0 }}
           animate={{ opacity: 1, height: "auto" }}
           exit={{ opacity: 0, height: 0 }}
-          className="md:hidden bg-card border-b border-border"
+          transition={{ duration: 0.25, ease: "easeOut" }}
+          className="md:hidden border-b border-white/[0.06]"
+          style={{
+            background: "rgba(10, 10, 18, 0.95)",
+            backdropFilter: "blur(20px)",
+            WebkitBackdropFilter: "blur(20px)",
+          }}
         >
-          <div className="container py-6 space-y-4">
-            <a 
+          <div className="container py-6 flex flex-col gap-4">
+            <a
               href="/coaches"
-              className="block text-sm font-light text-muted-foreground hover:text-foreground transition-colors"
+              className="text-base font-light text-white/60 hover:text-[#FAF8F5] transition-colors min-h-[48px] flex items-center"
             >
               Browse Coaches
             </a>
-            <button 
+            <button
               onClick={() => handleNavClick("features")}
-              className="block text-sm font-light text-muted-foreground hover:text-foreground transition-colors"
+              className="text-base font-light text-white/60 hover:text-[#FAF8F5] transition-colors min-h-[48px] flex items-center text-left"
             >
               Features
             </button>
-            <a 
+            <a
               href="/for-coaches"
-              className="block text-sm font-light text-muted-foreground hover:text-foreground transition-colors"
+              className="text-base font-light text-white/60 hover:text-[#FAF8F5] transition-colors min-h-[48px] flex items-center"
             >
               For Coaches
             </a>
-            <button 
+            <button
               onClick={() => handleNavClick("waitlist")}
-              className="block text-sm font-light text-muted-foreground hover:text-foreground transition-colors"
+              className="text-base font-light text-white/60 hover:text-[#FAF8F5] transition-colors min-h-[48px] flex items-center text-left"
             >
               Join Waitlist
             </button>
-            
+
             {/* Mobile User Menu or Sign In */}
-            <div className="pt-4 border-t border-border">
+            <div className="pt-4 border-t border-white/[0.06]">
               {!loading && (
                 user ? (
                   <UserMenu />
                 ) : (
                   <a href="/sign-in" className="block">
-                    <Button 
-                      variant="ghost" 
-                      size="sm"
-                      className="w-full font-light"
-                    >
+                    <button className="glass rounded-lg w-full py-3 text-sm text-[#FAF8F5]">
                       Sign In
-                    </Button>
+                    </button>
                   </a>
                 )
               )}
@@ -201,66 +208,92 @@ function Navigation() {
 // Hero Section - Palantir minimalism
 function HeroSection({ onOpenAssessment }: { onOpenAssessment: () => void }) {
   return (
-    <section className="relative min-h-screen flex items-center justify-center pt-20">
-      <div className="container">
-        <motion.div 
+    <section className="mesh-bg mesh-bg-animated relative min-h-[85vh] flex items-center justify-center pt-20">
+      {/* Third mesh blob (terracotta) */}
+      <div className="mesh-accent" />
+
+      <div className="container relative z-10">
+        <motion.div
           initial="hidden"
           animate="visible"
           variants={staggerContainer}
-          className="max-w-4xl mx-auto text-center space-y-8"
+          className="max-w-[600px] mx-auto text-center space-y-8"
         >
-          <motion.div variants={fadeIn} className="space-y-6">
-            <h1 className="text-5xl md:text-6xl lg:text-7xl font-thin tracking-tighter text-balance leading-tight">
-              Connect with Elite Chess Coaches.
-              <br />
-              <span className="text-muted-foreground">Pay Only After Lessons.</span>
+          {/* Badge */}
+          <motion.div variants={fadeIn}>
+            <span className="glass-badge">
+              Founding members — limited spots
+            </span>
+          </motion.div>
+
+          {/* Headline with gradient accent phrase */}
+          <motion.div variants={fadeIn} className="space-y-5">
+            <h1 className="text-balance">
+              Find the coach who{" "}
+              <span className="gradient-text">elevates your game.</span>
             </h1>
-            <p className="text-xl md:text-2xl font-light text-muted-foreground max-w-3xl mx-auto leading-relaxed">
-              AI-powered coach matching with escrow payment protection. No upfront fees, no risk.
+            <p className="text-[15px] leading-relaxed text-white/40 max-w-[400px] mx-auto">
+              AI-matched chess coaches. Payment held in escrow until you're satisfied. No upfront fees, no risk.
             </p>
           </motion.div>
 
-          <motion.div variants={fadeIn} className="flex flex-col sm:flex-row justify-center gap-4">
-            <Button 
-              asChild
-              size="lg" 
-              className="btn-primary group"
-            >
-              <a href="/coaches">
+          {/* CTAs */}
+          <motion.div variants={fadeIn} className="flex flex-col sm:flex-row justify-center gap-3 pt-2">
+            <a href="/coaches">
+              <button className="btn-glass-primary group inline-flex items-center gap-2 w-full sm:w-auto justify-center">
                 Browse Coaches
-                <ChevronRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
-              </a>
-            </Button>
-            <Button 
+                <ChevronRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+              </button>
+            </a>
+            <button
               onClick={onOpenAssessment}
-              size="lg" 
-              variant="outline"
-              className="group"
+              className="glass rounded-[10px] px-7 py-3 text-[14px] font-medium text-white/80 inline-flex items-center gap-2 w-full sm:w-auto justify-center group"
             >
               Take AI Assessment
-              <ChevronRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
-            </Button>
+              <ChevronRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+            </button>
           </motion.div>
 
-          <motion.div variants={fadeIn} className="pt-12">
-            <div className="flex flex-wrap items-center justify-center gap-8 text-sm font-light text-muted-foreground">
+          {/* Stat cards */}
+          <motion.div variants={fadeIn} className="grid grid-cols-3 gap-3 pt-6 max-w-[480px] mx-auto">
+            <div className="glass-stat">
+              <div className="text-[10px] uppercase tracking-[1px] text-white/30 mb-1.5">Avg rating gain</div>
+              <div className="stat-number text-2xl font-light text-[#FAF8F5]">+127</div>
+            </div>
+            <div className="glass-stat">
+              <div className="text-[10px] uppercase tracking-[1px] text-white/30 mb-1.5">Match accuracy</div>
+              <div className="stat-number text-2xl font-light text-[#FAF8F5]">94%</div>
+            </div>
+            <div className="glass-stat">
+              <div className="text-[10px] uppercase tracking-[1px] text-white/30 mb-1.5">Coaches keep</div>
+              <div className="stat-number text-2xl font-light text-[#C27A4A]">85%+</div>
+            </div>
+          </motion.div>
+
+          {/* Trust row */}
+          <motion.div variants={fadeIn} className="pt-6">
+            <div className="flex flex-wrap items-center justify-center gap-8 text-[12px] text-white/35">
               <div className="flex items-center gap-2">
-                <Shield className="w-4 h-4" />
+                <Shield className="w-3.5 h-3.5" />
                 <span>Payment Protection</span>
               </div>
               <div className="flex items-center gap-2">
-                <Users className="w-4 h-4" />
+                <Users className="w-3.5 h-3.5" />
                 <span>Elite Coaches</span>
               </div>
               <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4" />
+                <Clock className="w-3.5 h-3.5" />
                 <span>24/7 Support</span>
               </div>
             </div>
           </motion.div>
         </motion.div>
-      </div>
 
+        {/* Scroll indicator */}
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 animate-float">
+          <ChevronRight className="w-5 h-5 text-white/15 rotate-90" />
+        </div>
+      </div>
     </section>
   );
 }
