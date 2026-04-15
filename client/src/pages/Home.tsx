@@ -298,24 +298,33 @@ function HeroSection({ onOpenAssessment }: { onOpenAssessment: () => void }) {
   );
 }
 
-// Features Section - Minimal cards
+// Features Section → How It Works (4-step horizontal flow per spec 5e)
 function FeaturesSection() {
-  const features = [
+  const steps = [
     {
-      icon: Shield,
-      title: "Payment Protection",
-      description: "Escrow-style payments held until lesson completion. Full refund window for satisfaction guarantee."
+      num: 1,
+      title: "Pick a time",
+      subtitle: "Real availability",
+      gradient: "linear-gradient(135deg, #722F37, #8B3A43)",
     },
     {
-      icon: Users,
-      title: "AI Matching",
-      description: "Smart algorithm matches you with coaches based on skill level, goals, and learning style."
+      num: 2,
+      title: "Coach confirms",
+      subtitle: "Within 24 hours",
+      gradient: "linear-gradient(135deg, #C27A4A, #D08B5C)",
     },
     {
-      icon: Clock,
-      title: "Flexible Scheduling",
-      description: "Book lessons at your convenience. Coaches available across all time zones worldwide."
-    }
+      num: 3,
+      title: "Pay securely",
+      subtitle: "Escrow protected",
+      gradient: "linear-gradient(135deg, #2D5A4A, #3A7260)",
+    },
+    {
+      num: 4,
+      title: "Learn & review",
+      subtitle: "Rate your experience",
+      gradient: "linear-gradient(135deg, #B8860B, #D4AA2B)",
+    },
   ];
 
   return (
@@ -326,29 +335,32 @@ function FeaturesSection() {
           whileInView="visible"
           viewport={{ once: true, margin: "-100px" }}
           variants={staggerContainer}
-          className="space-y-20"
+          className="space-y-16"
         >
-          <motion.div variants={fadeIn} className="text-center space-y-6 max-w-3xl mx-auto">
-            <h2 className="text-5xl md:text-6xl font-thin tracking-tighter leading-tight">
-              Built for serious players
-            </h2>
-            <p className="text-xl md:text-2xl font-light text-muted-foreground leading-relaxed">
-              A platform designed to protect both students and coaches
-            </p>
+          <motion.div variants={fadeIn} className="text-center space-y-4 max-w-3xl mx-auto">
+            <div className="section-label">How it works</div>
+            <h2>Four steps to better chess</h2>
           </motion.div>
 
-          <div className="grid md:grid-cols-3 gap-8">
-            {features.map((feature, index) => (
-              <motion.div key={index} variants={fadeIn}>
-                <Card className="palantir-card h-full p-8">
-                  <CardContent className="p-0 space-y-4">
-                    <feature.icon className="w-8 h-8 text-foreground" strokeWidth={1} />
-                    <h3 className="text-xl font-light">{feature.title}</h3>
-                    <p className="text-sm font-light text-muted-foreground leading-relaxed">
-                      {feature.description}
-                    </p>
-                  </CardContent>
-                </Card>
+          {/* Horizontal flow with dashed connector (hidden on mobile) */}
+          <div className="relative grid grid-cols-1 md:grid-cols-4 gap-6 md:gap-4">
+            {/* Dashed connector line (desktop only) */}
+            <div className="hidden md:block absolute top-8 left-[12.5%] right-[12.5%] h-px border-t border-dashed border-white/[0.08] z-0" />
+
+            {steps.map((step) => (
+              <motion.div key={step.num} variants={fadeIn} className="relative z-10">
+                <div className="glass-stat text-center space-y-3 h-full">
+                  <div
+                    className="w-8 h-8 rounded-full flex items-center justify-center text-[13px] font-medium text-[#FAF8F5] mx-auto"
+                    style={{ background: step.gradient }}
+                  >
+                    {step.num}
+                  </div>
+                  <div>
+                    <div className="text-[13px] font-medium text-[#FAF8F5]">{step.title}</div>
+                    <div className="text-[11px] text-white/35 mt-0.5">{step.subtitle}</div>
+                  </div>
+                </div>
               </motion.div>
             ))}
           </div>
@@ -358,61 +370,68 @@ function FeaturesSection() {
   );
 }
 
-// Payment Protection Section - Detailed explanation
+// Value Proposition Section — two-column glass panel (spec 5d)
 function PaymentProtectionSection() {
-  const protectionFeatures = [
-    {
-      title: "Escrow Payments",
-      description: "Funds held securely until lesson completion and student confirmation"
-    },
-    {
-      title: "48-Hour Refund Window",
-      description: "Full refund available within 48 hours of lesson completion"
-    },
-    {
-      title: "Rating-Locked Payouts",
-      description: "Coaches must maintain minimum ratings to receive payments"
-    },
-    {
-      title: "Dispute Resolution",
-      description: "Fair mediation process for any payment or quality disputes"
-    }
+  const studentPoints = [
+    "AI matches your playing style and goals",
+    "Payments held in escrow until satisfied",
+    "Review coaches before you commit",
+  ];
+  const coachPoints = [
+    "Keep more of your earnings, transparent fees",
+    "No payment details until you've earned $100",
+    "Automated scheduling, escrow, and payouts",
   ];
 
   return (
-    <section className="section-sm bg-card/30">
-      <div className="container">
+    <section className="mesh-bg mesh-bg-warm section-sm relative">
+      <div className="container relative z-10">
         <motion.div
           initial="hidden"
           whileInView="visible"
           viewport={{ once: true, margin: "-100px" }}
           variants={staggerContainer}
-          className="max-w-4xl mx-auto space-y-16"
+          className="max-w-5xl mx-auto"
         >
-          <motion.div variants={fadeIn} className="text-center space-y-6">
-            <h2 className="text-5xl md:text-6xl font-thin tracking-tighter leading-tight">
-              Payment Protection
-            </h2>
-            <p className="text-xl md:text-2xl font-light text-muted-foreground max-w-3xl mx-auto leading-relaxed">
-              The chess coaching industry lacks payment protection. We solve this with escrow-style payments and satisfaction guarantees.
-            </p>
-          </motion.div>
+          <motion.div variants={fadeIn} className="glass-heavy rounded-[20px] p-7 md:p-10 grid md:grid-cols-2 gap-6 md:gap-10">
+            {/* Students column */}
+            <div className="space-y-4">
+              <div className="section-label">For students</div>
+              <h3 className="text-[20px] font-normal text-[#FAF8F5] leading-snug">
+                Improve faster with the right coach
+              </h3>
+              <p className="body-muted">
+                Matched to your goals, protected by escrow, reviewed by the community.
+              </p>
+              <ul className="space-y-2.5 pt-2">
+                {studentPoints.map((point) => (
+                  <li key={point} className="flex items-start gap-3 text-[13px] text-white/60">
+                    <span className="mt-[7px] w-1 h-1 rounded-full bg-[#B8860B] flex-shrink-0" />
+                    <span>{point}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
 
-          <div className="grid md:grid-cols-2 gap-6">
-            {protectionFeatures.map((feature, index) => (
-              <motion.div key={index} variants={fadeIn} className="flex gap-4">
-                <div className="flex-shrink-0 mt-1">
-                  <Check className="w-5 h-5 text-foreground" strokeWidth={1.5} />
-                </div>
-                <div className="space-y-1">
-                  <h3 className="text-base font-normal">{feature.title}</h3>
-                  <p className="text-sm font-light text-muted-foreground">
-                    {feature.description}
-                  </p>
-                </div>
-              </motion.div>
-            ))}
-          </div>
+            {/* Coaches column */}
+            <div className="space-y-4">
+              <div className="section-label">For coaches</div>
+              <h3 className="text-[20px] font-normal text-[#FAF8F5] leading-snug">
+                Build your business, keep your earnings
+              </h3>
+              <p className="body-muted">
+                Focus on teaching. We handle matching, scheduling, escrow, and payouts.
+              </p>
+              <ul className="space-y-2.5 pt-2">
+                {coachPoints.map((point) => (
+                  <li key={point} className="flex items-start gap-3 text-[13px] text-white/60">
+                    <span className="mt-[7px] w-1 h-1 rounded-full bg-[#B8860B] flex-shrink-0" />
+                    <span>{point}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </motion.div>
         </motion.div>
       </div>
     </section>
