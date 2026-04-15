@@ -28,12 +28,12 @@ import {
 } from "lucide-react";
 import { format, isPast, isFuture, differenceInHours, differenceInMinutes, differenceInSeconds } from "date-fns";
 import { toast } from "sonner";
-import { useLocation } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useEffect, useState, useCallback } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import ReviewDialog from "@/components/ReviewDialog";
 import MessageThread from "@/components/MessageThread";
-import { Star, MessageCircle } from "lucide-react";
+import { Star, MessageCircle, ArrowLeft } from "lucide-react";
 
 /**
  * Student Dashboard — Upcoming and past lessons with live countdown timers
@@ -82,16 +82,25 @@ export default function StudentDashboard() {
       <div className="min-h-screen bg-background">
         {/* Header */}
         <div className="border-b border-border/40">
-          <div className="container py-8">
-            <div className="flex items-center gap-3 mb-2">
-              <h1 className="text-3xl font-semibold">My Lessons</h1>
-              <Badge variant="secondary" className="text-sm font-medium">
-                Student Dashboard
-              </Badge>
+          <div className="container py-6 space-y-4">
+            <Link
+              href="/"
+              className="inline-flex items-center gap-2 text-[13px] text-white/50 hover:text-[#FAF8F5] transition-colors"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back to Home
+            </Link>
+            <div>
+              <div className="flex items-center gap-3 mb-2">
+                <h1 className="text-3xl font-semibold">My Lessons</h1>
+                <Badge variant="secondary" className="text-sm font-medium">
+                  Student Dashboard
+                </Badge>
+              </div>
+              <p className="text-muted-foreground">
+                Manage your upcoming and past chess lessons
+              </p>
             </div>
-            <p className="text-muted-foreground">
-              Manage your upcoming and past chess lessons
-            </p>
           </div>
         </div>
 

@@ -31,6 +31,8 @@ function Router() {
   return (
     <Switch>
       <Route path={"/"} component={Home} />
+      {/* /assessment is an alias that opens the assessment modal on the homepage. */}
+      <Route path={"/assessment"} component={() => { window.location.replace("/?openAssessment=1"); return null; }} />
       <Route path={"/coaches"} component={CoachBrowse} />
       <Route path={"/for-coaches"} component={Coaches} />
       <Route path={"/coach/apply"} component={CoachApplicationPage} />

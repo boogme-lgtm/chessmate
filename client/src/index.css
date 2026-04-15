@@ -130,11 +130,13 @@
   --glass-blur: 16px;
   --glass-blur-heavy: 24px;
 
-  /* Gradient mesh colors (for background blobs) */
-  --mesh-burgundy: rgba(114, 47, 55, 0.25);
-  --mesh-iris: rgba(123, 104, 238, 0.15);
-  --mesh-terracotta: rgba(194, 122, 74, 0.12);
-  --mesh-forest: rgba(45, 90, 74, 0.1);
+  /* Gradient mesh colors (for background blobs) — bumped opacity for
+   * a more visible "alive" feel. The blobs are still blurred 80px so
+   * they read as ambient light rather than hard shapes. */
+  --mesh-burgundy: rgba(114, 47, 55, 0.45);
+  --mesh-iris: rgba(123, 104, 238, 0.28);
+  --mesh-terracotta: rgba(194, 122, 74, 0.22);
+  --mesh-forest: rgba(45, 90, 74, 0.2);
 
   /* Page background aliases */
   --page-bg: #0A0A12;

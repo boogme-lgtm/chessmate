@@ -1,13 +1,28 @@
 import { motion } from "framer-motion";
+import { Link } from "wouter";
+import { ArrowLeft } from "lucide-react";
 
 const fadeIn = {
   hidden: { opacity: 0, y: 10 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.6 } }
+  visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" as const } }
 };
 
 export default function Terms() {
   return (
     <div className="min-h-screen bg-background">
+      {/* Back to Home */}
+      <div className="border-b border-white/[0.06]">
+        <div className="container py-4">
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 text-[13px] text-white/50 hover:text-[#FAF8F5] transition-colors"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to Home
+          </Link>
+        </div>
+      </div>
+
       {/* Header */}
       <motion.header
         initial="hidden"

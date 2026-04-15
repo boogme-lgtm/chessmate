@@ -349,12 +349,19 @@ export default function CoachOnboarding() {
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white">
       {/* Header */}
       <div className="border-b border-white/10 bg-slate-950/80 backdrop-blur-sm sticky top-0 z-10">
-        <div className="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between gap-4">
+          <a
+            href="/"
+            className="inline-flex items-center gap-2 text-[13px] text-white/50 hover:text-white transition-colors"
+          >
+            <ChevronLeft className="h-4 w-4" />
+            Back to Home
+          </a>
+          <div className="flex items-center gap-3 flex-1 justify-center">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-black font-bold text-sm">B</div>
-            <span className="font-semibold text-white">Coach Setup</span>
+            <span className="font-semibold text-white hidden sm:inline">Coach Setup</span>
           </div>
-          <span className="text-sm text-slate-400">Step {step} of {STEPS.length}</span>
+          <span className="text-sm text-slate-400 whitespace-nowrap">Step {step} of {STEPS.length}</span>
         </div>
         {/* Progress bar */}
         <div className="h-1 bg-slate-800">

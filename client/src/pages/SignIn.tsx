@@ -1,13 +1,9 @@
 import { useState } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { getLoginUrl } from "@/const";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { trpc } from "@/lib/trpc";
 import { Loader2, Eye, EyeOff } from "lucide-react";
+import Logo from "@/components/Logo";
 
 export default function SignIn() {
   const [, setLocation] = useLocation();
@@ -59,11 +55,9 @@ export default function SignIn() {
       <div className="mesh-accent" />
       <div className="w-full max-w-[400px] glass-heavy rounded-[20px] p-7 relative z-10">
         <div className="text-center mb-6 space-y-3">
-          <img
-            src="https://d2xsxph8kpxj0f.cloudfront.net/310519663188415081/Xkyng35xnYFybYAdmyVo96/boogme-logo-transparent_1ab89b8a.svg"
-            alt="BooGMe"
-            className="h-12 w-auto mx-auto"
-          />
+          <div className="flex justify-center">
+            <Logo height={48} />
+          </div>
           <div>
             <h2 className="text-[24px] font-normal text-[#FAF8F5]">Welcome back</h2>
             <p className="body-muted text-[13px] mt-1">Sign in to your BooGMe account</p>

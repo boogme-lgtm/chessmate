@@ -17,21 +17,33 @@
 
 .glass {
   background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
+  backdrop-filter: blur(var(--glass-blur)) saturate(180%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(180%);
   border: 0.5px solid var(--glass-border);
+  /* Drop shadow + top-edge highlight — the panel lifts off the page. */
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .glass:hover {
   background: var(--glass-bg-hover);
   border-color: var(--glass-border-hover);
+  box-shadow:
+    0 12px 40px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .glass-heavy {
   background: rgba(255, 255, 255, 0.06);
-  backdrop-filter: blur(var(--glass-blur-heavy));
-  -webkit-backdrop-filter: blur(var(--glass-blur-heavy));
+  backdrop-filter: blur(var(--glass-blur-heavy)) saturate(180%);
+  -webkit-backdrop-filter: blur(var(--glass-blur-heavy)) saturate(180%);
   border: 0.5px solid rgba(255, 255, 255, 0.1);
+  /* Heavier depth — stronger drop + more pronounced top highlight. */
+  box-shadow:
+    0 16px 48px rgba(0, 0, 0, 0.45),
+    0 2px 8px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 /* ─── Gradient mesh backgrounds ───────────────────────────────────── */
@@ -88,39 +100,66 @@
   background: radial-gradient(circle, var(--mesh-terracotta), transparent 70%);
 }
 
-/* Slow drift animation for the mesh blobs (Phase 7). */
+/* Slow drift animation for the mesh blobs — bigger travel so the
+ * motion reads as "alive" rather than accidental. Scales lightly to
+ * suggest breathing. */
 @keyframes meshDrift {
-  0%, 100% { transform: translate(0, 0); }
-  33% { transform: translate(10px, -5px); }
-  66% { transform: translate(-5px, 8px); }
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  25% { transform: translate(40px, -30px) scale(1.08); }
+  50% { transform: translate(-25px, 35px) scale(0.95); }
+  75% { transform: translate(30px, 20px) scale(1.05); }
 }
 
-.mesh-bg-animated::before,
-.mesh-bg-animated::after {
-  animation: meshDrift 20s ease-in-out infinite;
+@keyframes meshDriftAlt {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  25% { transform: translate(-35px, 25px) scale(1.05); }
+  50% { transform: translate(30px, -20px) scale(0.95); }
+  75% { transform: translate(-15px, -30px) scale(1.08); }
+}
+
+.mesh-bg-animated::before {
+  animation: meshDrift 24s ease-in-out infinite;
 }
 
 .mesh-bg-animated::after {
-  animation-delay: -10s;
+  animation: meshDriftAlt 28s ease-in-out infinite;
+}
+
+.mesh-bg-animated .mesh-accent {
+  animation: meshDrift 32s ease-in-out infinite reverse;
 }
 
 /* ─── Glass cards ─────────────────────────────────────────────────── */
 
 .glass-card {
   background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
+  backdrop-filter: blur(var(--glass-blur)) saturate(180%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(180%);
   border: 0.5px solid var(--glass-border);
   border-radius: 16px;
   position: relative;
   overflow: hidden;
-  transition: all 0.3s ease;
+  /* Layered shadow for depth + subtle inner top highlight that reads as light
+   * catching the top edge of the panel. */
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.35),
+    0 2px 8px rgba(0, 0, 0, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              background 0.3s ease,
+              border-color 0.3s ease;
 }
 
 .glass-card:hover {
   background: var(--glass-bg-hover);
   border-color: var(--glass-border-hover);
-  transform: translateY(-2px);
+  transform: translateY(-4px);
+  /* The panel lifts — shadow grows, highlight strengthens. */
+  box-shadow:
+    0 20px 50px rgba(0, 0, 0, 0.5),
+    0 4px 12px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
 /* Ambient corner glow inside a glass-card. Add <div class="card-glow"/> */
@@ -155,12 +194,15 @@
 
 .glass-stat {
   background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
+  backdrop-filter: blur(var(--glass-blur)) saturate(180%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(180%);
   border: 0.5px solid var(--glass-border);
   border-radius: 14px;
   padding: 16px;
   text-align: center;
+  box-shadow:
+    0 6px 20px rgba(0, 0, 0, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 /* ─── Gradient text ───────────────────────────────────────────────── */
@@ -317,6 +359,7 @@
 @media (prefers-reduced-motion: reduce) {
   .mesh-bg-animated::before,
   .mesh-bg-animated::after,
+  .mesh-bg-animated .mesh-accent,
   .animate-float,
   .animate-logo-pulse {
     animation: none !important;

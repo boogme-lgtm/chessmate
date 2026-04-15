@@ -26,6 +26,7 @@ import { CoachProfileCard, type CoachProfile } from "@/components/CoachProfileCa
 import { CoachFilters, type FilterState } from "@/components/CoachFilters";
 import { WelcomePopup } from "@/components/WelcomePopup";
 import { UserMenu } from "@/components/UserMenu";
+import Logo from "@/components/Logo";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl } from "@/const";
 
@@ -47,10 +48,15 @@ const staggerContainer = {
 };
 
 // Navigation Component - Minimal Palantir style
-function Navigation() {
+function Navigation({ onOpenAssessment }: { onOpenAssessment: () => void }) {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { user, loading } = useAuth();
+
+  const handleOpenAssessment = () => {
+    onOpenAssessment();
+    setMobileMenuOpen(false);
+  };
   
 
 
@@ -83,20 +89,16 @@ function Navigation() {
     >
       <div className="container flex items-center justify-between h-[60px]">
         <div className="flex items-center gap-4">
-          <img
-            src="https://d2xsxph8kpxj0f.cloudfront.net/310519663188415081/Xkyng35xnYFybYAdmyVo96/boogme-logo-transparent_1ab89b8a.svg"
-            alt="BooGMe"
-            className="h-8 w-auto"
-          />
+          <Logo height={32} />
         </div>
 
         <div className="hidden md:flex items-center gap-10">
-          <a
-            href="/assessment"
+          <button
+            onClick={handleOpenAssessment}
             className="text-[13px] font-normal text-white/50 hover:text-[#FAF8F5] transition-colors duration-200"
           >
             Take AI Assessment
-          </a>
+          </button>
           <button
             onClick={() => handleNavClick("features")}
             className="text-[13px] font-normal text-white/50 hover:text-[#FAF8F5] transition-colors duration-200"
@@ -805,14 +807,9 @@ function Footer() {
       <div className="container">
         <div className="grid md:grid-cols-[1fr_auto] gap-10 md:gap-16">
           {/* Brand */}
-          <div className="space-y-3">
-            <img
-              src="https://d2xsxph8kpxj0f.cloudfront.net/310519663188415081/Xkyng35xnYFybYAdmyVo96/boogme-logo-transparent_1ab89b8a.svg"
-              alt="BooGMe"
-              className="h-6 w-auto opacity-40"
-              loading="lazy"
-            />
-            <p className="text-[11px] text-white/20">The chess coaching marketplace</p>
+          <div className="space-y-3 opacity-50">
+            <Logo height={24} fallbackClassName="opacity-80" />
+            <p className="text-[11px] text-white/30">The chess coaching marketplace</p>
           </div>
 
           {/* Link columns */}
@@ -822,7 +819,7 @@ function Footer() {
               <ul className="space-y-2">
                 <li><a href="/coaches" className="text-[13px] text-white/35 hover:text-white/60 transition-colors">Browse Coaches</a></li>
                 <li><a href="/for-coaches" className="text-[13px] text-white/35 hover:text-white/60 transition-colors">For Coaches</a></li>
-                <li><a href="/assessment" className="text-[13px] text-white/35 hover:text-white/60 transition-colors">AI Matching</a></li>
+                <li><a href="/?openAssessment=1" className="text-[13px] text-white/35 hover:text-white/60 transition-colors">AI Matching</a></li>
               </ul>
             </div>
             <div className="space-y-3">
@@ -860,10 +857,28 @@ function Footer() {
 export default function Home() {
   const [assessmentOpen, setAssessmentOpen] = useState(false);
 
+  // Auto-open assessment modal when ?openAssessment=1 is in the URL.
+  // This backs both /?openAssessment=1 and the /assessment route alias.
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("openAssessment") === "1") {
+      setAssessmentOpen(true);
+      // Clean the URL so refreshing doesn't keep re-opening the modal.
+      params.delete("openAssessment");
+      const cleanSearch = params.toString();
+      window.history.replaceState(
+        {},
+        "",
+        window.location.pathname + (cleanSearch ? `?${cleanSearch}` : "")
+      );
+    }
+  }, []);
+
   return (
     <div className="min-h-screen">
       <WelcomePopup onOpenAssessment={() => setAssessmentOpen(true)} />
-      <Navigation />
+      <Navigation onOpenAssessment={() => setAssessmentOpen(true)} />
       <HeroSection onOpenAssessment={() => setAssessmentOpen(true)} />
       <FeaturesSection />
       <PaymentProtectionSection />
