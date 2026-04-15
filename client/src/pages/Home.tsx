@@ -29,17 +29,20 @@ import { UserMenu } from "@/components/UserMenu";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl } from "@/const";
 
-// Minimal animation variants
+// Glass Grandmaster animation system (spec Phase 7)
+// - Section entrance: 0.5s easeOut
+// - Stagger children: 0.08
+// No spring physics, no bouncy transitions, nothing over 1s.
 const fadeIn = {
-  hidden: { opacity: 0, y: 10 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.8, ease: [0.22, 1, 0.36, 1] } }
+  hidden: { opacity: 0, y: 20 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" } }
 } as const;
 
 const staggerContainer = {
   hidden: { opacity: 0 },
   visible: {
     opacity: 1,
-    transition: { staggerChildren: 0.15, delayChildren: 0.2 }
+    transition: { staggerChildren: 0.08, delayChildren: 0.1 }
   }
 };
 
