@@ -38,114 +38,104 @@ interface CoachProfileCardProps {
   onBookClick?: () => void;
 }
 
+// Title → color mapping for ambient corner glow + avatar gradient
+function glowForTitle(title: string): string {
+  const t = title.toUpperCase();
+  if (t.includes("GM")) return "rgba(114, 47, 55, 0.2)"; // burgundy
+  if (t.includes("IM")) return "rgba(194, 122, 74, 0.2)"; // terracotta
+  if (t.includes("FM")) return "rgba(123, 104, 238, 0.15)"; // iris
+  return "rgba(45, 90, 74, 0.15)"; // forest
+}
+
 export function CoachProfileCard({ coach, onBookClick }: CoachProfileCardProps) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true }}
-      transition={{ duration: 0.5 }}
+      transition={{ duration: 0.5, ease: "easeOut" }}
     >
-      <Card className="palantir-card overflow-hidden h-full hover:border-foreground/20 transition-all duration-300">
-        <CardContent className="p-0">
-          {/* Coach Image */}
-          <div className="relative h-80 overflow-hidden bg-muted">
-            <img
-              src={coach.imageUrl}
-              alt={coach.name}
-              className="w-full h-full object-cover object-center"
-            />
-            <div className="absolute top-4 right-4 flex gap-2">
-              <Badge className="bg-background/90 text-foreground border-border">
-                {coach.title}
-              </Badge>
+      <div className="glass-card h-full flex flex-col overflow-hidden">
+        <div className="card-glow" style={{ background: glowForTitle(coach.title) }} />
+
+        {/* Coach Image */}
+        <div className="relative aspect-[4/5] overflow-hidden bg-charcoal">
+          <img
+            src={coach.imageUrl}
+            alt={coach.name}
+            className="w-full h-full object-cover object-center"
+          />
+          <div className="absolute top-3 right-3">
+            <span className="glass-badge text-[11px]">{coach.title}</span>
+          </div>
+        </div>
+
+        {/* Coach Info */}
+        <div className="p-[18px] space-y-4 flex-1 flex flex-col relative z-10">
+          {/* Name and Rating */}
+          <div>
+            <h3 className="text-[16px] font-medium text-[#FAF8F5] mb-1 leading-tight">{coach.name}</h3>
+            <div className="flex items-center gap-3 text-[11px] text-white/35">
+              <span className="stat-number">{coach.rating} FIDE</span>
+              {coach.reviewRating && (
+                <div className="flex items-center gap-1">
+                  <Star className="w-3 h-3 fill-[#B8860B] text-[#B8860B]" />
+                  <span className="text-[#B8860B]">{coach.reviewRating.toFixed(1)}</span>
+                </div>
+              )}
+              {coach.studentCount && (
+                <span>{coach.studentCount}+ students</span>
+              )}
             </div>
           </div>
 
-          {/* Coach Info */}
-          <div className="p-6 space-y-4">
-            {/* Name and Rating */}
-            <div>
-              <h3 className="text-2xl font-light mb-1">{coach.name}</h3>
-              <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                <span className="font-mono">{coach.rating} FIDE</span>
-                {coach.reviewRating && (
-                  <div className="flex items-center gap-1">
-                    <Star className="w-4 h-4 fill-foreground text-foreground" />
-                    <span>{coach.reviewRating.toFixed(1)}</span>
-                  </div>
-                )}
-                {coach.studentCount && (
-                  <span>{coach.studentCount}+ students</span>
-                )}
-              </div>
+          {/* Location and Languages */}
+          <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-white/35">
+            <div className="flex items-center gap-1">
+              <MapPin className="w-3 h-3" />
+              <span>{coach.location}</span>
             </div>
-
-            {/* Location and Languages */}
-            <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
-              <div className="flex items-center gap-1.5">
-                <MapPin className="w-4 h-4" />
-                <span>{coach.location}</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <Globe className="w-4 h-4" />
-                <span>{coach.languages.join(", ")}</span>
-              </div>
+            <div className="flex items-center gap-1">
+              <Globe className="w-3 h-3" />
+              <span>{coach.languages.join(", ")}</span>
             </div>
-
-            {/* Bio */}
-            <p className="text-sm font-light text-muted-foreground leading-relaxed line-clamp-3">
-              {coach.bio}
-            </p>
-
-            {/* Specializations */}
-            <div className="flex flex-wrap gap-2">
-              {coach.specializations.slice(0, 3).map((spec, index) => (
-                <Badge
-                  key={index}
-                  variant="outline"
-                  className="bg-transparent font-light text-xs"
-                >
-                  {spec}
-                </Badge>
-              ))}
-            </div>
-
-            {/* Teaching Details */}
-            <div className="grid grid-cols-2 gap-4 pt-4 border-t border-border/50">
-              <div>
-                <div className="text-xs text-muted-foreground mb-1">Teaching Style</div>
-                <div className="text-sm font-light">{coach.teachingStyle}</div>
-              </div>
-              <div>
-                <div className="text-xs text-muted-foreground mb-1">Target Rating</div>
-                <div className="text-sm font-light">{coach.targetRating}</div>
-              </div>
-            </div>
-
-            {/* Availability and Price */}
-            <div className="flex items-center justify-between pt-4 border-t border-border/50">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Clock className="w-4 h-4" />
-                <span>{coach.availability}</span>
-              </div>
-              <div className="text-right">
-                <div className="text-2xl font-light">${coach.hourlyRate}</div>
-                <div className="text-xs text-muted-foreground">per hour</div>
-              </div>
-            </div>
-
-            {/* Book Button */}
-            <Button
-              onClick={onBookClick}
-              className="w-full btn-primary"
-              size="lg"
-            >
-              Book Lesson
-            </Button>
           </div>
-        </CardContent>
-      </Card>
+
+          {/* Bio */}
+          <p className="text-[12px] text-white/40 leading-relaxed line-clamp-3 flex-1">
+            {coach.bio}
+          </p>
+
+          {/* Specializations */}
+          <div className="flex flex-wrap gap-1.5">
+            {coach.specializations.slice(0, 3).map((spec, index) => (
+              <span
+                key={index}
+                className="text-[10px] bg-white/[0.06] text-white/50 rounded-lg px-2 py-0.5"
+              >
+                {spec}
+              </span>
+            ))}
+          </div>
+
+          {/* Price */}
+          <div className="flex items-baseline justify-between pt-3 border-t border-white/[0.06]">
+            <div className="flex items-center gap-1.5 text-[11px] text-white/35">
+              <Clock className="w-3 h-3" />
+              <span>{coach.availability}</span>
+            </div>
+            <div className="flex items-baseline gap-1">
+              <span className="text-[14px] font-medium text-[#FAF8F5]">${coach.hourlyRate}</span>
+              <span className="text-[11px] text-white/30">/hr</span>
+            </div>
+          </div>
+
+          {/* Book Button */}
+          <Button onClick={onBookClick} className="w-full btn-glass-primary" size="lg">
+            Book Lesson
+          </Button>
+        </div>
+      </div>
     </motion.div>
   );
 }

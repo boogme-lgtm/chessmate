@@ -29,17 +29,20 @@ import { UserMenu } from "@/components/UserMenu";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl } from "@/const";
 
-// Minimal animation variants
+// Glass Grandmaster animation system (spec Phase 7)
+// - Section entrance: 0.5s easeOut
+// - Stagger children: 0.08
+// No spring physics, no bouncy transitions, nothing over 1s.
 const fadeIn = {
-  hidden: { opacity: 0, y: 10 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.8, ease: [0.22, 1, 0.36, 1] } }
+  hidden: { opacity: 0, y: 20 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" } }
 } as const;
 
 const staggerContainer = {
   hidden: { opacity: 0 },
   visible: {
     opacity: 1,
-    transition: { staggerChildren: 0.15, delayChildren: 0.2 }
+    transition: { staggerChildren: 0.08, delayChildren: 0.1 }
   }
 };
 
@@ -66,47 +69,55 @@ function Navigation() {
   };
 
   return (
-    <motion.nav 
+    <motion.nav
       initial={{ y: -20, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
-      transition={{ duration: 0.8 }}
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
-        isScrolled ? "bg-background/80 backdrop-blur-xl border-b border-border/50" : "bg-transparent"
-      }`}
+      transition={{ duration: 0.5, ease: "easeOut" }}
+      className="fixed top-0 left-0 right-0 z-50 transition-all duration-300"
+      style={{
+        background: isScrolled ? "rgba(10, 10, 18, 0.8)" : "transparent",
+        backdropFilter: isScrolled ? "blur(20px)" : "none",
+        WebkitBackdropFilter: isScrolled ? "blur(20px)" : "none",
+        borderBottom: isScrolled ? "0.5px solid rgba(255, 255, 255, 0.06)" : "0.5px solid transparent",
+      }}
     >
-      <div className="container flex items-center justify-between h-20">
+      <div className="container flex items-center justify-between h-[60px]">
         <div className="flex items-center gap-4">
-          <img src="https://files.manuscdn.com/user_upload_by_module/session_file/310519663188415081/xRYfqyUGHSJUlDcu.png" alt="BooGMe" className="h-10 w-auto drop-shadow-[0_2px_8px_rgba(255,255,255,0.15)]" />
+          <img
+            src="https://d2xsxph8kpxj0f.cloudfront.net/310519663188415081/Xkyng35xnYFybYAdmyVo96/boogme-logo-transparent_1ab89b8a.svg"
+            alt="BooGMe"
+            className="h-8 w-auto"
+          />
         </div>
-        
-        <div className="hidden md:flex items-center gap-12">
-          <a 
+
+        <div className="hidden md:flex items-center gap-10">
+          <a
             href="/assessment"
-            className="text-sm font-light text-muted-foreground hover:text-foreground transition-colors"
+            className="text-[13px] font-normal text-white/50 hover:text-[#FAF8F5] transition-colors duration-200"
           >
             Take AI Assessment
           </a>
-          <button 
+          <button
             onClick={() => handleNavClick("features")}
-            className="text-sm font-light text-muted-foreground hover:text-foreground transition-colors"
+            className="text-[13px] font-normal text-white/50 hover:text-[#FAF8F5] transition-colors duration-200"
           >
             Features
           </button>
-          <a 
+          <a
             href="/coaches"
-            className="text-sm font-light text-muted-foreground hover:text-foreground transition-colors"
+            className="text-[13px] font-normal text-white/50 hover:text-[#FAF8F5] transition-colors duration-200"
           >
             Browse Coaches
           </a>
-          <a 
+          <a
             href="/for-coaches"
-            className="text-sm font-light text-muted-foreground hover:text-foreground transition-colors"
+            className="text-[13px] font-normal text-white/50 hover:text-[#FAF8F5] transition-colors duration-200"
           >
             For Coaches
           </a>
-          <button 
+          <button
             onClick={() => handleNavClick("waitlist")}
-            className="text-sm font-light text-muted-foreground hover:text-foreground transition-colors"
+            className="text-[13px] font-normal text-white/50 hover:text-[#FAF8F5] transition-colors duration-200"
           >
             Join Waitlist
           </button>
@@ -119,74 +130,73 @@ function Navigation() {
               <UserMenu />
             ) : (
               <a href="/sign-in">
-                <Button 
-                  variant="ghost" 
-                  size="sm"
-                  className="font-light"
-                >
+                <button className="glass rounded-lg px-4 py-1.5 text-[13px] text-[#FAF8F5] transition-all duration-200">
                   Sign In
-                </Button>
+                </button>
               </a>
             )
           )}
         </div>
 
         <button
-          className="md:hidden"
+          className="md:hidden text-[#FAF8F5]"
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
         >
           {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
         </button>
       </div>
 
-      {/* Mobile Menu */}
+      {/* Mobile Menu — full-width frosted overlay */}
       {mobileMenuOpen && (
         <motion.div
           initial={{ opacity: 0, height: 0 }}
           animate={{ opacity: 1, height: "auto" }}
           exit={{ opacity: 0, height: 0 }}
-          className="md:hidden bg-card border-b border-border"
+          transition={{ duration: 0.25, ease: "easeOut" }}
+          className="md:hidden border-b border-white/[0.06]"
+          style={{
+            background: "rgba(10, 10, 18, 0.95)",
+            backdropFilter: "blur(20px)",
+            WebkitBackdropFilter: "blur(20px)",
+          }}
         >
-          <div className="container py-6 space-y-4">
-            <a 
+          <div className="container py-6 flex flex-col gap-4">
+            <a
               href="/coaches"
-              className="block text-sm font-light text-muted-foreground hover:text-foreground transition-colors"
+              className="text-base font-light text-white/60 hover:text-[#FAF8F5] transition-colors min-h-[48px] flex items-center"
             >
               Browse Coaches
             </a>
-            <button 
+            <button
               onClick={() => handleNavClick("features")}
-              className="block text-sm font-light text-muted-foreground hover:text-foreground transition-colors"
+              className="text-base font-light text-white/60 hover:text-[#FAF8F5] transition-colors min-h-[48px] flex items-center text-left"
             >
               Features
             </button>
-            <a 
+            <a
               href="/for-coaches"
-              className="block text-sm font-light text-muted-foreground hover:text-foreground transition-colors"
+              className="text-base font-light text-white/60 hover:text-[#FAF8F5] transition-colors min-h-[48px] flex items-center"
             >
               For Coaches
             </a>
-            <button 
+            <button
               onClick={() => handleNavClick("waitlist")}
-              className="block text-sm font-light text-muted-foreground hover:text-foreground transition-colors"
+              className="text-base font-light text-white/60 hover:text-[#FAF8F5] transition-colors min-h-[48px] flex items-center text-left"
             >
               Join Waitlist
             </button>
-            
+
             {/* Mobile User Menu or Sign In */}
-            <div className="pt-4 border-t border-border">
+            <div className="pt-4 border-t border-white/[0.06]">
               {!loading && (
                 user ? (
                   <UserMenu />
                 ) : (
                   <a href="/sign-in" className="block">
-                    <Button 
-                      variant="ghost" 
-                      size="sm"
-                      className="w-full font-light"
-                    >
+                    <button className="glass rounded-lg w-full py-3 text-sm text-[#FAF8F5]">
                       Sign In
-                    </Button>
+                    </button>
                   </a>
                 )
               )}
@@ -201,88 +211,123 @@ function Navigation() {
 // Hero Section - Palantir minimalism
 function HeroSection({ onOpenAssessment }: { onOpenAssessment: () => void }) {
   return (
-    <section className="relative min-h-screen flex items-center justify-center pt-20">
-      <div className="container">
-        <motion.div 
+    <section className="mesh-bg mesh-bg-animated relative min-h-[85vh] flex items-center justify-center pt-20">
+      {/* Third mesh blob (terracotta) */}
+      <div className="mesh-accent" />
+
+      <div className="container relative z-10">
+        <motion.div
           initial="hidden"
           animate="visible"
           variants={staggerContainer}
-          className="max-w-4xl mx-auto text-center space-y-8"
+          className="max-w-[600px] mx-auto text-center space-y-8"
         >
-          <motion.div variants={fadeIn} className="space-y-6">
-            <h1 className="text-5xl md:text-6xl lg:text-7xl font-thin tracking-tighter text-balance leading-tight">
-              Connect with Elite Chess Coaches.
-              <br />
-              <span className="text-muted-foreground">Pay Only After Lessons.</span>
+          {/* Badge */}
+          <motion.div variants={fadeIn}>
+            <span className="glass-badge">
+              Founding members — limited spots
+            </span>
+          </motion.div>
+
+          {/* Headline with gradient accent phrase */}
+          <motion.div variants={fadeIn} className="space-y-5">
+            <h1 className="text-balance">
+              Find the coach who{" "}
+              <span className="gradient-text">elevates your game.</span>
             </h1>
-            <p className="text-xl md:text-2xl font-light text-muted-foreground max-w-3xl mx-auto leading-relaxed">
-              AI-powered coach matching with escrow payment protection. No upfront fees, no risk.
+            <p className="text-[15px] leading-relaxed text-white/40 max-w-[400px] mx-auto">
+              AI-matched chess coaches. Payment held in escrow until you're satisfied. No upfront fees, no risk.
             </p>
           </motion.div>
 
-          <motion.div variants={fadeIn} className="flex flex-col sm:flex-row justify-center gap-4">
-            <Button 
-              asChild
-              size="lg" 
-              className="btn-primary group"
-            >
-              <a href="/coaches">
+          {/* CTAs */}
+          <motion.div variants={fadeIn} className="flex flex-col sm:flex-row justify-center gap-3 pt-2">
+            <a href="/coaches">
+              <button className="btn-glass-primary group inline-flex items-center gap-2 w-full sm:w-auto justify-center">
                 Browse Coaches
-                <ChevronRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
-              </a>
-            </Button>
-            <Button 
+                <ChevronRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+              </button>
+            </a>
+            <button
               onClick={onOpenAssessment}
-              size="lg" 
-              variant="outline"
-              className="group"
+              className="glass rounded-[10px] px-7 py-3 text-[14px] font-medium text-white/80 inline-flex items-center gap-2 w-full sm:w-auto justify-center group"
             >
               Take AI Assessment
-              <ChevronRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
-            </Button>
+              <ChevronRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+            </button>
           </motion.div>
 
-          <motion.div variants={fadeIn} className="pt-12">
-            <div className="flex flex-wrap items-center justify-center gap-8 text-sm font-light text-muted-foreground">
+          {/* Stat cards */}
+          <motion.div variants={fadeIn} className="grid grid-cols-3 gap-3 pt-6 max-w-[480px] mx-auto">
+            <div className="glass-stat">
+              <div className="text-[10px] uppercase tracking-[1px] text-white/30 mb-1.5">Avg rating gain</div>
+              <div className="stat-number text-2xl font-light text-[#FAF8F5]">+127</div>
+            </div>
+            <div className="glass-stat">
+              <div className="text-[10px] uppercase tracking-[1px] text-white/30 mb-1.5">Match accuracy</div>
+              <div className="stat-number text-2xl font-light text-[#FAF8F5]">94%</div>
+            </div>
+            <div className="glass-stat">
+              <div className="text-[10px] uppercase tracking-[1px] text-white/30 mb-1.5">Coaches keep</div>
+              <div className="stat-number text-2xl font-light text-[#C27A4A]">85%+</div>
+            </div>
+          </motion.div>
+
+          {/* Trust row */}
+          <motion.div variants={fadeIn} className="pt-6">
+            <div className="flex flex-wrap items-center justify-center gap-8 text-[12px] text-white/35">
               <div className="flex items-center gap-2">
-                <Shield className="w-4 h-4" />
+                <Shield className="w-3.5 h-3.5" />
                 <span>Payment Protection</span>
               </div>
               <div className="flex items-center gap-2">
-                <Users className="w-4 h-4" />
+                <Users className="w-3.5 h-3.5" />
                 <span>Elite Coaches</span>
               </div>
               <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4" />
+                <Clock className="w-3.5 h-3.5" />
                 <span>24/7 Support</span>
               </div>
             </div>
           </motion.div>
         </motion.div>
-      </div>
 
+        {/* Scroll indicator */}
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 animate-float">
+          <ChevronRight className="w-5 h-5 text-white/15 rotate-90" />
+        </div>
+      </div>
     </section>
   );
 }
 
-// Features Section - Minimal cards
+// Features Section → How It Works (4-step horizontal flow per spec 5e)
 function FeaturesSection() {
-  const features = [
+  const steps = [
     {
-      icon: Shield,
-      title: "Payment Protection",
-      description: "Escrow-style payments held until lesson completion. Full refund window for satisfaction guarantee."
+      num: 1,
+      title: "Pick a time",
+      subtitle: "Real availability",
+      gradient: "linear-gradient(135deg, #722F37, #8B3A43)",
     },
     {
-      icon: Users,
-      title: "AI Matching",
-      description: "Smart algorithm matches you with coaches based on skill level, goals, and learning style."
+      num: 2,
+      title: "Coach confirms",
+      subtitle: "Within 24 hours",
+      gradient: "linear-gradient(135deg, #C27A4A, #D08B5C)",
     },
     {
-      icon: Clock,
-      title: "Flexible Scheduling",
-      description: "Book lessons at your convenience. Coaches available across all time zones worldwide."
-    }
+      num: 3,
+      title: "Pay securely",
+      subtitle: "Escrow protected",
+      gradient: "linear-gradient(135deg, #2D5A4A, #3A7260)",
+    },
+    {
+      num: 4,
+      title: "Learn & review",
+      subtitle: "Rate your experience",
+      gradient: "linear-gradient(135deg, #B8860B, #D4AA2B)",
+    },
   ];
 
   return (
@@ -293,29 +338,32 @@ function FeaturesSection() {
           whileInView="visible"
           viewport={{ once: true, margin: "-100px" }}
           variants={staggerContainer}
-          className="space-y-20"
+          className="space-y-16"
         >
-          <motion.div variants={fadeIn} className="text-center space-y-6 max-w-3xl mx-auto">
-            <h2 className="text-5xl md:text-6xl font-thin tracking-tighter leading-tight">
-              Built for serious players
-            </h2>
-            <p className="text-xl md:text-2xl font-light text-muted-foreground leading-relaxed">
-              A platform designed to protect both students and coaches
-            </p>
+          <motion.div variants={fadeIn} className="text-center space-y-4 max-w-3xl mx-auto">
+            <div className="section-label">How it works</div>
+            <h2>Four steps to better chess</h2>
           </motion.div>
 
-          <div className="grid md:grid-cols-3 gap-8">
-            {features.map((feature, index) => (
-              <motion.div key={index} variants={fadeIn}>
-                <Card className="palantir-card h-full p-8">
-                  <CardContent className="p-0 space-y-4">
-                    <feature.icon className="w-8 h-8 text-foreground" strokeWidth={1} />
-                    <h3 className="text-xl font-light">{feature.title}</h3>
-                    <p className="text-sm font-light text-muted-foreground leading-relaxed">
-                      {feature.description}
-                    </p>
-                  </CardContent>
-                </Card>
+          {/* Horizontal flow with dashed connector (hidden on mobile) */}
+          <div className="relative grid grid-cols-1 md:grid-cols-4 gap-6 md:gap-4">
+            {/* Dashed connector line (desktop only) */}
+            <div className="hidden md:block absolute top-8 left-[12.5%] right-[12.5%] h-px border-t border-dashed border-white/[0.08] z-0" />
+
+            {steps.map((step) => (
+              <motion.div key={step.num} variants={fadeIn} className="relative z-10">
+                <div className="glass-stat text-center space-y-3 h-full">
+                  <div
+                    className="w-8 h-8 rounded-full flex items-center justify-center text-[13px] font-medium text-[#FAF8F5] mx-auto"
+                    style={{ background: step.gradient }}
+                  >
+                    {step.num}
+                  </div>
+                  <div>
+                    <div className="text-[13px] font-medium text-[#FAF8F5]">{step.title}</div>
+                    <div className="text-[11px] text-white/35 mt-0.5">{step.subtitle}</div>
+                  </div>
+                </div>
               </motion.div>
             ))}
           </div>
@@ -325,61 +373,68 @@ function FeaturesSection() {
   );
 }
 
-// Payment Protection Section - Detailed explanation
+// Value Proposition Section — two-column glass panel (spec 5d)
 function PaymentProtectionSection() {
-  const protectionFeatures = [
-    {
-      title: "Escrow Payments",
-      description: "Funds held securely until lesson completion and student confirmation"
-    },
-    {
-      title: "48-Hour Refund Window",
-      description: "Full refund available within 48 hours of lesson completion"
-    },
-    {
-      title: "Rating-Locked Payouts",
-      description: "Coaches must maintain minimum ratings to receive payments"
-    },
-    {
-      title: "Dispute Resolution",
-      description: "Fair mediation process for any payment or quality disputes"
-    }
+  const studentPoints = [
+    "AI matches your playing style and goals",
+    "Payments held in escrow until satisfied",
+    "Review coaches before you commit",
+  ];
+  const coachPoints = [
+    "Keep more of your earnings, transparent fees",
+    "No payment details until you've earned $100",
+    "Automated scheduling, escrow, and payouts",
   ];
 
   return (
-    <section className="section-sm bg-card/30">
-      <div className="container">
+    <section className="mesh-bg mesh-bg-warm section-sm relative">
+      <div className="container relative z-10">
         <motion.div
           initial="hidden"
           whileInView="visible"
           viewport={{ once: true, margin: "-100px" }}
           variants={staggerContainer}
-          className="max-w-4xl mx-auto space-y-16"
+          className="max-w-5xl mx-auto"
         >
-          <motion.div variants={fadeIn} className="text-center space-y-6">
-            <h2 className="text-5xl md:text-6xl font-thin tracking-tighter leading-tight">
-              Payment Protection
-            </h2>
-            <p className="text-xl md:text-2xl font-light text-muted-foreground max-w-3xl mx-auto leading-relaxed">
-              The chess coaching industry lacks payment protection. We solve this with escrow-style payments and satisfaction guarantees.
-            </p>
-          </motion.div>
+          <motion.div variants={fadeIn} className="glass-heavy rounded-[20px] p-7 md:p-10 grid md:grid-cols-2 gap-6 md:gap-10">
+            {/* Students column */}
+            <div className="space-y-4">
+              <div className="section-label">For students</div>
+              <h3 className="text-[20px] font-normal text-[#FAF8F5] leading-snug">
+                Improve faster with the right coach
+              </h3>
+              <p className="body-muted">
+                Matched to your goals, protected by escrow, reviewed by the community.
+              </p>
+              <ul className="space-y-2.5 pt-2">
+                {studentPoints.map((point) => (
+                  <li key={point} className="flex items-start gap-3 text-[13px] text-white/60">
+                    <span className="mt-[7px] w-1 h-1 rounded-full bg-[#B8860B] flex-shrink-0" />
+                    <span>{point}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
 
-          <div className="grid md:grid-cols-2 gap-6">
-            {protectionFeatures.map((feature, index) => (
-              <motion.div key={index} variants={fadeIn} className="flex gap-4">
-                <div className="flex-shrink-0 mt-1">
-                  <Check className="w-5 h-5 text-foreground" strokeWidth={1.5} />
-                </div>
-                <div className="space-y-1">
-                  <h3 className="text-base font-normal">{feature.title}</h3>
-                  <p className="text-sm font-light text-muted-foreground">
-                    {feature.description}
-                  </p>
-                </div>
-              </motion.div>
-            ))}
-          </div>
+            {/* Coaches column */}
+            <div className="space-y-4">
+              <div className="section-label">For coaches</div>
+              <h3 className="text-[20px] font-normal text-[#FAF8F5] leading-snug">
+                Build your business, keep your earnings
+              </h3>
+              <p className="body-muted">
+                Focus on teaching. We handle matching, scheduling, escrow, and payouts.
+              </p>
+              <ul className="space-y-2.5 pt-2">
+                {coachPoints.map((point) => (
+                  <li key={point} className="flex items-start gap-3 text-[13px] text-white/60">
+                    <span className="mt-[7px] w-1 h-1 rounded-full bg-[#B8860B] flex-shrink-0" />
+                    <span>{point}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </motion.div>
         </motion.div>
       </div>
     </section>
@@ -491,81 +546,82 @@ function WaitlistSection() {
   };
 
   return (
-    <section id="waitlist" className="section bg-card/30">
-      <div className="container">
+    <section id="waitlist" className="mesh-bg section relative">
+      <div className="mesh-accent" />
+      <div className="container relative z-10">
         <motion.div
           initial="hidden"
           whileInView="visible"
           viewport={{ once: true, margin: "-100px" }}
           variants={staggerContainer}
-          className="max-w-2xl mx-auto text-center space-y-12"
+          className="max-w-[480px] mx-auto"
         >
-          <motion.div variants={fadeIn} className="space-y-6">
-            <h2 className="text-5xl md:text-6xl font-thin tracking-tighter leading-tight">
-              Join the Waitlist
-            </h2>
-            <p className="text-xl md:text-2xl font-light text-muted-foreground leading-relaxed">
-              We're launching soon. Be among the first to access elite chess coaching with payment protection.
-            </p>
-            <div className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 w-full sm:w-auto">
-              <span style={{ color: '#ffffff', fontWeight: 500, textShadow: '0 1px 2px rgba(0,0,0,0.5)' }} className="text-sm whitespace-nowrap">🔥 Limited spots for founding members</span>
+          <motion.div variants={fadeIn} className="glass-heavy rounded-[20px] p-7 md:p-10 space-y-6">
+            <div className="text-center space-y-3">
+              <span className="glass-badge">Founding members — limited spots</span>
+              <h2>Join the founding class</h2>
+              <p className="body-muted max-w-sm mx-auto">
+                We're launching soon. Be first to access elite chess coaching with payment protection.
+              </p>
             </div>
-          </motion.div>
 
-          <motion.form variants={fadeIn} onSubmit={handleSubmit} className="space-y-6">
-            <div className="flex flex-col sm:flex-row gap-3">
-              <div className="flex-1 relative">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="relative">
+                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
                 <input
                   type="email"
-                  placeholder="Enter your email"
+                  placeholder="you@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-11 pr-4 py-3 bg-background border border-border rounded-md text-sm font-light focus:outline-none focus:ring-1 focus:ring-foreground/20 transition-all"
+                  className="glass-input pl-11"
                 />
               </div>
-              <Button 
-                type="submit" 
-                size="lg"
+
+              <div className="flex items-center justify-center gap-5 text-[13px]">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="role"
+                    value="student"
+                    checked={userType === "student"}
+                    onChange={() => setUserType("student")}
+                    className="accent-[#722F37] w-3.5 h-3.5"
+                  />
+                  <span className="text-white/60">I'm a Student</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="role"
+                    value="coach"
+                    checked={userType === "coach"}
+                    onChange={() => setUserType("coach")}
+                    className="accent-[#722F37] w-3.5 h-3.5"
+                  />
+                  <span className="text-white/60">I'm a Coach</span>
+                </label>
+              </div>
+
+              <button
+                type="submit"
                 disabled={joinWaitlist.isPending}
-                className="btn-primary"
+                className="btn-glass-primary w-full disabled:opacity-60"
               >
                 {joinWaitlist.isPending ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Joining...
-                  </>
+                  <span className="inline-flex items-center gap-2 justify-center">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Joining…
+                  </span>
                 ) : (
                   "Join Waitlist"
                 )}
-              </Button>
-            </div>
+              </button>
 
-            <div className="flex items-center justify-center gap-6 text-sm">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="role"
-                  value="student"
-                  checked={userType === "student"}
-                  onChange={() => setUserType("student")}
-                  className="w-4 h-4"
-                />
-                <span className="font-light text-muted-foreground">I'm a Student</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="role"
-                  value="coach"
-                  checked={userType === "coach"}
-                  onChange={() => setUserType("coach")}
-                  className="w-4 h-4"
-                />
-                <span className="font-light text-muted-foreground">I'm a Coach</span>
-              </label>
-            </div>
-          </motion.form>
+              <p className="text-[10px] text-white/20 text-center">
+                No spam. Unsubscribe anytime.
+              </p>
+            </form>
+          </motion.div>
         </motion.div>
       </div>
     </section>
@@ -742,26 +798,58 @@ function MeetOurCoachesSection() {
   );
 }
 
-// Footer - Minimal
+// Footer — Glass Grandmaster editorial
 function Footer() {
   return (
-    <footer className="border-t border-border/50 py-12">
+    <footer className="bg-[#0A0A12] border-t border-white/[0.04] py-12 md:py-14">
       <div className="container">
-        <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-4">
-            <img src="https://files.manuscdn.com/user_upload_by_module/session_file/310519663188415081/xRYfqyUGHSJUlDcu.png" alt="BooGMe" className="h-6 w-auto" loading="lazy" />
+        <div className="grid md:grid-cols-[1fr_auto] gap-10 md:gap-16">
+          {/* Brand */}
+          <div className="space-y-3">
+            <img
+              src="https://d2xsxph8kpxj0f.cloudfront.net/310519663188415081/Xkyng35xnYFybYAdmyVo96/boogme-logo-transparent_1ab89b8a.svg"
+              alt="BooGMe"
+              className="h-6 w-auto opacity-40"
+              loading="lazy"
+            />
+            <p className="text-[11px] text-white/20">The chess coaching marketplace</p>
           </div>
-          <div className="flex items-center gap-6">
-            <a href="/privacy" className="text-sm font-light text-muted-foreground hover:text-foreground transition-colors">
-              Privacy Policy
-            </a>
-            <a href="/terms" className="text-sm font-light text-muted-foreground hover:text-foreground transition-colors">
-              Terms of Service
-            </a>
-          </div>
-          <p className="text-sm font-light text-muted-foreground">
-            © 2026 BooGMe. All rights reserved.
-          </p>
+
+          {/* Link columns */}
+          <nav aria-label="Footer" className="grid grid-cols-2 md:grid-cols-4 gap-8 md:gap-12">
+            <div className="space-y-3">
+              <div className="text-[11px] uppercase tracking-[1px] text-white/25">Platform</div>
+              <ul className="space-y-2">
+                <li><a href="/coaches" className="text-[13px] text-white/35 hover:text-white/60 transition-colors">Browse Coaches</a></li>
+                <li><a href="/for-coaches" className="text-[13px] text-white/35 hover:text-white/60 transition-colors">For Coaches</a></li>
+                <li><a href="/assessment" className="text-[13px] text-white/35 hover:text-white/60 transition-colors">AI Matching</a></li>
+              </ul>
+            </div>
+            <div className="space-y-3">
+              <div className="text-[11px] uppercase tracking-[1px] text-white/25">Company</div>
+              <ul className="space-y-2">
+                <li><a href="#" className="text-[13px] text-white/35 hover:text-white/60 transition-colors">About</a></li>
+                <li><a href="#" className="text-[13px] text-white/35 hover:text-white/60 transition-colors">Blog</a></li>
+              </ul>
+            </div>
+            <div className="space-y-3">
+              <div className="text-[11px] uppercase tracking-[1px] text-white/25">Legal</div>
+              <ul className="space-y-2">
+                <li><a href="/privacy" className="text-[13px] text-white/35 hover:text-white/60 transition-colors">Privacy Policy</a></li>
+                <li><a href="/terms" className="text-[13px] text-white/35 hover:text-white/60 transition-colors">Terms of Service</a></li>
+              </ul>
+            </div>
+            <div className="space-y-3">
+              <div className="text-[11px] uppercase tracking-[1px] text-white/25">Connect</div>
+              <ul className="space-y-2">
+                <li><a href="mailto:hello@boogme.com" className="text-[13px] text-white/35 hover:text-white/60 transition-colors">Email</a></li>
+              </ul>
+            </div>
+          </nav>
+        </div>
+
+        <div className="mt-12 pt-6 border-t border-white/[0.04]">
+          <p className="text-[11px] text-white/15">© 2026 BooGMe. All rights reserved.</p>
         </div>
       </div>
     </footer>

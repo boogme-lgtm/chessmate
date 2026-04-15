@@ -24,7 +24,7 @@ export default function LessonPaymentCancel() {
               <motion.div
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
-                transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
+                transition={{ delay: 0.2, duration: 0.4, ease: "easeOut" }}
               >
                 <XCircle className="w-20 h-20 text-orange-500" />
               </motion.div>

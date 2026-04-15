@@ -78,7 +78,7 @@ export default function Register() {
 
   if (success) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+      <div className="mesh-bg min-h-screen flex items-center justify-center p-4">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
             <div className="mx-auto w-12 h-12 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center mb-4">
@@ -119,7 +119,7 @@ export default function Register() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4 relative">
+    <div className="mesh-bg min-h-screen flex items-center justify-center p-4 relative">
       {/* Loading overlay during account creation */}
       {isCreatingAccount && (
         <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center">
