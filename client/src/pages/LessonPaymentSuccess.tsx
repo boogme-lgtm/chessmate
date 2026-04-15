@@ -70,7 +70,7 @@ export default function LessonPaymentSuccess() {
               <motion.div
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
-                transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
+                transition={{ delay: 0.2, duration: 0.4, ease: "easeOut" }}
               >
                 <CheckCircle2 className="w-20 h-20 text-green-500" />
               </motion.div>

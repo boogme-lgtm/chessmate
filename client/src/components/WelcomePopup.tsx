@@ -50,14 +50,13 @@ export function WelcomePopup({ onOpenAssessment }: { onOpenAssessment: () => voi
       scale: 0.95,
       y: 20
     },
-    visible: { 
+    visible: {
       opacity: 1,
       scale: 1,
       y: 0,
       transition: {
-        type: "spring",
-        damping: 25,
-        stiffness: 300
+        duration: 0.25,
+        ease: "easeOut",
       } as any
     }
   };
@@ -76,12 +75,11 @@ export function WelcomePopup({ onOpenAssessment }: { onOpenAssessment: () => voi
 
   const iconVariants = {
     rest: { scale: 1 },
-    hover: { 
-      scale: 1.1,
+    hover: {
+      scale: 1.05,
       transition: {
-        type: "spring",
-        stiffness: 400,
-        damping: 10
+        duration: 0.2,
+        ease: "easeOut",
       } as any
     }
   };

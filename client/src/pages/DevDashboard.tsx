@@ -214,8 +214,8 @@ const ROADMAP = [
     phase: "Phase 1",
     title: "MVP — Live",
     status: "complete" as const,
-    color: "#00ff88",
-    shadow: "rgba(0,255,136,0.25)",
+    color: "#2D5A4A",
+    shadow: "rgba(45,90,74,0.25)",
     icon: "♟",
     items: [
       "Auth (email + Google OAuth)",
@@ -551,12 +551,12 @@ export default function DevDashboard() {
                 style={{
                   display: "flex", alignItems: "center", gap: 6,
                   padding: "5px 12px", borderRadius: 20,
-                  background: "rgba(0,255,136,0.08)",
-                  border: "1px solid rgba(0,255,136,0.25)",
-                  fontSize: 11, fontWeight: 600, color: "#00ff88",
+                  background: "rgba(45,90,74,0.08)",
+                  border: "1px solid rgba(45,90,74,0.25)",
+                  fontSize: 11, fontWeight: 600, color: "#2D5A4A",
                 }}
               >
-                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#00ff88", display: "inline-block", boxShadow: "0 0 6px #00ff88", animation: "pulse 2s infinite" }} />
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#2D5A4A", display: "inline-block", boxShadow: "0 0 6px #2D5A4A", animation: "pulse 2s infinite" }} />
                 LIVE · boogme.com
               </div>
               <a
@@ -641,8 +641,8 @@ export default function DevDashboard() {
                 value: `${counterPct}%`,
                 label: "Product Complete",
                 sub: `${counterFeatures}/${totalFeatures} features shipped`,
-                color: "#00ff88",
-                glow: "rgba(0,255,136,0.2)",
+                color: "#2D5A4A",
+                glow: "rgba(45,90,74,0.2)",
                 icon: "◎",
               },
               {
@@ -719,15 +719,15 @@ export default function DevDashboard() {
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
               <span style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.5)" }}>Overall Build Progress</span>
-              <span style={{ fontSize: 12, fontWeight: 700, color: "#00ff88" }}>{completionPct}% complete</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: "#2D5A4A" }}>{completionPct}% complete</span>
             </div>
             <div style={{ height: 6, borderRadius: 3, background: "rgba(255,255,255,0.05)", overflow: "hidden" }}>
               <div
                 style={{
                   height: "100%", width: `${completionPct}%`,
-                  background: "linear-gradient(90deg, #6366f1 0%, #00ff88 100%)",
+                  background: "linear-gradient(90deg, #6366f1 0%, #2D5A4A 100%)",
                   borderRadius: 3,
-                  boxShadow: "0 0 12px rgba(0,255,136,0.5)",
+                  boxShadow: "0 0 12px rgba(45,90,74,0.5)",
                   transition: "width 1.5s cubic-bezier(0.4,0,0.2,1)",
                 }}
               />
@@ -944,8 +944,8 @@ export default function DevDashboard() {
                     style={{
                       display: "flex", alignItems: "center", gap: 12,
                       padding: "12px 16px", borderRadius: 12,
-                      background: f.done ? "rgba(0,255,136,0.04)" : "rgba(255,255,255,0.02)",
-                      border: f.done ? "1px solid rgba(0,255,136,0.12)" : "1px solid rgba(255,255,255,0.05)",
+                      background: f.done ? "rgba(45,90,74,0.04)" : "rgba(255,255,255,0.02)",
+                      border: f.done ? "1px solid rgba(45,90,74,0.12)" : "1px solid rgba(255,255,255,0.05)",
                       transition: "all 0.2s",
                     }}
                   >
@@ -955,7 +955,7 @@ export default function DevDashboard() {
                         display: "flex", alignItems: "center", justifyContent: "center",
                         fontSize: 11, fontWeight: 700,
                         ...(f.done
-                          ? { background: "rgba(0,255,136,0.15)", border: "1px solid rgba(0,255,136,0.4)", color: "#00ff88" }
+                          ? { background: "rgba(45,90,74,0.15)", border: "1px solid rgba(45,90,74,0.4)", color: "#2D5A4A" }
                           : { background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.2)" }),
                       }}
                     >
@@ -984,7 +984,7 @@ export default function DevDashboard() {
                     const catItems = FEATURES.filter((f) => f.cat === cat);
                     const catDone = catItems.filter((f) => f.done).length;
                     const pct = Math.round((catDone / catItems.length) * 100);
-                    const color = pct === 100 ? "#00ff88" : pct >= 60 ? "#f59e0b" : pct >= 30 ? "#818cf8" : "#ec4899";
+                    const color = pct === 100 ? "#2D5A4A" : pct >= 60 ? "#f59e0b" : pct >= 30 ? "#818cf8" : "#ec4899";
                     return (
                       <StatRing key={cat} pct={pct} color={color} label={cat} value={`${pct}%`} />
                     );
