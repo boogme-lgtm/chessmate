@@ -14,7 +14,6 @@ import {
   ChevronRight,
   Menu,
   X,
-  Mail,
   Loader2,
   Check
 } from "lucide-react";
@@ -569,14 +568,12 @@ function WaitlistSection() {
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="relative">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
                 <input
                   type="email"
-                  placeholder="you@example.com"
+                  placeholder="✉  you@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="glass-input"
-                  style={{ paddingLeft: '2.75rem' }}
                 />
               </div>
 
