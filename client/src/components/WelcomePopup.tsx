@@ -4,30 +4,36 @@ import { Button } from "@/components/ui/button";
 import { Users, GraduationCap } from "lucide-react";
 import { useLocation } from "wouter";
 import { motion } from "framer-motion";
+import { useAuth } from "@/_core/hooks/useAuth";
 
 export function WelcomePopup({ onOpenAssessment }: { onOpenAssessment: () => void }) {
   const [open, setOpen] = useState(false);
   const [, setLocation] = useLocation();
+  const { isAuthenticated, loading } = useAuth();
 
   useEffect(() => {
-    // Use sessionStorage so the popup shows once per browser session (tab open),
-    // not just once ever. This ensures returning visitors see it on each new visit.
-    const hasSeenThisSession = sessionStorage.getItem("hasSeenWelcomePopup");
-    
-    // Only show popup on homepage and if not seen this session
-    if (!hasSeenThisSession && window.location.pathname === "/") {
+    // Skip entirely if auth is still loading or user is already signed in
+    if (loading) return;
+    if (isAuthenticated) return;
+
+    // Use localStorage so the popup shows only once ever per browser
+    // (new visitors only — returning registered users never see it)
+    const hasSeenPopup = localStorage.getItem("hasSeenWelcomePopup");
+
+    // Only show popup on homepage and if not seen before
+    if (!hasSeenPopup && window.location.pathname === "/") {
       // Delay popup slightly for better UX
       const timer = setTimeout(() => {
         setOpen(true);
       }, 1200);
-      
+
       return () => clearTimeout(timer);
     }
-  }, []);
+  }, [isAuthenticated, loading]);
 
   const handleChoice = (userType: "student" | "coach") => {
-    // Mark as seen for this session
-    sessionStorage.setItem("hasSeenWelcomePopup", "true");
+    // Mark as seen permanently in localStorage
+    localStorage.setItem("hasSeenWelcomePopup", "true");
     setOpen(false);
     
     // Route to appropriate flow
@@ -40,7 +46,7 @@ export function WelcomePopup({ onOpenAssessment }: { onOpenAssessment: () => voi
   };
 
   const handleClose = () => {
-    sessionStorage.setItem("hasSeenWelcomePopup", "true");
+    localStorage.setItem("hasSeenWelcomePopup", "true");
     setOpen(false);
   };
 
