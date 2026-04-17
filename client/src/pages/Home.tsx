@@ -575,7 +575,8 @@ function WaitlistSection() {
                   placeholder="you@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="glass-input pl-11"
+                  className="glass-input"
+                  style={{ paddingLeft: '2.75rem' }}
                 />
               </div>
 

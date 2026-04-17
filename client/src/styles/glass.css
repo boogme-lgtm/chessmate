@@ -228,6 +228,10 @@
   width: 100%;
 }
 
+/* When glass-input is preceded by an icon in a relative container,
+ * add left padding via the pl-11 Tailwind class (2.75rem = 44px).
+ * This is applied directly in the JSX: className="glass-input pl-11" */
+
 .glass-input:focus {
   outline: none;
   border-color: #722F37;
