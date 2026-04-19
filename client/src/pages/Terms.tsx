@@ -15,7 +15,7 @@ export default function Terms() {
         <div className="container py-4">
           <Link
             href="/"
-            className="inline-flex items-center gap-2 text-[13px] text-white/50 hover:text-[#FAF8F5] transition-colors"
+            className="inline-flex items-center gap-2 text-[13px] text-muted-foreground hover:text-foreground transition-colors"
           >
             <ArrowLeft className="h-4 w-4" />
             Back to Home

@@ -173,7 +173,7 @@ function CoachHeroSection() {
           <motion.div variants={fadeIn}>
             <Badge
               variant="outline"
-              className="mb-6 text-xs font-light border-[#8B4513]/30 text-[#8B4513]"
+              className="mb-6 text-xs font-light border-primary/30 text-primary"
             >
               For Chess Coaches
             </Badge>
@@ -286,7 +286,7 @@ function EarningsCalculator() {
                     <label className="text-sm font-light text-muted-foreground">
                       Lessons per week
                     </label>
-                    <span className="text-2xl font-thin text-[#8B4513]">
+                    <span className="text-2xl font-thin text-primary">
                       {lessonsPerWeek}
                     </span>
                   </div>
@@ -310,7 +310,7 @@ function EarningsCalculator() {
                     <label className="text-sm font-light text-muted-foreground">
                       Hourly rate
                     </label>
-                    <span className="text-2xl font-thin text-[#8B4513]">
+                    <span className="text-2xl font-thin text-primary">
                       ${hourlyRate}
                     </span>
                   </div>
@@ -346,7 +346,7 @@ function EarningsCalculator() {
                       <div className="text-sm font-light text-muted-foreground">
                         Monthly
                       </div>
-                      <div className="text-3xl font-thin text-[#8B4513]">
+                      <div className="text-3xl font-thin text-primary">
                         ${takeHome.monthly.toLocaleString("en-US", { maximumFractionDigits: 0 })}
                       </div>
                       <div className="text-xs text-muted-foreground">
@@ -366,9 +366,9 @@ function EarningsCalculator() {
                     </div>
                   </div>
 
-                  <div className="bg-[#8B4513]/10 border border-[#8B4513]/20 rounded-lg p-4">
+                  <div className="bg-primary/10 border border-primary/20 rounded-lg p-4">
                     <div className="flex items-start gap-3">
-                      <CheckCircle2 className="w-5 h-5 text-[#8B4513] flex-shrink-0 mt-0.5" />
+                      <CheckCircle2 className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
                       <div className="text-sm font-light text-muted-foreground">
                         <strong className="text-foreground">
                           No payment details needed until $100 earned.
@@ -454,8 +454,8 @@ function HowItWorksSection() {
                   <CardContent className="p-0">
                     <div className="flex items-start gap-6">
                       <div className="flex-shrink-0">
-                        <div className="w-12 h-12 rounded-full bg-[#8B4513]/10 border border-[#8B4513]/20 flex items-center justify-center">
-                          <step.icon className="w-6 h-6 text-[#8B4513]" />
+                        <div className="w-12 h-12 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center">
+                          <step.icon className="w-6 h-6 text-primary" />
                         </div>
                       </div>
                       <div className="flex-1 space-y-2">
@@ -720,7 +720,7 @@ function CoachWaitlistSection() {
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                       placeholder="Your name"
-                      className="w-full px-4 py-3 bg-black/20 border border-neutral-700 rounded-lg text-sm focus:outline-none focus:border-[#8B4513] transition-colors"
+                      className="w-full px-4 py-3 bg-transparent border border-border rounded-lg text-sm focus:outline-none focus:border-primary transition-colors"
                       required
                     />
                   </div>
@@ -734,7 +734,7 @@ function CoachWaitlistSection() {
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="your@email.com"
-                      className="w-full px-4 py-3 bg-black/20 border border-neutral-700 rounded-lg text-sm focus:outline-none focus:border-[#8B4513] transition-colors"
+                      className="w-full px-4 py-3 bg-transparent border border-border rounded-lg text-sm focus:outline-none focus:border-primary transition-colors"
                       required
                     />
                   </div>
@@ -748,7 +748,7 @@ function CoachWaitlistSection() {
                       value={rating}
                       onChange={(e) => setRating(e.target.value)}
                       placeholder="e.g., 2200 FIDE, 2400 Lichess"
-                      className="w-full px-4 py-3 bg-black/20 border border-neutral-700 rounded-lg text-sm focus:outline-none focus:border-[#8B4513] transition-colors"
+                      className="w-full px-4 py-3 bg-transparent border border-border rounded-lg text-sm focus:outline-none focus:border-primary transition-colors"
                     />
                   </div>
 
@@ -783,15 +783,15 @@ function CoachWaitlistSection() {
           <motion.div variants={fadeIn} className="pt-8">
             <div className="flex flex-wrap items-center justify-center gap-6 text-sm font-light text-muted-foreground">
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-[#8B4513]" />
+                <CheckCircle2 className="w-4 h-4 text-primary" />
                 <span>No payment details required</span>
               </div>
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-[#8B4513]" />
+                <CheckCircle2 className="w-4 h-4 text-primary" />
                 <span>Start teaching immediately</span>
               </div>
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-[#8B4513]" />
+                <CheckCircle2 className="w-4 h-4 text-primary" />
                 <span>Keep more of your earnings</span>
               </div>
             </div>

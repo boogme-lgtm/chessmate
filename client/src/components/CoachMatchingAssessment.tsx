@@ -158,7 +158,7 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
           >
             <div className="space-y-6">
               <div className="text-center">
-                <div className="text-5xl font-thin text-[#8B4513] mb-2">
+                <div className="text-5xl font-thin text-primary mb-2">
                   {data.rating || 1200}
                 </div>
                 <div className="text-sm text-neutral-400">
@@ -226,7 +226,7 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
               ].map((option) => (
                 <div
                   key={option.value}
-                  className="flex items-center space-x-3 p-4 rounded-lg border border-neutral-700 hover:border-[#8B4513] hover:bg-[#8B4513]/5 transition-colors cursor-pointer"
+                  className="flex items-center space-x-3 p-4 rounded-lg border border-border hover:border-primary hover:bg-primary/5 transition-colors cursor-pointer"
                   onClick={() => updateData("yearsPlaying", option.value)}
                 >
                   <RadioGroupItem value={option.value} id={option.value} />
@@ -261,7 +261,7 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
               ].map((option) => (
                 <div
                   key={option}
-                  className="flex items-center space-x-3 p-4 rounded-lg border border-neutral-700 hover:border-[#8B4513] hover:bg-[#8B4513]/5 transition-colors cursor-pointer"
+                  className="flex items-center space-x-3 p-4 rounded-lg border border-border hover:border-primary hover:bg-primary/5 transition-colors cursor-pointer"
                   onClick={() =>
                     toggleArrayItem("competitiveExperience", option)
                   }
@@ -299,7 +299,7 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
               ].map((option) => (
                 <div
                   key={option}
-                  className="flex items-center space-x-3 p-4 rounded-lg border border-neutral-700 hover:border-[#8B4513] hover:bg-[#8B4513]/5 transition-colors cursor-pointer"
+                  className="flex items-center space-x-3 p-4 rounded-lg border border-border hover:border-primary hover:bg-primary/5 transition-colors cursor-pointer"
                   onClick={() => {
                     if (
                       data.improvementAreas?.includes(option) ||
@@ -379,8 +379,8 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
                   key={option.value}
                   className={`p-4 rounded-lg border cursor-pointer transition-all ${
                     data.primaryGoal === option.value
-                      ? "border-[#8B4513] bg-[#8B4513]/10"
-                      : "border-neutral-700 hover:border-[#8B4513] hover:bg-[#8B4513]/5"
+                      ? "border-primary bg-primary/10"
+                      : "border-border hover:border-primary hover:bg-primary/5"
                   }`}
                   onClick={() => updateData("primaryGoal", option.value)}
                 >
@@ -444,7 +444,7 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
               ].map((option) => (
                 <div
                   key={option.value}
-                  className="flex items-center space-x-3 p-4 rounded-lg border border-neutral-700 hover:border-[#8B4513] hover:bg-[#8B4513]/5 transition-colors cursor-pointer"
+                  className="flex items-center space-x-3 p-4 rounded-lg border border-border hover:border-primary hover:bg-primary/5 transition-colors cursor-pointer"
                   onClick={() => updateData("timeline", option.value)}
                 >
                   <RadioGroupItem value={option.value} id={option.value} />
@@ -474,7 +474,7 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
           >
             <div className="space-y-6">
               <div className="text-center">
-                <div className="text-5xl font-thin text-[#8B4513] mb-2">
+                <div className="text-5xl font-thin text-primary mb-2">
                   +{data.targetImprovement}
                 </div>
                 <div className="text-sm text-neutral-400">rating points</div>
@@ -546,8 +546,8 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
                   key={option.value}
                   className={`p-4 rounded-lg border cursor-pointer transition-all ${
                     data.teachingArchetype === option.value
-                      ? "border-[#8B4513] bg-[#8B4513]/10"
-                      : "border-neutral-700 hover:border-[#8B4513] hover:bg-[#8B4513]/5"
+                      ? "border-primary bg-primary/10"
+                      : "border-border hover:border-primary hover:bg-primary/5"
                   }`}
                   onClick={() => updateData("teachingArchetype", option.value)}
                 >
@@ -589,7 +589,7 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
               ].map((option) => (
                 <div
                   key={option}
-                  className="flex items-center space-x-3 p-4 rounded-lg border border-neutral-700 hover:border-[#8B4513] hover:bg-[#8B4513]/5 transition-colors cursor-pointer"
+                  className="flex items-center space-x-3 p-4 rounded-lg border border-border hover:border-primary hover:bg-primary/5 transition-colors cursor-pointer"
                   onClick={() => {
                     if (
                       data.learningMethods?.includes(option) ||
@@ -698,7 +698,7 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
               ].map((option) => (
                 <div
                   key={option.value}
-                  className="flex items-center space-x-3 p-4 rounded-lg border border-neutral-700 hover:border-[#8B4513] hover:bg-[#8B4513]/5 transition-colors cursor-pointer"
+                  className="flex items-center space-x-3 p-4 rounded-lg border border-border hover:border-primary hover:bg-primary/5 transition-colors cursor-pointer"
                   onClick={() => updateData("lessonPace", option.value)}
                 >
                   <RadioGroupItem value={option.value} id={option.value} />
@@ -730,7 +730,7 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
           >
             <div className="space-y-6">
               <div className="text-center">
-                <div className="text-4xl font-thin text-[#8B4513] mb-2">
+                <div className="text-4xl font-thin text-primary mb-2">
                   ${data.budgetMin} - ${data.budgetMax}
                 </div>
                 <div className="text-sm text-neutral-400">per hour</div>
@@ -812,7 +812,7 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
               ].map((option) => (
                 <div
                   key={option.value}
-                  className="flex items-center space-x-3 p-4 rounded-lg border border-neutral-700 hover:border-[#8B4513] hover:bg-[#8B4513]/5 transition-colors cursor-pointer"
+                  className="flex items-center space-x-3 p-4 rounded-lg border border-border hover:border-primary hover:bg-primary/5 transition-colors cursor-pointer"
                   onClick={() => updateData("lessonFrequency", option.value)}
                 >
                   <RadioGroupItem value={option.value} id={option.value} />
@@ -888,7 +888,7 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
                   ].map((option) => (
                     <div
                       key={option}
-                      className="flex items-center space-x-3 p-3 rounded-lg border border-neutral-700 hover:border-[#8B4513] hover:bg-[#8B4513]/5 transition-colors cursor-pointer"
+                      className="flex items-center space-x-3 p-3 rounded-lg border border-border hover:border-primary hover:bg-primary/5 transition-colors cursor-pointer"
                       onClick={() => toggleArrayItem("availability", option)}
                     >
                       <Checkbox
@@ -947,7 +947,7 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
               ].map((option) => (
                 <div
                   key={option.value}
-                  className="flex items-center space-x-3 p-4 rounded-lg border border-neutral-700 hover:border-[#8B4513] hover:bg-[#8B4513]/5 transition-colors cursor-pointer"
+                  className="flex items-center space-x-3 p-4 rounded-lg border border-border hover:border-primary hover:bg-primary/5 transition-colors cursor-pointer"
                   onClick={() => updateData("lessonFormat", option.value)}
                 >
                   <RadioGroupItem value={option.value} id={option.value} />
@@ -1011,7 +1011,7 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
               ].map((option) => (
                 <div
                   key={option.value}
-                  className="flex items-center space-x-3 p-4 rounded-lg border border-neutral-700 hover:border-[#8B4513] hover:bg-[#8B4513]/5 transition-colors cursor-pointer"
+                  className="flex items-center space-x-3 p-4 rounded-lg border border-border hover:border-primary hover:bg-primary/5 transition-colors cursor-pointer"
                   onClick={() =>
                     updateData("communicationPreference", option.value)
                   }
@@ -1054,7 +1054,7 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
               ].map((option) => (
                 <div
                   key={option}
-                  className="flex items-center space-x-3 p-4 rounded-lg border border-neutral-700 hover:border-[#8B4513] hover:bg-[#8B4513]/5 transition-colors cursor-pointer"
+                  className="flex items-center space-x-3 p-4 rounded-lg border border-border hover:border-primary hover:bg-primary/5 transition-colors cursor-pointer"
                   onClick={() => {
                     if (
                       data.motivations?.includes(option) ||
@@ -1185,8 +1185,8 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
                   key={option.value}
                   className={`p-4 rounded-lg border cursor-pointer transition-all ${
                     data.styleIcon === option.value
-                      ? "border-[#8B4513] bg-[#8B4513]/10"
-                      : "border-neutral-700 hover:border-[#8B4513] hover:bg-[#8B4513]/5"
+                      ? "border-primary bg-primary/10"
+                      : "border-border hover:border-primary hover:bg-primary/5"
                   }`}
                   onClick={() => updateData("styleIcon", option.value)}
                 >
@@ -1252,7 +1252,7 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
               ].map((option) => (
                 <div
                   key={option.value}
-                  className="flex items-center space-x-3 p-4 rounded-lg border border-neutral-700 hover:border-[#8B4513] hover:bg-[#8B4513]/5 transition-colors cursor-pointer"
+                  className="flex items-center space-x-3 p-4 rounded-lg border border-border hover:border-primary hover:bg-primary/5 transition-colors cursor-pointer"
                   onClick={() =>
                     updateData("credentialImportance", option.value)
                   }
@@ -1303,7 +1303,7 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
                 animate={{ rotate: 360 }}
                 transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
               >
-                <Sparkles className="w-16 h-16 text-[#8B4513] mx-auto" />
+                <Sparkles className="w-16 h-16 text-primary mx-auto" />
               </motion.div>
               <div>
                 <h3 className="text-xl font-thin mb-2">
@@ -1391,13 +1391,13 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="your@email.com"
-                      className="w-full px-4 py-3 bg-black/20 border border-neutral-700 rounded-lg text-white placeholder:text-neutral-500 focus:outline-none focus:border-[#8B4513] transition-colors"
+                      className="w-full px-4 py-3 bg-transparent border border-border rounded-md text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary transition-colors"
                     />
                   </div>
 
                   <Button
                     size="lg"
-                    className="w-full bg-[#8B4513] hover:bg-[#A0522D] text-white"
+                    className="w-full bg-primary hover:opacity-90 text-primary-foreground"
                     disabled={!email || isSubmittingWaitlist}
                     onClick={async () => {
                       if (!email) {
@@ -1506,7 +1506,7 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
           </Button>
           <Button
             onClick={handleNext}
-            className="bg-[#8B4513] hover:bg-[#A0522D] text-white"
+            className="bg-primary hover:opacity-90 text-primary-foreground"
           >
             {currentQuestion === TOTAL_QUESTIONS - 1 ? (
               <>
@@ -1541,7 +1541,7 @@ function QuestionCard({
     <Card className="bg-neutral-900 border-neutral-800">
       <CardContent className="p-6 md:p-8">
         <div className="flex items-start gap-4 mb-6">
-          <div className="text-[#8B4513]">{icon}</div>
+          <div className="text-primary">{icon}</div>
           <div className="flex-1">
             <h3 className="text-xl md:text-2xl font-thin mb-1">{title}</h3>
             {subtitle && (
