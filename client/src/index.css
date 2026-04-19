@@ -396,7 +396,10 @@
   .font-body { font-family: var(--font-body); }
   .font-serif { font-family: var(--font-serif); }
 
-  .font-thin { font-weight: 200; }
+  /* Editorial scale uses Light (300) as the heaviest display weight.
+   * font-thin and font-extralight both resolve to 300 — Tailwind's 100/200
+   * weights are not loaded, and substituting Light keeps the editorial feel. */
+  .font-thin { font-weight: 300; }
   .font-extralight { font-weight: 300; }
 
   .transition-smooth {
