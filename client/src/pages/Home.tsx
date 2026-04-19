@@ -28,6 +28,7 @@ import { CoachFilters, type FilterState } from "@/components/CoachFilters";
 import { WelcomePopup } from "@/components/WelcomePopup";
 import { UserMenu } from "@/components/UserMenu";
 import Logo from "@/components/Logo";
+import HeroBrandMark from "@/components/hero/HeroBrandMark";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl } from "@/const";
 
@@ -213,9 +214,19 @@ function Navigation({ onOpenAssessment }: { onOpenAssessment: () => void }) {
 // Hero — editorial layout with eyebrow + numbered section, shimmer second line.
 function HeroSection({ onOpenAssessment }: { onOpenAssessment: () => void }) {
   return (
-    <section className="mesh-bg mesh-bg-animated relative min-h-[85vh] flex items-center pt-24 pb-16">
+    <section className="mesh-bg mesh-bg-animated relative min-h-[85vh] flex items-center pt-24 pb-16 overflow-hidden">
       <div className="mesh-accent" />
       <div className="precision-grid" aria-hidden />
+
+      {/* Brand mark — circle + bolt + triangle motif. Absolutely positioned
+          on the right on lg+ so the editorial text layout stays anchored
+          left. Hidden below lg to keep mobile bundle/perf light. */}
+      <div
+        aria-hidden
+        className="hidden lg:block absolute right-0 top-1/2 -translate-y-1/2 w-[48%] max-w-[640px] aspect-[3/2] pointer-events-none z-0"
+      >
+        <HeroBrandMark />
+      </div>
 
       <div className="container relative z-10">
         {/* Top row — numbered eyebrow + mono URL label */}
