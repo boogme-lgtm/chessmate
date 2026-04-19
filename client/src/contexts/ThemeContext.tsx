@@ -31,11 +31,11 @@ export function ThemeProvider({
 
   useEffect(() => {
     const root = document.documentElement;
-    if (theme === "dark") {
-      root.classList.add("dark");
-    } else {
-      root.classList.remove("dark");
-    }
+    // Editorial palette: Ember Dark applies on :root by default, Editorial
+    // Cream opts in via .light. Toggle both classes so either palette can
+    // be the active one regardless of which started as default.
+    root.classList.toggle("dark", theme === "dark");
+    root.classList.toggle("light", theme === "light");
 
     if (switchable) {
       localStorage.setItem("theme", theme);
