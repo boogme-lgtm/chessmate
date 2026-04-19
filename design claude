@@ -1,0 +1,2028 @@
+You are Claude Code. I'm handing off a design exploration for **BooGMe** — an escrow-protected chess coaching marketplace. Your job is to turn it into a production Next.js app.
+
+## What's in the handoff package
+- `README.md` — full design brief: screens, components, copy, states, interactions
+- `tokens.json` — design tokens (two palettes: Editorial Cream + Ember Dark, typography, spacing, motion, shadows)
+- `reference/` — the HTML+React prototype. **Treat as visual reference, not code to copy.** Re-implement in Next.js with proper component structure, routing, forms, and accessibility.
+
+## Stack I want
+- **Next.js 14 App Router** + TypeScript
+- **Tailwind CSS** — configured from `tokens.json` (palette tokens, spacing, type scale)
+- **shadcn/ui** for primitives (button, input, dialog, tabs)
+- **Framer Motion** for the reveal/float/mesh animations described in README
+- **Stripe Connect (destination charges)** scaffolded for escrow — lesson completion webhook releases funds
+- **Clerk** for auth (two roles: student, coach)
+- **Supabase/Postgres** for coach profiles, bookings, reviews
+- **next/font** for Inter + Source Serif 4 + JetBrains Mono
+
+## Build order (please stick to this)
+1. **Repo + tokens.** Scaffold Next.js, wire Tailwind to `tokens.json`, install shadcn, set up `<ThemeProvider>` with `light` (Editorial Cream) and `dark` (Ember Dark) modes — both ship in v1, dark is default.
+2. **Brand primitives.** `<BgMark>`, `<BgLogo>` from `reference/components/Brand.jsx` — port the SVG exactly.
+3. **Motion primitives.** `<Reveal>`, `<MeshBg>`, `<Spotlight>`, `<HeroScene3D>` from `reference/components/Motion.jsx`. Keep the Reveal fallback (reveal if already in viewport on mount, 400ms timeout safety). HeroScene3D must use the **logo geometry** — circle/lightning/triangle — as in the reference.
+4. **Home page** (`app/page.tsx`) — hero, features, quiz preview, coach marketplace, coach dashboard preview, closing CTA. See README for section specs.
+5. **Quiz flow** (`app/quiz/[step]/page.tsx`) — 20 questions, server-persisted, feeds into match API.
+6. **Coach pages** (`app/coaches`, `app/coaches/[slug]`) with real booking CTA.
+7. **Coach dashboard** (`app/(dashboard)/coach/...`) — scheduling, earnings, students.
+8. **Stripe Connect + escrow** — lesson lifecycle: booked → held → delivered → released. 48h refund window implemented as a delayed payout.
+
+## Hard requirements
+- **Semantic color slots**: `safe` (escrow held), `signal` (refund countdown), `match` (AI match score) — use *only* for their meaning, never decoratively. This is the Duolingo lesson.
+- **Logo hums everywhere**: the hero 3D scene, loading states, favicon, empty states, avatars — all use variations of the circle/bolt/triangle mark from `<BgMark>`.
+- **Dark is first-class**, not a reskin. Glass cards, mesh, grid, ticker all have dark-mode variants in `reference/modern.css` — port them faithfully.
+- **No AI slop**: no emoji, no stock icons, no gradient CTAs. Use the restrained editorial language in the reference.
+- **WCAG AA** on both palettes (contrast already validated in tokens).
+- **Type hierarchy is strict**: eyebrow (mono, uppercase, 0.14em tracking) → h1/h2 (light weight, tight tracking) → lede (Source Serif) → body (Inter). Don't invent new sizes.
+
+## Deliverables
+- Running Next.js app (`pnpm dev`)
+- Deployed preview on Vercel
+- `STYLE_GUIDE.md` — how to add new components without drifting from tokens
+- Stripe Connect + webhook wired end-to-end in test mode
+- One seed coach, one seed booking, one completed lesson, one refunded lesson
+
+Start by reading `README.md` and `tokens.json` front-to-back, then propose your component inventory and file structure before writing any feature code. Ask questions — don't guess on escrow logic or matching algorithm details.
+
+# Handoff: BooGMe Marketing Website + Product Shell
+
+## Overview
+BooGMe is a chess coaching marketplace differentiated by **escrow-protected payments** (pay only after the lesson), **AI-driven coach matching** (20-question assessment → 3 ranked coaches), and **coach-first economics** (0% platform fee until a coach earns $100, low single-digit fees thereafter). This handoff covers the **marketing website** (home, quiz, coach marketplace) and **product shell previews** (coach dashboard) — the same surfaces shown in the design workbench at `reference/index.html`.
+
+## About the design files
+The `reference/` folder contains an HTML+React prototype built as a design workbench — **visual reference, not production code**. Treat every file there as a mock-up illustrating intended look, motion, copy, and interaction patterns. Your task is to **re-implement these designs in a proper Next.js codebase** using the stack and component patterns outlined in `CLAUDE_CODE_PROMPT.md`. Do not lift the JSX wholesale; use it to extract exact values (spacing, colors, copy, SVG paths, motion timings) and then write real, typed components.
+
+## Fidelity
+**High-fidelity (hifi).** Every color is final. Every typographic size, weight, tracking value, and line-height is deliberate. Every motion (reveal, float, mesh drift, spotlight, ticker) has a specific duration and easing. Implement pixel-faithfully in light **and** dark modes.
+
+## Design principles (non-negotiable)
+1. **Editorial, not marketing.** Swiss typographic discipline. No gradient CTAs, no drop-shadowed pills, no emoji, no stock icons. Restrained copy. The numbered section eyebrows (`01 — The platform`) are part of the identity.
+2. **Logo hums everywhere.** The BooGMe mark is three shapes: **circle + lightning bolt + triangle**. These must recur as the hero 3D scene's floating elements, as loading states, as decorative dividers. Subconscious repetition is the point.
+3. **Semantic accent colors.** `safe` = escrow held. `signal` = refund window / streak / urgency. `match` = AI match score. Never use these hues decoratively — they carry meaning. (Duolingo lesson.)
+4. **Dark is first-class.** The Ember Dark palette is the recommended launch theme. Don't treat it as a reskin — it has its own glass, mesh, and grid treatments.
+5. **Type hierarchy is strict.** Eyebrow (JetBrains Mono, uppercase, 0.14em tracking) → display (Inter Light, tight tracking, -0.025em) → lede (Source Serif 4) → body (Inter 400). No new sizes.
+
+## Palettes (see `tokens.json`)
+
+### Editorial Cream (light mode)
+| Token | Hex | Use |
+|---|---|---|
+| primary (terracotta) | `#8B4513` | CTAs, accent headings, eyebrow highlights |
+| surface (cream) | `#F5F1E4` | Page background |
+| surfaceDeep | `#EFEAD8` | Alternating sections |
+| surfaceRaised | `#F9F5EC` | Elevated glass cards |
+| text (charcoal) | `#2C2C2C` | Body, headings |
+| textMuted (gray) | `#8A8578` | Meta, captions |
+| line | `#D9D3C1` | Dividers, borders |
+| ink | `#1A1A1A` | Reverse sections (coach dashboard preview) |
+
+### Ember Dark (dark mode — recommended default)
+| Token | Hex | Use |
+|---|---|---|
+| primary (ember) | `#E8633A` | CTAs, accent headings |
+| surface (ink) | `#0F1419` | Page background |
+| surfaceDeep | `#151B22` | Alternating sections |
+| surfaceRaised | `#1A2230` | Elevated glass cards |
+| text (bone) | `#F4EFE6` | Body, headings |
+| textMuted | `#7A8290` | Meta, captions |
+| line | `#22303C` | Dividers, borders |
+
+### Semantic accents (both palettes)
+| Token | Light | Dark | Meaning |
+|---|---|---|---|
+| safe | `#77B377` | `#4A9D7F` | Escrow held, verified, secure |
+| signal | `#D4A24C` | `#F2B843` | Refund window, streak, urgency |
+| match | `#6B7BEB` | `#6B7BEB` | AI match score, intelligence |
+
+## Typography
+
+| Role | Family | Size | Weight | Tracking | Line |
+|---|---|---|---|---|---|
+| Hero display | Inter | 92px | 300 | -0.025em | 0.96 |
+| H2 section | Inter | 56px | 300 | -0.02em | 1.05 |
+| H3 card | Inter | 28px | 400 | -0.01em | 1.2 |
+| Lede | Source Serif 4 | 20px | 400 | — | 1.45 |
+| Body | Inter | 14px | 400 | — | 1.55 |
+| Small | Inter | 12px | 400 | — | 1.5 |
+| Eyebrow | JetBrains Mono | 11px | 400 | 0.14em UPPER | — |
+| Mono label | JetBrains Mono | 10px | 400 | 0.16em UPPER | — |
+
+Load via `next/font` with weights `300, 400, 500, 600`.
+
+## Screens
+
+### 1. Home — Hero (`editorial` variant)
+- **Layout:** Full-bleed section, 72px top padding, 80px horizontal. Mesh background + precision grid overlay both absolute-positioned inside the section.
+- **Top row:** eyebrow `01 — The platform` (left) + mono label `BOOGME.COM / HOMEPAGE` (right).
+- **Grid:** 1.15fr / 1fr, 48px gap, aligned center.
+  - **Left:** Hero H1 "Chess coaching, / without the risk." — second line gets a shimmer gradient animation (`.shimmer` class). Below, Source Serif lede, then CTA row: primary button ("Take the 8-minute quiz" + arrow), ghost button ("I'm a coach →"), mono text "No signup · No card required".
+  - **Right:** `<HeroScene3D>` — 3D floating scene of logo-geometry (see below).
+- **Trust strip:** 4-column grid with Stat components (0%, 48h, 8min, 20Q).
+- **Ticker:** Marquee below hero — 6 items (`Escrow protected`, `48h refund window`, `6% flat platform fee`, `AI coach matching`, `Rating-locked payouts`, `Pay after — not before`), 40s linear loop.
+
+### 2. Hero 3D Scene (logo-DNA)
+Six elements floating in a 1400px perspective, parent animates `rotateX(14→20deg) rotateY(-16→18deg)` over 24s alternate:
+1. **Ghost full-mark** on back plane (`translateZ(-80px)`), opacity 0.12 — big BgMark in primary color.
+2. **Glass card — Match Score** (240×128, `translateZ(-40px)`): "MATCH SCORE" eyebrow, "94%" in 52px Light primary, "GM Nadia Volkov" caption.
+3. **Lightning bolt sculpture** (130×180, `translateZ(+40px)`, amber drop-shadow): SVG path `M112 8 L152 8 L126 82 L172 82 L80 250 L108 120 L66 120 Z` filled with gradient of primary→primary 70%.
+4. **Circle "You" orb** (110×110, `translateZ(+80px)`): solid primary, inner shadow sheen, mono text "YOU / 1420".
+5. **Triangle "Coach" prism** (140×120, `translateZ(+40px)`): SVG path `M10 108 L130 108 L70 12 Z` in charcoal gradient, mono "COACH" text inside.
+6. **Glass pill — Escrow** (220×92, `translateZ(+80px)`): `safe` dot + "ESCROW HELD" eyebrow, "$65.00", caption "Releases after lesson ends".
+7. **Glass badge** (80×80, top right): contains a small `<BgMark>` — recursive logo moment.
+
+Each float card has one of three animation variants (7s / 9s / 11s) for organic staggered drift.
+
+### 3. Features / How it works
+- Eyebrow `02 — How it works`, H2 "The infrastructure / coaching never had.", right-aligned 380px description.
+- 4-column grid, top border, vertical dividers between cells. Each cell: mono index number + icon (top row), H3 title, body copy.
+- Content:
+  1. `01` — Escrow-held payment — "Your payment sits in escrow until the lesson is complete. Dispute it within 48 hours, get it all back." Icon: `shield`.
+  2. `02` — AI coach matching — "A 20-question assessment learns your style, goals, time, openings, weaknesses — and surfaces 3 coaches tuned to how you learn." Icon: `brain`.
+  3. `03` — Rating-locked payouts — "Coaches keep their fees only when ratings hold. Quality is not a badge; it's a gate on payment." Icon: `lock`.
+  4. `04` — Coach-first economics — "Low single-digit platform fees. No card required until a coach earns $100. Coaches keep more, students pay less." Icon: `wallet`.
+- Wrap each cell in `<Reveal delay={i * 80}>` for staggered entry.
+
+### 4. Quiz Preview
+- `cream-deep` background. 2-column layout: left copy + right quiz card.
+- **Left:** eyebrow `03 — Onboarding`, H2 "20 questions. / 8 minutes. / One perfect match.", Source Serif lede, tag chips (Style / Learning mode / Goals / Weaknesses / Schedule / Openings).
+- **Right (quiz card):** cream bg, 1px charcoal border, 36px padding, 480px min-height.
+  - Top: BgMark 24px + mono "QUESTION 03 / 20".
+  - Progress bar (2px, terracotta fill).
+  - H3 question "When you're stuck in a position, what do you do?"
+  - Option buttons: 14px/18px padding, 1px charcoal border, transparent bg — selected state: charcoal bg, cream text, check icon right.
+  - Bottom: ghost back + primary continue.
+- Questions array (4 shown, 20 total in prod): rating, goal, position-stuck-behavior, learning-style. See `reference/components/Website.jsx` for copy.
+
+### 5. Coach Marketplace
+- Eyebrow `04 — Your matches`, H2 "Three coaches. / Ranked by fit, not ad spend."
+- 3-column card grid, 20px gap. First card is featured (charcoal bg, cream text).
+- Each card:
+  - **Match score strip** (top): mono "MATCH SCORE" + large % in primary.
+  - **Avatar + name** row: 64px BgAvatar with initials, name (18px medium), title (12px muted, e.g. "2582 FIDE · Endgame specialist").
+  - **Tag chips** (mono, 9px, uppercase): e.g. "Endgames", "Positional", "1600–2200".
+  - **3-metric row:** Rating (★ 4.9 (128)), Per lesson ($65), Next slot (Today 7pm).
+  - **CTA:** full-width primary button "Book a trial lesson" + mono reassurance "You won't be charged until the lesson ends."
+- Sample coaches: GM Nadia Volkov (94%, $65), IM Tomás Rivera (91%, $48), FM Helena Okafor (88%, $38).
+
+### 6. Coach Dashboard Preview
+- Full-width dark section (`ink` bg, cream text).
+- 2-column: copy + dashboard mock.
+- Dashboard mock: browser-chrome toolbar, 160px sidebar (logo + menu: Overview/Schedule/Students/Lessons/Content/Payouts/Profile), main content = greeting + stat grid (This month / Lessons taught / Avg rating / Retention) + upcoming sessions list.
+
+### 7. Footer / Closing CTA (build in Next.js)
+Not fully designed in reference — use brand system: eyebrow `05 — Get started`, big type CTA, terracotta/ember button, footer links (Platform / Coaches / Company / Legal).
+
+## Components to port
+
+Port these from `reference/components/` to `components/` (TypeScript):
+
+| Source | Target | Notes |
+|---|---|---|
+| `Brand.jsx` → `BgMark`, `BgLogo` | `components/brand/Mark.tsx`, `Logo.tsx` | Pure SVG, typed props |
+| `Brand.jsx` → `BgAvatar`, `BgIcon` | `components/brand/Avatar.tsx`, `Icon.tsx` | Icon system needs a canonical set (shield/brain/lock/wallet/clock/arrow/check/calendar/video/users/play/chart) |
+| `Motion.jsx` → `Reveal` | `components/motion/Reveal.tsx` | Keep the IO + in-viewport-on-mount fallback + 400ms safety |
+| `Motion.jsx` → `MeshBg`, `PrecisionGrid` | `components/motion/MeshBg.tsx` | Port the 3 drifting blobs + grid mask exactly |
+| `Motion.jsx` → `Spotlight` | `components/motion/Spotlight.tsx` | Mouse-tracked radial highlight |
+| `Motion.jsx` → `HeroScene3D` | `components/hero/Scene3D.tsx` | Logo-DNA 3D scene — see Screen 2 |
+| `Motion.jsx` → `Ticker` | `components/motion/Ticker.tsx` | 40s marquee |
+| `Website.jsx` → section components | `components/home/*` | One file per section |
+
+## State
+
+- **Quiz:** step index (URL-driven), answers array, persist to Supabase on each step, auto-resume on return.
+- **Coach search:** filters (rating range, price, timezone, style tags), sort, paginated.
+- **Booking:** draft → confirmed (Stripe hold) → delivered (coach marks complete) → released (48h auto-release or student confirms). Refund window starts at delivered.
+- **Theme:** `light` | `dark`, default `dark`, persisted to cookie so SSR matches.
+
+## Motion tokens (see `tokens.json` → motion)
+
+- `reveal`: 900ms cubic-bezier(0.2, 0.7, 0.2, 1), translateY(24px → 0) + opacity 0 → 1. Triggered on viewport intersection (threshold 0.12) or if already in viewport on mount.
+- `mesh-drift`: 22–28s ease-in-out infinite alternate. Three blobs with different keyframes (`a`, `b`, `c`). Blur 80px.
+- `scene-rotate`: 24s on the hero 3D stack parent. `rotateX(14→20)` `rotateY(-16→18)`.
+- `float-a/b/c`: 7s/9s/11s ease-in-out infinite alternate — small Y translations on stack children, preserving their individual Z.
+- `ticker`: 40s linear infinite, `translateX(0 → -50%)`.
+- `shimmer`: 6s linear infinite, background-position `0% → 200%`.
+- `gauge-sweep`: 3s cubic-bezier(0.3, 0.7, 0.2, 1) — stroke-dashoffset sweep on circle fill.
+
+## Assets
+
+- `reference/assets/logo.png` — raster reference only; ship the SVG `<BgMark>` path in production.
+- Fonts via `next/font`: Inter (300,400,500,600), Source Serif 4 (400,500 + italic 400), JetBrains Mono (400,500).
+- No other raster assets are required for launch. Coach avatars ship as `<BgAvatar>` initials until real photos are captured.
+
+## Files in this handoff
+
+- `README.md` — you are here
+- `CLAUDE_CODE_PROMPT.md` — paste into Claude Code to start the build
+- `tokens.json` — machine-readable design tokens for Tailwind config
+- `reference/index.html` — workbench entry
+- `reference/styles.css` — base editorial styles
+- `reference/modern.css` — glass, mesh, grid, ticker, dark-mode overrides
+- `reference/components/Brand.jsx` — Mark / Logo / Avatar / Icon / ChessGlyph
+- `reference/components/Motion.jsx` — Reveal / MeshBg / Spotlight / HeroScene3D / Ticker / Gauge
+- `reference/components/Website.jsx` — all home-page sections
+- `reference/components/Social.jsx`, `Acquisition.jsx`, `Brand_tab.jsx` — adjacent design tabs (post templates, acquisition cards, brand system audit) — reference only, not required for v1 website
+
+## Open questions for the PM before coding
+
+1. **Refund window** — 48h from lesson *end* or from lesson *delivered* (coach marks complete)?
+2. **Match algorithm** — who owns the scoring logic? Stub it with a weighted rubric for now?
+3. **Rating-locked payouts** — what's the exact ratings gate (mean × review count floor)?
+4. **Free-tier ($0 platform fee until $100 earned)** — applied at coach onboarding or first payout?
+5. **Group sessions + PPV content** — in v1 scope or phase 2?
+
+Answer before writing Stripe Connect logic.
+
+// Acquisition tab — engagement content for member acquisition
+// Quiz result cards, announcement posters, campaign imagery, learning-style shareables
+
+function AcquisitionTab() {
+  return (
+    <div>
+      <div className="wb-sectionhead">
+        <div>
+          <span className="wb-sectionhead-num">Section 03 · Acquisition</span>
+          <h1>Member acquisition content</h1>
+          <p>Shareable artifacts designed for virality: quiz-result cards students post to their stories, campaign posters, coach recruitment flyers, and announcement-class visuals.</p>
+        </div>
+      </div>
+
+      <div className="artboard-grid" style={{ gridTemplateColumns: "repeat(2, 540px)", justifyContent: "center" }}>
+        <ArtBoardLocal label="QUIZ RESULT · SHAREABLE" dims="1080×1080">
+          <QuizResultCard style="The Calculator" match="GM Nadia Volkov" pct={94}/>
+        </ArtBoardLocal>
+        <ArtBoardLocal label="QUIZ RESULT · SHAREABLE" dims="1080×1080">
+          <QuizResultCard style="The Pattern-Seeker" match="IM Tomás Rivera" pct={91} alt/>
+        </ArtBoardLocal>
+        <ArtBoardLocal label="COACH RECRUITMENT" dims="1080×1080">
+          <CoachRecruitmentPoster/>
+        </ArtBoardLocal>
+        <ArtBoardLocal label="CAMPAIGN POSTER" dims="1080×1080">
+          <CampaignPoster/>
+        </ArtBoardLocal>
+      </div>
+
+      <div className="artboard-grid" style={{ gridTemplateColumns: "repeat(2, 540px)", justifyContent: "center", marginTop: 80 }}>
+        <ArtBoardLocal label="PRICE CALCULATOR · VIRAL" dims="1080×1080">
+          <PriceCalculatorPost/>
+        </ArtBoardLocal>
+        <ArtBoardLocal label="PLATFORM COMPARISON · REEL" dims="1080×1920">
+          <ComparisonReelFrame/>
+        </ArtBoardLocal>
+      </div>
+
+      <div className="artboard-grid" style={{ gridTemplateColumns: "1100px", justifyContent: "center", marginTop: 80 }}>
+        <ArtBoardLocal label="EMAIL · WELCOME" dims="1100×AUTO">
+          <EmailMock/>
+        </ArtBoardLocal>
+      </div>
+    </div>
+  );
+}
+
+function ArtBoardLocal({ label, dims, children }) {
+  return (
+    <div style={{ position: "relative" }}>
+      <span className="artboard-label">{label}</span>
+      <span className="artboard-dims">{dims}</span>
+      {children}
+    </div>
+  );
+}
+
+const SQ = { width: 540, height: 540 };
+const TALL = { width: 300, height: 533 };
+
+function QuizResultCard({ style, match, pct, alt }) {
+  const bg = alt ? "var(--terracotta)" : "var(--cream)";
+  const fg = alt ? "var(--cream)" : "var(--charcoal)";
+  const accent = alt ? "#F5F1E4" : "var(--terracotta)";
+  const sub = alt ? "#F0D8BF" : "var(--gray)";
+  return (
+    <div style={{ ...SQ, background: bg, color: fg, padding: 36, display: "flex", flexDirection: "column", border: `1px solid ${alt ? "var(--terracotta)" : "var(--gray-line)"}` }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div style={{ fontFamily: "var(--f-mono)", fontSize: 10, letterSpacing: "0.2em", color: accent }}>YOUR RESULT</div>
+        <BgLogo size={20} color={accent} wordmarkColor={fg}/>
+      </div>
+      <div style={{ marginTop: 28 }}>
+        <div style={{ fontSize: 13, color: sub, fontFamily: "var(--f-mono)", letterSpacing: "0.14em", textTransform: "uppercase" }}>You are</div>
+        <h2 style={{ fontSize: 56, fontWeight: 300, letterSpacing: "-0.025em", lineHeight: 0.98, margin: "6px 0 0" }}>{style}</h2>
+      </div>
+      <p style={{ fontSize: 13, lineHeight: 1.55, color: sub, marginTop: 20, maxWidth: 380, fontFamily: "var(--f-serif)" }}>
+        You think in concrete lines. You'd rather know a variation cold than talk about vague plans. Your ideal coach drills calculation, endgames, and sharp positions.
+      </p>
+      <div style={{ flex: 1 }}/>
+      <div style={{ padding: 16, border: `1px solid ${alt ? "#B36A42" : "var(--gray-line)"}`, background: alt ? "rgba(0,0,0,0.1)" : "var(--cream-deep)" }}>
+        <div style={{ fontSize: 10, fontFamily: "var(--f-mono)", color: sub, letterSpacing: "0.14em", textTransform: "uppercase" }}>Matched with</div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
+          <div style={{ fontSize: 20, fontWeight: 500 }}>{match}</div>
+          <div style={{ fontSize: 28, fontWeight: 300, color: accent, letterSpacing: "-0.02em" }}>{pct}%</div>
+        </div>
+      </div>
+      <div style={{ fontSize: 10, fontFamily: "var(--f-mono)", color: sub, letterSpacing: "0.14em", textAlign: "center", marginTop: 14 }}>
+        BOOGME.COM/QUIZ · SHARE YOUR RESULT
+      </div>
+    </div>
+  );
+}
+
+function CoachRecruitmentPoster() {
+  return (
+    <div style={{ ...SQ, background: "var(--charcoal)", color: "var(--cream)", padding: 0, position: "relative", overflow: "hidden", border: "1px solid var(--charcoal)" }}>
+      {/* corner mark */}
+      <div style={{ position: "absolute", top: 24, left: 24 }}>
+        <BgLogo size={20} color="#D98B5C" wordmarkColor="#F5F1E4"/>
+      </div>
+      <div style={{ position: "absolute", top: 24, right: 24, fontFamily: "var(--f-mono)", fontSize: 10, color: "#D98B5C", letterSpacing: "0.2em" }}>FOUNDING COACH · APPLY</div>
+      <div style={{ padding: "100px 40px 40px", height: "100%", display: "flex", flexDirection: "column" }}>
+        <h2 style={{ fontSize: 64, fontWeight: 300, letterSpacing: "-0.025em", lineHeight: 0.95, margin: 0 }}>
+          Keep <span style={{ color: "#D98B5C" }}>94%</span><br/>of what<br/>you earn.
+        </h2>
+        <p style={{ fontSize: 14, color: "#C9C2AE", marginTop: 28, lineHeight: 1.55, fontFamily: "var(--f-serif)", maxWidth: 380 }}>
+          Legacy platforms take 15–30%. BooGMe takes 6% flat. Zero fees until you cross $100. Escrow-protected payouts. Rating-locked quality.
+        </p>
+        <div style={{ flex: 1 }}/>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 0, borderTop: "1px solid #3A3A3A" }}>
+          {[
+            ["0%", "first $100"],
+            ["6%", "flat after"],
+            ["48h", "escrow hold"],
+          ].map(([v, l], i) => (
+            <div key={v} style={{ padding: "20px 16px", borderRight: i < 2 ? "1px solid #3A3A3A" : "none" }}>
+              <div style={{ fontSize: 36, fontWeight: 300, color: "#D98B5C", letterSpacing: "-0.02em" }}>{v}</div>
+              <div style={{ fontSize: 11, color: "#A89F8A", marginTop: 4, fontFamily: "var(--f-mono)", letterSpacing: "0.12em", textTransform: "uppercase" }}>{l}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CampaignPoster() {
+  return (
+    <div style={{ ...SQ, background: "var(--cream)", padding: 40, border: "1px solid var(--gray-line)", display: "flex", flexDirection: "column" }}>
+      <div style={{ fontFamily: "var(--f-mono)", fontSize: 10, color: "var(--terracotta)", letterSpacing: "0.2em" }}>CAMPAIGN — "NEVER AGAIN"</div>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+        <div style={{ fontSize: 13, color: "var(--gray)", fontFamily: "var(--f-mono)", letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 16 }}>
+          A message for anyone who has ever
+        </div>
+        <h2 style={{ fontSize: 52, fontWeight: 300, letterSpacing: "-0.025em", lineHeight: 0.98, margin: 0, color: "var(--charcoal)" }}>
+          paid $200 for<br/>
+          <span style={{ textDecoration: "line-through", color: "var(--gray)", textDecorationColor: "var(--terracotta)", textDecorationThickness: 2 }}>ten lessons</span><br/>
+          and got three.
+        </h2>
+        <div style={{ fontSize: 28, fontWeight: 400, color: "var(--terracotta)", marginTop: 28, letterSpacing: "-0.01em" }}>
+          You're done paying first.
+        </div>
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 16, borderTop: "1px solid var(--gray-line)" }}>
+        <BgLogo size={20} color="var(--terracotta)"/>
+        <span style={{ fontFamily: "var(--f-mono)", fontSize: 10, color: "var(--gray)", letterSpacing: "0.14em" }}>PAY AFTER. NOT BEFORE.</span>
+      </div>
+    </div>
+  );
+}
+
+function PriceCalculatorPost() {
+  return (
+    <div style={{ ...SQ, background: "var(--cream)", padding: 32, display: "flex", flexDirection: "column", border: "1px solid var(--gray-line)" }}>
+      <div style={{ fontFamily: "var(--f-mono)", fontSize: 10, color: "var(--terracotta)", letterSpacing: "0.2em", marginBottom: 14 }}>IF YOU'RE A COACH MAKING $50K/YR</div>
+      <h2 style={{ fontSize: 28, fontWeight: 400, letterSpacing: "-0.01em", lineHeight: 1.1, margin: 0, color: "var(--charcoal)" }}>
+        Here's what platform fees cost you.
+      </h2>
+      <div style={{ marginTop: 22, display: "flex", flexDirection: "column", gap: 14, flex: 1 }}>
+        {[
+          { p: "Chess.com Lessons", fee: "20%", loss: "-$10,000" },
+          { p: "ICC Coaching", fee: "15%", loss: "-$7,500" },
+          { p: "Independent platform", fee: "12%", loss: "-$6,000" },
+        ].map(r => (
+          <div key={r.p} style={{ display: "grid", gridTemplateColumns: "1.4fr auto auto", gap: 12, padding: "14px 0", borderBottom: "1px solid var(--gray-line)", alignItems: "center" }}>
+            <span style={{ fontSize: 14, color: "var(--charcoal)" }}>{r.p}</span>
+            <span style={{ fontFamily: "var(--f-mono)", fontSize: 12, color: "var(--gray)", letterSpacing: "0.1em" }}>{r.fee}</span>
+            <span style={{ fontSize: 16, color: "var(--charcoal-soft)", fontVariantNumeric: "tabular-nums" }}>{r.loss}</span>
+          </div>
+        ))}
+        <div style={{ display: "grid", gridTemplateColumns: "1.4fr auto auto", gap: 12, padding: "14px 0", alignItems: "center", background: "var(--terracotta)", color: "var(--cream)", paddingLeft: 14, paddingRight: 14, marginTop: 4 }}>
+          <span style={{ fontSize: 15, fontWeight: 500 }}>BooGMe</span>
+          <span style={{ fontFamily: "var(--f-mono)", fontSize: 12, color: "#F0D8BF", letterSpacing: "0.1em" }}>6%</span>
+          <span style={{ fontSize: 18, fontWeight: 500, fontVariantNumeric: "tabular-nums" }}>-$3,000</span>
+        </div>
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 16, borderTop: "1px solid var(--gray-line)", marginTop: 10 }}>
+        <span style={{ fontSize: 12, color: "var(--charcoal-soft)" }}>Keep up to <b style={{ color: "var(--terracotta)" }}>$7,000 more</b> per year.</span>
+        <BgLogo size={18} color="var(--terracotta)"/>
+      </div>
+    </div>
+  );
+}
+
+function ComparisonReelFrame() {
+  return (
+    <div style={{ ...TALL, background: "var(--cream)", padding: 24, border: "1px solid var(--gray-line)", display: "flex", flexDirection: "column" }}>
+      <div style={{ fontFamily: "var(--f-mono)", fontSize: 9, color: "var(--terracotta)", letterSpacing: "0.2em" }}>REEL · FRAME 03/08</div>
+      <h3 style={{ fontSize: 22, fontWeight: 500, margin: "14px 0 0", letterSpacing: "-0.01em", lineHeight: 1.2 }}>
+        Spot the difference.
+      </h3>
+      <div style={{ display: "grid", gridTemplateRows: "1fr 1fr", gap: 10, marginTop: 16, flex: 1 }}>
+        <div style={{ border: "1px solid var(--gray-line)", padding: 14, background: "var(--cream-deep)" }}>
+          <div style={{ fontFamily: "var(--f-mono)", fontSize: 9, color: "var(--gray)", letterSpacing: "0.14em", marginBottom: 6 }}>OTHER PLATFORMS</div>
+          <div style={{ fontSize: 14, fontWeight: 500, color: "var(--charcoal)" }}>$200 charged now</div>
+          <div style={{ fontSize: 10, color: "var(--gray)", marginTop: 4 }}>for 10 lessons — maybe.</div>
+        </div>
+        <div style={{ border: "1px solid var(--terracotta)", padding: 14, background: "var(--terracotta)", color: "var(--cream)" }}>
+          <div style={{ fontFamily: "var(--f-mono)", fontSize: 9, color: "#F0D8BF", letterSpacing: "0.14em", marginBottom: 6 }}>BOOGME</div>
+          <div style={{ fontSize: 14, fontWeight: 500 }}>$0 charged now</div>
+          <div style={{ fontSize: 10, color: "#F0D8BF", marginTop: 4 }}>$20 per lesson, after each one.</div>
+        </div>
+      </div>
+      <BgLogo size={14} color="var(--terracotta)"/>
+    </div>
+  );
+}
+
+function EmailMock() {
+  return (
+    <div style={{ width: 1100, background: "var(--cream)", border: "1px solid var(--gray-line)" }}>
+      <div style={{ padding: "12px 20px", background: "#EDE7D3", display: "flex", gap: 8, alignItems: "center", fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--gray)" }}>
+        <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#D6CEB8" }}/>
+        <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#D6CEB8" }}/>
+        <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#D6CEB8" }}/>
+        <span style={{ marginLeft: 16 }}>From: hello@boogme.com</span>
+        <span style={{ marginLeft: 16 }}>Subject: You're matched. Here's who with.</span>
+      </div>
+      <div style={{ padding: "48px 56px" }}>
+        <BgLogo size={22} color="var(--terracotta)"/>
+        <h2 style={{ fontSize: 40, fontWeight: 300, letterSpacing: "-0.02em", lineHeight: 1.05, marginTop: 36, color: "var(--charcoal)" }}>
+          Nice work, Marcus.<br/>Here are your three matches.
+        </h2>
+        <p style={{ fontSize: 15, color: "var(--charcoal-soft)", fontFamily: "var(--f-serif)", lineHeight: 1.6, marginTop: 18, maxWidth: 620 }}>
+          Based on your quiz, we built a profile of how you think and what you're trying to fix. These coaches teach in the way you learn. Book a trial with any of them — you don't pay until the lesson's done.
+        </p>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginTop: 36 }}>
+          {[
+            { n: "GM Nadia Volkov", m: 94, t: "Endgame specialist", p: 65 },
+            { n: "IM Tomás Rivera", m: 91, t: "Dynamic play", p: 48 },
+            { n: "FM Helena Okafor", m: 88, t: "Fundamentals", p: 38 },
+          ].map(c => (
+            <div key={c.n} style={{ border: "1px solid var(--gray-line)", padding: 20, background: "var(--cream-deep)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                <BgAvatar size={44} label={c.n.split(" ").slice(-1)[0].slice(0,2).toUpperCase()}/>
+                <span style={{ fontSize: 22, fontWeight: 300, color: "var(--terracotta)", letterSpacing: "-0.02em" }}>{c.m}%</span>
+              </div>
+              <div style={{ fontSize: 15, fontWeight: 500, marginTop: 14 }}>{c.n}</div>
+              <div style={{ fontSize: 11, color: "var(--gray)", marginTop: 4, fontFamily: "var(--f-mono)", letterSpacing: "0.1em", textTransform: "uppercase" }}>{c.t}</div>
+              <div style={{ fontSize: 13, color: "var(--charcoal-soft)", marginTop: 14 }}>${c.p} / lesson</div>
+              <button style={{ marginTop: 14, width: "100%", padding: "10px", background: "var(--charcoal)", color: "var(--cream)", border: "none", fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", cursor: "pointer" }}>
+                Book trial
+              </button>
+            </div>
+          ))}
+        </div>
+        <div style={{ marginTop: 48, paddingTop: 20, borderTop: "1px solid var(--gray-line)", fontSize: 11, color: "var(--gray)", fontFamily: "var(--f-mono)", letterSpacing: "0.1em", display: "flex", justifyContent: "space-between" }}>
+          <span>BOOGME · CHESS COACHING, PROFESSIONALIZED</span>
+          <span>UNSUBSCRIBE · PREFERENCES</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { AcquisitionTab });
+
+// Shared brand primitives: Logo (SVG), ChessBoard placeholder, Avatar, etc.
+
+/**
+ * BooGMe mark — circle (top-left) + lightning bolt (center) + triangle (bottom-right)
+ * Reconstructed as SVG from the reference raster so it can be tinted and scaled crisply.
+ */
+function BgMark({ size = 64, color = "#8B4513", title = "BooGMe" }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 200 200"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-label={title}
+      role="img"
+    >
+      {/* Circle */}
+      <circle cx="66" cy="60" r="32" fill={color} />
+      {/* Lightning bolt (right-ish) */}
+      <path
+        d="M112 28 L152 28 L126 82 L158 82 L96 170 L116 104 L88 104 Z"
+        fill={color}
+      />
+      {/* Triangle (bottom) */}
+      <path d="M34 172 L166 172 L100 108 Z" fill={color} />
+    </svg>
+  );
+}
+
+function BgLogo({ size = 56, color = "#8B4513", showWordmark = true, stacked = false, wordmarkColor }) {
+  const wm = wordmarkColor || color;
+  if (stacked) {
+    return (
+      <div style={{ display: "inline-flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+        <BgMark size={size} color={color} />
+        {showWordmark && (
+          <span style={{
+            fontFamily: "Inter, Helvetica Neue, sans-serif",
+            fontWeight: 300,
+            letterSpacing: "0.28em",
+            fontSize: size * 0.32,
+            color: wm,
+          }}>BOOGME</span>
+        )}
+      </div>
+    );
+  }
+  return (
+    <div style={{ display: "inline-flex", alignItems: "center", gap: size * 0.25 }}>
+      <BgMark size={size} color={color} />
+      {showWordmark && (
+        <span style={{
+          fontFamily: "Inter, Helvetica Neue, sans-serif",
+          fontWeight: 300,
+          letterSpacing: "0.24em",
+          fontSize: size * 0.42,
+          color: wm,
+        }}>BOOGME</span>
+      )}
+    </div>
+  );
+}
+
+/** Minimal chess board glyph — functional placeholder, not a full SVG drawing */
+function BgChessGlyph({ size = 80, accent = "#8B4513", dark = "#2C2C2C" }) {
+  const cells = [];
+  for (let r = 0; r < 4; r++) {
+    for (let c = 0; c < 4; c++) {
+      const fill = (r + c) % 2 === 0 ? "#F5F1E4" : dark;
+      cells.push(
+        <rect key={`${r}-${c}`} x={c * (size / 4)} y={r * (size / 4)} width={size / 4} height={size / 4} fill={fill} />
+      );
+    }
+  }
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      {cells}
+      <circle cx={size * 0.72} cy={size * 0.28} r={size * 0.1} fill={accent} />
+    </svg>
+  );
+}
+
+/** Circular avatar placeholder — striped, monospace label */
+function BgAvatar({ size = 72, label = "", accent = "#8B4513" }) {
+  return (
+    <div style={{
+      width: size, height: size, borderRadius: "50%",
+      background: `repeating-linear-gradient(45deg, ${accent}22 0 4px, transparent 4px 9px), #EDE7D3`,
+      border: `1px solid ${accent}44`,
+      display: "flex", alignItems: "center", justifyContent: "center",
+      fontFamily: "JetBrains Mono, ui-monospace, monospace",
+      fontSize: 9, color: "#8A8178",
+      letterSpacing: "0.12em",
+      textAlign: "center",
+      textTransform: "uppercase",
+      flexShrink: 0,
+      overflow: "hidden",
+    }}>
+      {label || "photo"}
+    </div>
+  );
+}
+
+/** Small icon system — thin stroke, geometric */
+function BgIcon({ name, size = 20, color = "currentColor" }) {
+  const s = { width: size, height: size, stroke: color, fill: "none", strokeWidth: 1.4, strokeLinecap: "round", strokeLinejoin: "round" };
+  switch (name) {
+    case "shield": return (
+      <svg viewBox="0 0 24 24" style={s}><path d="M12 3 L20 6 V12 C20 17 16 20 12 21 C8 20 4 17 4 12 V6 Z" /><path d="M8.5 12 L11 14.5 L15.5 10" /></svg>
+    );
+    case "bolt": return (
+      <svg viewBox="0 0 24 24" style={s}><path d="M13 3 L5 13 H11 L10 21 L18 11 H12 Z" /></svg>
+    );
+    case "brain": return (
+      <svg viewBox="0 0 24 24" style={s}><path d="M9 4 A3 3 0 0 0 6 7 A3 3 0 0 0 4 10 A3 3 0 0 0 5 13 A3 3 0 0 0 6 16 A3 3 0 0 0 9 19 V4Z" /><path d="M15 4 A3 3 0 0 1 18 7 A3 3 0 0 1 20 10 A3 3 0 0 1 19 13 A3 3 0 0 1 18 16 A3 3 0 0 1 15 19 V4Z" /><path d="M9 10 H15" /></svg>
+    );
+    case "chart": return (
+      <svg viewBox="0 0 24 24" style={s}><path d="M4 20 H20" /><path d="M7 16 V11" /><path d="M11 16 V7" /><path d="M15 16 V13" /><path d="M19 16 V9" /></svg>
+    );
+    case "calendar": return (
+      <svg viewBox="0 0 24 24" style={s}><rect x="3" y="5" width="18" height="16" /><path d="M3 10 H21" /><path d="M8 3 V7" /><path d="M16 3 V7" /></svg>
+    );
+    case "video": return (
+      <svg viewBox="0 0 24 24" style={s}><rect x="3" y="6" width="13" height="12" /><path d="M16 10 L21 7 V17 L16 14 Z" /></svg>
+    );
+    case "users": return (
+      <svg viewBox="0 0 24 24" style={s}><circle cx="9" cy="8" r="3" /><path d="M3 20 C3 16 6 14 9 14 C12 14 15 16 15 20" /><circle cx="17" cy="9" r="2.2" /><path d="M14 20 C14 17 16 15 18 15 C20 15 22 17 22 20" /></svg>
+    );
+    case "lock": return (
+      <svg viewBox="0 0 24 24" style={s}><rect x="5" y="11" width="14" height="9" /><path d="M8 11 V8 A4 4 0 0 1 16 8 V11" /></svg>
+    );
+    case "arrow": return (
+      <svg viewBox="0 0 24 24" style={s}><path d="M4 12 H20" /><path d="M14 6 L20 12 L14 18" /></svg>
+    );
+    case "check": return (
+      <svg viewBox="0 0 24 24" style={s}><path d="M5 12 L10 17 L19 7" /></svg>
+    );
+    case "x": return (
+      <svg viewBox="0 0 24 24" style={s}><path d="M6 6 L18 18" /><path d="M18 6 L6 18" /></svg>
+    );
+    case "star": return (
+      <svg viewBox="0 0 24 24" style={s}><path d="M12 3 L14.5 9 L21 9.5 L16 14 L17.5 20.5 L12 17 L6.5 20.5 L8 14 L3 9.5 L9.5 9 Z" /></svg>
+    );
+    case "play": return (
+      <svg viewBox="0 0 24 24" style={s}><path d="M7 5 L19 12 L7 19 Z" /></svg>
+    );
+    case "clock": return (
+      <svg viewBox="0 0 24 24" style={s}><circle cx="12" cy="12" r="8" /><path d="M12 7 V12 L15 14" /></svg>
+    );
+    case "wallet": return (
+      <svg viewBox="0 0 24 24" style={s}><rect x="3" y="6" width="18" height="13" /><path d="M16 12 H19" /></svg>
+    );
+    case "target": return (
+      <svg viewBox="0 0 24 24" style={s}><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="4" /><circle cx="12" cy="12" r="1" fill={color} /></svg>
+    );
+    default: return null;
+  }
+}
+
+Object.assign(window, { BgMark, BgLogo, BgChessGlyph, BgAvatar, BgIcon });
+
+// Brand system tab — tokens, type, palette, logo usage
+
+function BrandTab() {
+  return (
+    <div>
+      <div className="wb-sectionhead">
+        <div>
+          <span className="wb-sectionhead-num">Section 04 · Brand system</span>
+          <h1>Tokens & guidelines</h1>
+          <p>The living design system. Terracotta, cream, charcoal. Swiss modern grids. Geometric mark. Use this as the source of truth when any new artifact is made.</p>
+        </div>
+      </div>
+      <div style={{ maxWidth: 1200, margin: "0 auto", display: "grid", gap: 48 }}>
+        <LogoCard/>
+        <PaletteCard/>
+        <TypeCard/>
+        <PrinciplesCard/>
+      </div>
+    </div>
+  );
+}
+
+function LogoCard() {
+  return (
+    <div style={{ background: "var(--cream)", border: "1px solid var(--gray-line)", padding: 40 }}>
+      <span className="eyebrow">The mark</span>
+      <h2 style={{ fontSize: 32, fontWeight: 300, letterSpacing: "-0.02em", margin: "6px 0 28px" }}>Logo</h2>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
+        <Swatch bg="#F5F1E4" border>
+          <BgLogo size={44} color="var(--terracotta)" stacked/>
+          <Label>PRIMARY · LIGHT</Label>
+        </Swatch>
+        <Swatch bg="#1A1A1A">
+          <BgLogo size={44} color="#F5F1E4" stacked/>
+          <Label dark>PRIMARY · DARK</Label>
+        </Swatch>
+        <Swatch bg="#F5F1E4" border>
+          <BgMark size={80} color="var(--terracotta)"/>
+          <Label>ICON ONLY</Label>
+        </Swatch>
+        <Swatch bg="#8B4513">
+          <BgLogo size={44} color="#F5F1E4" stacked/>
+          <Label dark>ON TERRACOTTA</Label>
+        </Swatch>
+      </div>
+    </div>
+  );
+}
+
+function PaletteCard() {
+  const colors = [
+    { name: "Terracotta", hex: "#8B4513", role: "Primary · CTAs, accents", light: false },
+    { name: "Cream", hex: "#F5F1E4", role: "Background · negative space", light: true },
+    { name: "Charcoal", hex: "#2C2C2C", role: "Ink · body text", light: false },
+    { name: "Cream Deep", hex: "#EDE7D3", role: "Layered surfaces", light: true },
+    { name: "Gray", hex: "#8A8178", role: "Metadata · captions", light: false },
+    { name: "Gray Line", hex: "#D6CEB8", role: "1px rules & borders", light: true },
+  ];
+  return (
+    <div style={{ background: "var(--cream)", border: "1px solid var(--gray-line)", padding: 40 }}>
+      <span className="eyebrow">The palette</span>
+      <h2 style={{ fontSize: 32, fontWeight: 300, letterSpacing: "-0.02em", margin: "6px 0 28px" }}>Colors</h2>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
+        {colors.map(c => (
+          <div key={c.name} style={{ border: "1px solid var(--gray-line)" }}>
+            <div style={{ background: c.hex, height: 120 }}/>
+            <div style={{ padding: 14 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                <span style={{ fontSize: 14, fontWeight: 500 }}>{c.name}</span>
+                <span style={{ fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--gray)" }}>{c.hex}</span>
+              </div>
+              <div style={{ fontSize: 12, color: "var(--gray)", marginTop: 6 }}>{c.role}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TypeCard() {
+  return (
+    <div style={{ background: "var(--cream)", border: "1px solid var(--gray-line)", padding: 40 }}>
+      <span className="eyebrow">The voice</span>
+      <h2 style={{ fontSize: 32, fontWeight: 300, letterSpacing: "-0.02em", margin: "6px 0 28px" }}>Typography</h2>
+      <div style={{ display: "grid", gap: 24 }}>
+        <TypeRow size={72} weight={300} label="Display · Inter Light, 72/0.95" tracking="-0.025em">
+          Pay after the lesson.
+        </TypeRow>
+        <TypeRow size={36} weight={400} label="H2 · Inter Regular, 36/1.1" tracking="-0.01em">
+          The infrastructure coaching never had.
+        </TypeRow>
+        <TypeRow size={18} weight={400} label="Lede · Source Serif 4, 18/1.5" serif>
+          BooGMe holds your payment in escrow until the lesson ends. Match with the right coach in 8 minutes.
+        </TypeRow>
+        <TypeRow size={14} weight={400} label="Body · Inter Regular, 14/1.5">
+          Low single-digit platform fees. No card required until a coach earns $100.
+        </TypeRow>
+        <TypeRow size={11} weight={500} label="Eyebrow · JetBrains Mono 11, +0.2em tracking, ALL CAPS" mono>
+          01 — THE PLATFORM
+        </TypeRow>
+      </div>
+    </div>
+  );
+}
+
+function TypeRow({ size, weight, label, children, tracking = "normal", serif, mono }) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: 32, alignItems: "baseline", paddingBottom: 16, borderBottom: "1px solid var(--gray-line)" }}>
+      <div style={{
+        fontSize: size, fontWeight: weight, letterSpacing: tracking, lineHeight: 1.15,
+        fontFamily: mono ? "var(--f-mono)" : (serif ? "var(--f-serif)" : "var(--f-sans)"),
+        color: "var(--charcoal)",
+      }}>
+        {children}
+      </div>
+      <div style={{ fontFamily: "var(--f-mono)", fontSize: 10, color: "var(--gray)", letterSpacing: "0.12em", textTransform: "uppercase" }}>
+        {label}
+      </div>
+    </div>
+  );
+}
+
+function PrinciplesCard() {
+  const items = [
+    { n: "01", t: "Restraint over ornament", d: "No gradients, no shadows, no 3D. White space is the hero. If an element doesn't earn its place, remove it." },
+    { n: "02", t: "Trust over hype", d: "Specific numbers and concrete benefits. Avoid \"revolutionizing,\" \"disrupting,\" or any variant of that vocabulary." },
+    { n: "03", t: "Grid-true composition", d: "Every element aligns to an invisible 8px baseline. Headlines hug the grid. Hairlines (1px) separate zones." },
+    { n: "04", t: "Swiss modern, warm", d: "Helvetica-family geometry softened by terracotta + cream. Not cold. Not clinical. Professional and human." },
+  ];
+  return (
+    <div style={{ background: "var(--cream)", border: "1px solid var(--gray-line)", padding: 40 }}>
+      <span className="eyebrow">The rules</span>
+      <h2 style={{ fontSize: 32, fontWeight: 300, letterSpacing: "-0.02em", margin: "6px 0 28px" }}>Design principles</h2>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 0, borderTop: "1px solid var(--charcoal)" }}>
+        {items.map((it, i) => (
+          <div key={it.n} style={{
+            padding: "28px 24px",
+            borderBottom: "1px solid var(--gray-line)",
+            borderRight: i % 2 === 0 ? "1px solid var(--gray-line)" : "none",
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
+              <span style={{ fontFamily: "var(--f-mono)", fontSize: 12, color: "var(--terracotta)", letterSpacing: "0.14em" }}>{it.n}</span>
+            </div>
+            <h3 style={{ fontSize: 18, fontWeight: 500, margin: "0 0 8px", letterSpacing: "-0.01em" }}>{it.t}</h3>
+            <p style={{ fontSize: 13, lineHeight: 1.55, color: "var(--charcoal-soft)", margin: 0 }}>{it.d}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Swatch({ bg, border, children }) {
+  return (
+    <div style={{
+      background: bg, padding: 28, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, minHeight: 180,
+      border: border ? "1px solid var(--gray-line)" : "1px solid transparent",
+    }}>{children}</div>
+  );
+}
+function Label({ children, dark }) {
+  return (
+    <span style={{ fontFamily: "var(--f-mono)", fontSize: 10, letterSpacing: "0.14em", color: dark ? "#A89F8A" : "var(--gray)", textTransform: "uppercase" }}>
+      {children}
+    </span>
+  );
+}
+
+Object.assign(window, { BrandTab });
+
+// Modern motion primitives — 3D scene, reveal-on-scroll, ticker
+
+const { useEffect, useRef, useState: useState2 } = React;
+
+function MeshBg() {
+  return (
+    <>
+      <div className="mesh-bg" aria-hidden="true"><span/></div>
+      <div className="precision-grid" aria-hidden="true"/>
+    </>
+  );
+}
+
+function Spotlight({ children, style }) {
+  const ref = useRef(null);
+  const onMove = (e) => {
+    const el = ref.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    el.style.setProperty("--mx", `${e.clientX - r.left}px`);
+    el.style.setProperty("--my", `${e.clientY - r.top}px`);
+  };
+  return (
+    <div ref={ref} className="spotlight-host" style={style} onMouseMove={onMove}>
+      {children}
+    </div>
+  );
+}
+
+function Reveal({ children, delay = 0, style }) {
+  const ref = useRef(null);
+  const [shown, setShown] = useState2(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    // If already in viewport on mount, reveal next frame (so CSS transition plays).
+    const r = el.getBoundingClientRect();
+    if (r.top < window.innerHeight && r.bottom > 0) {
+      requestAnimationFrame(() => setShown(true));
+      return;
+    }
+    // Otherwise watch for it; belt-and-suspenders fallback after 400ms.
+    const io = new IntersectionObserver(([e]) => {
+      if (e.isIntersecting) { setShown(true); io.disconnect(); }
+    }, { threshold: 0.12 });
+    io.observe(el);
+    const t = setTimeout(() => setShown(true), 400);
+    return () => { io.disconnect(); clearTimeout(t); };
+  }, []);
+  return (
+    <div ref={ref} className={`reveal ${shown ? "is-in" : ""}`} style={{ transitionDelay: `${delay}ms`, ...style }}>
+      {children}
+    </div>
+  );
+}
+
+function Knight3D({ color = "#8B4513" }) {
+  // Stylized geometric knight silhouette
+  return (
+    <svg className="knight3d" viewBox="0 0 200 240" width="100%" height="100%">
+      <defs>
+        <linearGradient id="kg" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="1"/>
+          <stop offset="100%" stopColor="#2C1810" stopOpacity="1"/>
+        </linearGradient>
+        <linearGradient id="kh" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor="rgba(255,255,255,0.35)"/>
+          <stop offset="100%" stopColor="rgba(255,255,255,0)"/>
+        </linearGradient>
+      </defs>
+      {/* Base */}
+      <ellipse cx="100" cy="222" rx="68" ry="8" fill="rgba(0,0,0,0.18)"/>
+      <rect x="40" y="198" width="120" height="20" rx="3" fill="url(#kg)"/>
+      <rect x="48" y="188" width="104" height="12" rx="2" fill={color} opacity="0.85"/>
+      {/* Body */}
+      <path d="M70 188 L60 150 C58 130 70 110 90 90 L120 52 C128 40 132 44 132 54 L128 80 C138 82 148 90 150 110 L152 160 L156 188 Z"
+        fill="url(#kg)"/>
+      {/* Mane */}
+      <path d="M120 58 L148 92 L142 108 L118 82 Z" fill="#2C1810" opacity="0.55"/>
+      {/* Highlight sheen */}
+      <path d="M80 100 L92 80 L96 140 L84 160 Z" fill="url(#kh)"/>
+      {/* Eye */}
+      <circle cx="118" cy="78" r="3" fill="#F5F1E4"/>
+      <circle cx="118" cy="78" r="1.3" fill="#2C1810"/>
+    </svg>
+  );
+}
+
+function HeroScene3D() {
+  // Variations of the BooGMe mark: circle, lightning bolt, triangle —
+  // floated independently in 3D so the logo DNA hums behind every interaction.
+  return (
+    <div className="scene3d" aria-hidden="true">
+      <div className="scene-stack">
+
+        {/* Back plane — oversized logo mark as ghost */}
+        <div className="scene-card float-c" style={{
+          width: 300, height: 300, left: 20, top: 20,
+          transform: "translateZ(-80px)",
+          opacity: 0.12,
+        }}>
+          <BgMark size={300} color="var(--terracotta)"/>
+        </div>
+
+        {/* Glass card — match score */}
+        <div className="scene-card float-c glass" style={{
+          width: 240, height: 128, left: -44, top: 0, padding: 18,
+        }}>
+          <div style={{ fontFamily: "var(--f-mono)", fontSize: 10, color: "var(--gray)", letterSpacing: "0.16em" }}>MATCH SCORE</div>
+          <div style={{ fontSize: 52, fontWeight: 300, color: "var(--terracotta)", letterSpacing: "-0.02em", marginTop: 4, lineHeight: 1 }}>94%</div>
+          <div style={{ fontSize: 11, color: "var(--charcoal-soft)", marginTop: 4 }}>GM Nadia Volkov</div>
+        </div>
+
+        {/* Lightning bolt — the spark / acceleration motif */}
+        <div className="scene-card float-b" style={{
+          width: 130, height: 180, left: 150, top: 40,
+          filter: "drop-shadow(0 20px 40px rgba(232,99,58,0.4))",
+        }}>
+          <svg viewBox="0 0 200 260" width="100%" height="100%">
+            <defs>
+              <linearGradient id="boltGrad" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stopColor="var(--terracotta)" stopOpacity="1"/>
+                <stop offset="100%" stopColor="var(--terracotta)" stopOpacity="0.7"/>
+              </linearGradient>
+            </defs>
+            <path d="M112 8 L152 8 L126 82 L172 82 L80 250 L108 120 L66 120 Z"
+              fill="url(#boltGrad)"
+              stroke="rgba(255,255,255,0.3)" strokeWidth="1.5"/>
+          </svg>
+        </div>
+
+        {/* Circle — the "you" (player) mark */}
+        <div className="scene-card float-a" style={{
+          width: 110, height: 110, left: 40, top: 220,
+          borderRadius: "50%",
+          background: "var(--terracotta)",
+          boxShadow: "0 24px 50px -10px rgba(232,99,58,0.45), inset 0 2px 0 rgba(255,255,255,0.25)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+          <div style={{ color: "var(--cream)", fontFamily: "var(--f-mono)", fontSize: 10, letterSpacing: "0.16em", textAlign: "center", opacity: 0.9 }}>
+            YOU<br/>
+            <span style={{ fontSize: 22, fontWeight: 300, letterSpacing: "-0.02em", fontFamily: "var(--f-sans)" }}>1420</span>
+          </div>
+        </div>
+
+        {/* Triangle — the "coach" / ascent mark */}
+        <div className="scene-card float-b" style={{
+          width: 140, height: 120, right: -20, top: 260,
+          filter: "drop-shadow(0 16px 32px rgba(0,0,0,0.22))",
+        }}>
+          <svg viewBox="0 0 140 120" width="100%" height="100%">
+            <defs>
+              <linearGradient id="triGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="var(--charcoal)" stopOpacity="0.92"/>
+                <stop offset="100%" stopColor="var(--charcoal)" stopOpacity="0.7"/>
+              </linearGradient>
+            </defs>
+            <path d="M10 108 L130 108 L70 12 Z"
+              fill="url(#triGrad)"
+              stroke="rgba(255,255,255,0.18)" strokeWidth="1.5"/>
+            <text x="70" y="92" textAnchor="middle"
+              fill="var(--cream)" fontSize="9"
+              fontFamily="var(--f-mono)" letterSpacing="0.16em" opacity="0.85">
+              COACH
+            </text>
+          </svg>
+        </div>
+
+        {/* Glass pill — escrow */}
+        <div className="scene-card float-a glass" style={{
+          width: 220, height: 92, right: -10, top: 100, padding: "14px 18px",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--safe)", boxShadow: "0 0 0 4px rgba(74,157,127,0.22)" }}/>
+            <span style={{ fontFamily: "var(--f-mono)", fontSize: 10, color: "var(--charcoal-soft)", letterSpacing: "0.14em" }}>ESCROW HELD</span>
+          </div>
+          <div style={{ fontSize: 22, fontWeight: 400, marginTop: 4, color: "var(--charcoal)" }}>$65.00</div>
+          <div style={{ fontSize: 10, color: "var(--gray)", marginTop: 2 }}>Releases after lesson ends</div>
+        </div>
+
+        {/* Small mark badge — recursive logo moment */}
+        <div className="scene-card float-c glass" style={{
+          width: 80, height: 80, right: 50, top: 0, padding: 12,
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+          <BgMark size={48} color="var(--terracotta)"/>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Ticker() {
+  const items = ["Escrow protected", "48h refund window", "6% flat platform fee", "AI coach matching", "Rating-locked payouts", "Pay after — not before"];
+  const loop = [...items, ...items, ...items];
+  return (
+    <div className="ticker-wrap">
+      <div className="ticker">
+        {loop.map((t, i) => (
+          <span key={i}><span className="dot"/> {t}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Gauge({ value = 94, size = 120 }) {
+  const r = (size - 12) / 2;
+  const c = 2 * Math.PI * r;
+  const offset = c - (value / 100) * c;
+  return (
+    <svg className="gauge-ring" width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <circle className="track" cx={size/2} cy={size/2} r={r} fill="none" strokeWidth="6"/>
+      <circle className="fill" cx={size/2} cy={size/2} r={r} fill="none" strokeWidth="6"
+        strokeDasharray={c} strokeDashoffset={offset}/>
+    </svg>
+  );
+}
+
+Object.assign(window, { MeshBg, Spotlight, Reveal, Knight3D, HeroScene3D, Ticker, Gauge });
+
+// Social media tab — Instagram square, Twitter/X, LinkedIn, Story formats
+
+function SocialTab({ paletteInvert }) {
+  return (
+    <div>
+      <div className="wb-sectionhead">
+        <div>
+          <span className="wb-sectionhead-num">Section 02 · Social</span>
+          <h1>Social media templates</h1>
+          <p>Ready-to-ship post templates at real platform dimensions. Instagram squares (1080×1080), Twitter cards (1200×675), LinkedIn (1200×627), and Stories (1080×1920). Every template uses the BooGMe mark and terracotta/cream system.</p>
+        </div>
+        <div style={{ fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--gray)", letterSpacing: "0.14em", textAlign: "right" }}>
+          NATIVE DIMENSIONS<br/>
+          <span style={{ color: "var(--terracotta)" }}>EXPORT-READY</span>
+        </div>
+      </div>
+
+      <div className="artboard-grid" style={{ gridTemplateColumns: "repeat(2, 540px)", justifyContent: "center" }}>
+        <ArtBoard label="INSTAGRAM · 1:1" dims="1080×1080">
+          <IgLaunchPost/>
+        </ArtBoard>
+        <ArtBoard label="INSTAGRAM · 1:1" dims="1080×1080">
+          <IgEscrowExplainer/>
+        </ArtBoard>
+        <ArtBoard label="INSTAGRAM · 1:1" dims="1080×1080">
+          <IgCoachSpotlight/>
+        </ArtBoard>
+        <ArtBoard label="INSTAGRAM · 1:1" dims="1080×1080">
+          <IgTestimonial/>
+        </ArtBoard>
+        <ArtBoard label="INSTAGRAM · 1:1" dims="1080×1080">
+          <IgQuote/>
+        </ArtBoard>
+        <ArtBoard label="INSTAGRAM · 1:1" dims="1080×1080">
+          <IgComparison/>
+        </ArtBoard>
+      </div>
+
+      <div className="artboard-grid" style={{ gridTemplateColumns: "720px", justifyContent: "center", marginTop: 80 }}>
+        <ArtBoard label="TWITTER / X · 16:9" dims="1200×675">
+          <TwitterCard/>
+        </ArtBoard>
+        <ArtBoard label="TWITTER / X · 16:9" dims="1200×675">
+          <TwitterThreadCover/>
+        </ArtBoard>
+      </div>
+
+      <div className="artboard-grid" style={{ gridTemplateColumns: "720px", justifyContent: "center", marginTop: 80 }}>
+        <ArtBoard label="LINKEDIN · 1.91:1" dims="1200×627">
+          <LinkedInCard/>
+        </ArtBoard>
+      </div>
+
+      <div className="artboard-grid" style={{ gridTemplateColumns: "repeat(3, 300px)", justifyContent: "center", marginTop: 80 }}>
+        <ArtBoard label="STORY / REEL · 9:16" dims="1080×1920">
+          <StoryFrame variant="stat"/>
+        </ArtBoard>
+        <ArtBoard label="STORY / REEL · 9:16" dims="1080×1920">
+          <StoryFrame variant="quote"/>
+        </ArtBoard>
+        <ArtBoard label="STORY / REEL · 9:16" dims="1080×1920">
+          <StoryFrame variant="cta"/>
+        </ArtBoard>
+      </div>
+    </div>
+  );
+}
+
+function ArtBoard({ label, dims, children }) {
+  return (
+    <div style={{ position: "relative" }}>
+      <span className="artboard-label">{label}</span>
+      <span className="artboard-dims">{dims}</span>
+      {children}
+    </div>
+  );
+}
+
+// ============ Instagram posts — all 540x540 display, representing 1080x1080 ============
+const IG = { width: 540, height: 540 };
+const STORY = { width: 300, height: 533 };
+const TW = { width: 720, height: 405 };
+const LI = { width: 720, height: 376 };
+
+function IgLaunchPost() {
+  return (
+    <div style={{ ...IG, background: "var(--cream)", padding: 40, display: "flex", flexDirection: "column", border: "1px solid var(--gray-line)", position: "relative" }}>
+      <div style={{ fontFamily: "var(--f-mono)", fontSize: 10, color: "var(--terracotta)", letterSpacing: "0.2em" }}>NOW LIVE — 04.2026</div>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+        <h2 style={{ fontSize: 54, fontWeight: 300, letterSpacing: "-0.02em", lineHeight: 0.95, color: "var(--charcoal)", margin: 0 }}>
+          Chess coaching,<br/>
+          <span style={{ color: "var(--terracotta)" }}>without the risk.</span>
+        </h2>
+        <p style={{ fontSize: 14, color: "var(--charcoal-soft)", marginTop: 24, maxWidth: 380, lineHeight: 1.5 }}>
+          Pay only after your lesson. Match with the right coach in 8 minutes. 48-hour refund window.
+        </p>
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid var(--gray-line)", paddingTop: 16 }}>
+        <BgLogo size={22} color="var(--terracotta)"/>
+        <span style={{ fontFamily: "var(--f-mono)", fontSize: 10, color: "var(--gray)", letterSpacing: "0.14em" }}>BOOGME.COM</span>
+      </div>
+    </div>
+  );
+}
+
+function IgEscrowExplainer() {
+  const steps = [
+    { n: "01", t: "Book your lesson", d: "Payment held in escrow" },
+    { n: "02", t: "Attend the session", d: "Learn. Question. Play." },
+    { n: "03", t: "Pay after, not before", d: "48h refund if it's wrong" },
+  ];
+  return (
+    <div style={{ ...IG, background: "var(--cream)", padding: 36, display: "flex", flexDirection: "column", border: "1px solid var(--gray-line)" }}>
+      <div style={{ fontFamily: "var(--f-mono)", fontSize: 10, color: "var(--terracotta)", letterSpacing: "0.2em", marginBottom: 8 }}>HOW ESCROW WORKS</div>
+      <h2 style={{ fontSize: 36, fontWeight: 300, letterSpacing: "-0.02em", lineHeight: 1.05, margin: 0, color: "var(--charcoal)" }}>
+        Your money,<br/>held safely,<br/>until it isn't.
+      </h2>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 28, flex: 1 }}>
+        {steps.map(s => (
+          <div key={s.n} style={{ display: "grid", gridTemplateColumns: "40px 1fr", gap: 16, alignItems: "flex-start" }}>
+            <span style={{ fontFamily: "var(--f-mono)", fontSize: 20, color: "var(--terracotta)", fontWeight: 300 }}>{s.n}</span>
+            <div>
+              <div style={{ fontSize: 17, fontWeight: 500, color: "var(--charcoal)" }}>{s.t}</div>
+              <div style={{ fontSize: 12, color: "var(--gray)", marginTop: 2 }}>{s.d}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 14, borderTop: "1px solid var(--gray-line)", marginTop: 14 }}>
+        <BgLogo size={20} color="var(--terracotta)"/>
+        <span style={{ fontFamily: "var(--f-mono)", fontSize: 10, color: "var(--gray)", letterSpacing: "0.12em" }}>ESCROW PROTECTED</span>
+      </div>
+    </div>
+  );
+}
+
+function IgCoachSpotlight() {
+  return (
+    <div style={{ ...IG, background: "var(--charcoal)", color: "var(--cream)", padding: 36, display: "flex", flexDirection: "column", border: "1px solid var(--charcoal)" }}>
+      <div style={{ fontFamily: "var(--f-mono)", fontSize: 10, color: "#D98B5C", letterSpacing: "0.2em" }}>FOUNDING COACH · 01</div>
+      <div style={{ display: "flex", gap: 20, marginTop: 20, alignItems: "center" }}>
+        <BgAvatar size={96} label="NV" accent="#D98B5C"/>
+        <div>
+          <div style={{ fontSize: 28, fontWeight: 400, letterSpacing: "-0.01em" }}>GM Nadia<br/>Volkov</div>
+          <div style={{ fontSize: 12, color: "#A89F8A", marginTop: 6, fontFamily: "var(--f-mono)", letterSpacing: "0.1em" }}>
+            2582 FIDE · ENDGAME SPEC.
+          </div>
+        </div>
+      </div>
+      <p style={{ fontSize: 15, fontFamily: "var(--f-serif)", lineHeight: 1.5, marginTop: 28, color: "#E5DFCC" }}>
+        "I joined BooGMe because I was tired of platforms that treat coaches like commodities. Here, I get paid fairly and the escrow system means my students show up prepared."
+      </p>
+      <div style={{ flex: 1 }}/>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginTop: 20 }}>
+        {["Endgames", "Positional", "1600–2200"].map(t => (
+          <span key={t} style={{ fontFamily: "var(--f-mono)", fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", padding: "6px 8px", border: "1px solid #555", color: "#D98B5C", textAlign: "center" }}>{t}</span>
+        ))}
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 16, borderTop: "1px solid #3A3A3A", marginTop: 16 }}>
+        <BgLogo size={20} color="#D98B5C" wordmarkColor="#F5F1E4"/>
+        <span style={{ fontFamily: "var(--f-mono)", fontSize: 10, color: "#A89F8A", letterSpacing: "0.12em" }}>BOOK → BOOGME.COM</span>
+      </div>
+    </div>
+  );
+}
+
+function IgTestimonial() {
+  return (
+    <div style={{ ...IG, background: "var(--cream-deep)", padding: 40, display: "flex", flexDirection: "column", border: "1px solid var(--gray-line)" }}>
+      <div style={{ fontFamily: "var(--f-serif)", fontSize: 140, lineHeight: 0.5, color: "var(--terracotta)", height: 60 }}>"</div>
+      <p style={{ fontFamily: "var(--f-serif)", fontSize: 22, lineHeight: 1.35, color: "var(--charcoal)", margin: "8px 0 24px" }}>
+        I spent two years losing money to coaches who didn't show up. My first BooGMe lesson, I didn't pay until it was over. That's the whole pitch.
+      </p>
+      <div style={{ display: "flex", gap: 14, alignItems: "center", marginTop: "auto" }}>
+        <BgAvatar size={52} label="MR" accent="#8B4513"/>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 500, color: "var(--charcoal)" }}>Marcus R.</div>
+          <div style={{ fontSize: 11, color: "var(--gray)", fontFamily: "var(--f-mono)", letterSpacing: "0.1em" }}>1540 · 7 LESSONS</div>
+        </div>
+        <div style={{ marginLeft: "auto", color: "var(--terracotta)", fontSize: 13, letterSpacing: "0.1em" }}>★★★★★</div>
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 14, borderTop: "1px solid var(--gray-line)", marginTop: 20 }}>
+        <BgLogo size={18} color="var(--terracotta)"/>
+        <span style={{ fontFamily: "var(--f-mono)", fontSize: 10, color: "var(--gray)", letterSpacing: "0.12em" }}>STUDENT STORIES</span>
+      </div>
+    </div>
+  );
+}
+
+function IgQuote() {
+  return (
+    <div style={{ ...IG, background: "var(--terracotta)", color: "var(--cream)", padding: 40, display: "flex", flexDirection: "column", border: "1px solid var(--terracotta)" }}>
+      <div style={{ fontFamily: "var(--f-mono)", fontSize: 10, color: "#F0D8BF", letterSpacing: "0.2em" }}>FIRST PRINCIPLES · 04</div>
+      <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
+        <h2 style={{ fontSize: 48, fontWeight: 300, letterSpacing: "-0.02em", lineHeight: 1.0, margin: 0 }}>
+          Chess coaching is a high-trust transaction in a low-trust environment.
+        </h2>
+      </div>
+      <div style={{ fontSize: 13, color: "#F0D8BF", marginBottom: 16 }}>
+        BooGMe fixes that with escrow.
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 14, borderTop: "1px solid #B36A42" }}>
+        <BgLogo size={20} color="#F5F1E4"/>
+        <span style={{ fontFamily: "var(--f-mono)", fontSize: 10, color: "#F0D8BF", letterSpacing: "0.12em" }}>BOOGME.COM</span>
+      </div>
+    </div>
+  );
+}
+
+function IgComparison() {
+  return (
+    <div style={{ ...IG, background: "var(--cream)", padding: 32, display: "flex", flexDirection: "column", border: "1px solid var(--gray-line)" }}>
+      <h2 style={{ fontSize: 24, fontWeight: 500, color: "var(--charcoal)", margin: "0 0 20px", textAlign: "center", letterSpacing: "-0.01em" }}>
+        The honest comparison
+      </h2>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 16, flex: 1 }}>
+        <div>
+          <div style={{ fontFamily: "var(--f-mono)", fontSize: 9, letterSpacing: "0.14em", color: "var(--gray)", marginBottom: 14, textTransform: "uppercase" }}>Other platforms</div>
+          {["15–30% fees", "Pay upfront", "No protection", "Generic listings"].map(t => (
+            <div key={t} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12, fontSize: 13, color: "var(--charcoal-soft)" }}>
+              <BgIcon name="x" size={14} color="var(--gray)"/> {t}
+            </div>
+          ))}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", fontSize: 22, color: "var(--terracotta)", fontWeight: 300, letterSpacing: "0.1em" }}>
+          <div style={{ width: 1, height: 40, background: "var(--gray-line)" }}/>
+          <span>VS</span>
+          <div style={{ width: 1, height: 40, background: "var(--gray-line)" }}/>
+        </div>
+        <div>
+          <div style={{ fontFamily: "var(--f-mono)", fontSize: 9, letterSpacing: "0.14em", color: "var(--terracotta)", marginBottom: 14, textTransform: "uppercase" }}>BooGMe</div>
+          {["6% flat", "Pay after lesson", "Escrow protected", "AI matched"].map(t => (
+            <div key={t} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12, fontSize: 13, color: "var(--charcoal)" }}>
+              <BgIcon name="check" size={14} color="var(--terracotta)"/> {t}
+            </div>
+          ))}
+        </div>
+      </div>
+      <div style={{ display: "flex", justifyContent: "center", paddingTop: 14, borderTop: "1px solid var(--gray-line)", marginTop: 8 }}>
+        <BgLogo size={22} color="var(--terracotta)"/>
+      </div>
+    </div>
+  );
+}
+
+// ============ Twitter / X cards ============
+function TwitterCard() {
+  return (
+    <div style={{ ...TW, background: "var(--cream)", padding: 40, display: "flex", border: "1px solid var(--gray-line)" }}>
+      <div style={{ flex: 1.2, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+        <div style={{ fontFamily: "var(--f-mono)", fontSize: 10, color: "var(--terracotta)", letterSpacing: "0.2em", marginBottom: 10 }}>NEW · WEEK 01</div>
+        <h2 style={{ fontSize: 44, fontWeight: 300, lineHeight: 1.0, color: "var(--charcoal)", margin: 0, letterSpacing: "-0.02em" }}>
+          Pay after the lesson.<br/>Not before.
+        </h2>
+        <p style={{ fontSize: 14, color: "var(--charcoal-soft)", marginTop: 16, maxWidth: 340, lineHeight: 1.5 }}>
+          Escrow-held payments, AI coach matching, 48-hour refund window. Chess coaching, finally professionalized.
+        </p>
+        <BgLogo size={22} color="var(--terracotta)" />
+      </div>
+      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--cream-deep)", border: "1px solid var(--gray-line)" }}>
+        <div style={{ padding: 20, textAlign: "center" }}>
+          <BgMark size={110} color="var(--terracotta)"/>
+          <div style={{ fontFamily: "var(--f-mono)", fontSize: 10, color: "var(--gray)", letterSpacing: "0.14em", marginTop: 14 }}>FIG. — THE MARK</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TwitterThreadCover() {
+  return (
+    <div style={{ ...TW, background: "var(--charcoal)", color: "var(--cream)", padding: 40, display: "flex", flexDirection: "column", justifyContent: "space-between", border: "1px solid var(--charcoal)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div style={{ fontFamily: "var(--f-mono)", fontSize: 10, color: "#D98B5C", letterSpacing: "0.2em" }}>🧵 THREAD — 01/12</div>
+        <BgLogo size={18} color="#D98B5C" wordmarkColor="#F5F1E4"/>
+      </div>
+      <h2 style={{ fontSize: 52, fontWeight: 300, letterSpacing: "-0.025em", lineHeight: 0.98, margin: 0 }}>
+        I coached<br/>Fabiano Caruana.<br/>
+        <span style={{ color: "#D98B5C" }}>Here's what's broken<br/>in chess coaching.</span>
+      </h2>
+      <div style={{ fontFamily: "var(--f-mono)", fontSize: 11, color: "#A89F8A", letterSpacing: "0.14em" }}>
+        A 12-TWEET THREAD ON TRUST, FEES, AND THE ESCROW FIX
+      </div>
+    </div>
+  );
+}
+
+// ============ LinkedIn card ============
+function LinkedInCard() {
+  return (
+    <div style={{ ...LI, background: "var(--cream)", padding: 44, display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 28, alignItems: "center", border: "1px solid var(--gray-line)" }}>
+      <div>
+        <div style={{ fontFamily: "var(--f-mono)", fontSize: 10, color: "var(--terracotta)", letterSpacing: "0.2em", marginBottom: 12 }}>BUILDING IN PUBLIC · APRIL 2026</div>
+        <h2 style={{ fontSize: 40, fontWeight: 300, color: "var(--charcoal)", margin: "0 0 16px", letterSpacing: "-0.02em", lineHeight: 1.02 }}>
+          Why we built escrow into chess coaching.
+        </h2>
+        <p style={{ fontSize: 14, color: "var(--charcoal-soft)", lineHeight: 1.55, fontFamily: "var(--f-serif)", margin: "0 0 20px", maxWidth: 420 }}>
+          An essay on trust infrastructure, coach economics, and the professionalization of a fragmented market.
+        </p>
+        <div style={{ display: "flex", gap: 10, fontSize: 11, fontFamily: "var(--f-mono)", color: "var(--gray)", letterSpacing: "0.12em", textTransform: "uppercase" }}>
+          <span>9 MIN READ</span><span>·</span><span>FOUNDER ESSAY</span>
+        </div>
+      </div>
+      <div style={{ background: "var(--terracotta)", color: "var(--cream)", padding: 24, height: "100%", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+        <div style={{ fontFamily: "var(--f-mono)", fontSize: 10, letterSpacing: "0.2em", color: "#F0D8BF" }}>BY THE NUMBERS</div>
+        <div>
+          <div style={{ fontSize: 56, fontWeight: 300, lineHeight: 1, letterSpacing: "-0.02em" }}>15–30%</div>
+          <div style={{ fontSize: 13, color: "#F0D8BF", marginTop: 6 }}>avg fees on legacy platforms</div>
+          <div style={{ fontSize: 56, fontWeight: 300, lineHeight: 1, letterSpacing: "-0.02em", marginTop: 16 }}>6%</div>
+          <div style={{ fontSize: 13, color: "#F0D8BF", marginTop: 6 }}>flat, on BooGMe</div>
+        </div>
+        <BgLogo size={18} color="#F5F1E4"/>
+      </div>
+    </div>
+  );
+}
+
+// ============ Stories / Reels ============
+function StoryFrame({ variant }) {
+  if (variant === "stat") {
+    return (
+      <div style={{ ...STORY, background: "var(--cream)", padding: 28, display: "flex", flexDirection: "column", border: "1px solid var(--gray-line)" }}>
+        <div style={{ fontFamily: "var(--f-mono)", fontSize: 9, color: "var(--terracotta)", letterSpacing: "0.2em" }}>STAT · 01</div>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+          <div style={{ fontSize: 140, fontWeight: 300, color: "var(--terracotta)", lineHeight: 0.9, letterSpacing: "-0.04em" }}>48h</div>
+          <div style={{ fontSize: 22, fontWeight: 400, color: "var(--charcoal)", marginTop: 16, lineHeight: 1.15 }}>
+            Money-back window on every lesson.
+          </div>
+          <p style={{ fontSize: 12, color: "var(--gray)", marginTop: 12, lineHeight: 1.5 }}>
+            If you're not happy, you're not charged. That's the deal.
+          </p>
+        </div>
+        <BgLogo size={16} color="var(--terracotta)"/>
+      </div>
+    );
+  }
+  if (variant === "quote") {
+    return (
+      <div style={{ ...STORY, background: "var(--charcoal)", color: "var(--cream)", padding: 28, display: "flex", flexDirection: "column", border: "1px solid var(--charcoal)" }}>
+        <div style={{ fontFamily: "var(--f-mono)", fontSize: 9, color: "#D98B5C", letterSpacing: "0.2em" }}>STUDENT · QUOTE</div>
+        <div style={{ fontFamily: "var(--f-serif)", fontSize: 90, lineHeight: 0.4, color: "#D98B5C", marginTop: 20 }}>"</div>
+        <p style={{ fontFamily: "var(--f-serif)", fontSize: 20, lineHeight: 1.3, marginTop: 20 }}>
+          Took the 8-minute quiz. Got matched with a coach who actually gets how I learn.
+        </p>
+        <div style={{ marginTop: "auto", borderTop: "1px solid #3A3A3A", paddingTop: 14 }}>
+          <div style={{ fontSize: 12 }}>Ava L. · 1820</div>
+          <div style={{ fontSize: 9, fontFamily: "var(--f-mono)", color: "#A89F8A", letterSpacing: "0.12em", marginTop: 2 }}>5 LESSONS COMPLETED</div>
+        </div>
+        <div style={{ marginTop: 14 }}><BgLogo size={14} color="#D98B5C" wordmarkColor="#F5F1E4"/></div>
+      </div>
+    );
+  }
+  // cta
+  return (
+    <div style={{ ...STORY, background: "var(--terracotta)", color: "var(--cream)", padding: 28, display: "flex", flexDirection: "column", border: "1px solid var(--terracotta)" }}>
+      <div style={{ fontFamily: "var(--f-mono)", fontSize: 9, color: "#F0D8BF", letterSpacing: "0.2em" }}>CTA · SWIPE UP</div>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+        <h3 style={{ fontSize: 40, fontWeight: 300, letterSpacing: "-0.02em", lineHeight: 1, margin: 0 }}>
+          Find your<br/>perfect coach<br/>in 8 minutes.
+        </h3>
+        <p style={{ fontSize: 13, color: "#F0D8BF", marginTop: 16, lineHeight: 1.5 }}>
+          20 questions. Three tailored matches. Zero risk.
+        </p>
+      </div>
+      <button style={{ background: "var(--cream)", color: "var(--terracotta)", border: "none", padding: "14px 0", fontFamily: "var(--f-sans)", fontSize: 13, letterSpacing: "0.14em", textTransform: "uppercase", fontWeight: 600, cursor: "pointer" }}>
+        Take the quiz →
+      </button>
+      <div style={{ textAlign: "center", marginTop: 14 }}><BgLogo size={14} color="#F5F1E4"/></div>
+    </div>
+  );
+}
+
+Object.assign(window, { SocialTab });
+
+// Website tab — full hi-fi website prototype for BooGMe
+
+const { useState } = React;
+
+// ============ Hero ============
+function WebsiteHero({ variant = "editorial" }) {
+  if (variant === "split") {
+    return (
+      <section style={heroStyles.splitWrap}>
+        <div style={heroStyles.splitLeft}>
+          <span className="eyebrow">Chess coaching, professionalized</span>
+          <h1 style={heroStyles.h1Split}>
+            Pay after the<br/>lesson. Not before.
+          </h1>
+          <p style={heroStyles.lede}>
+            BooGMe holds your payment in escrow until your lesson is done. Match with the right coach in 8 minutes. Refund window: 48 hours.
+          </p>
+          <div style={{ display: "flex", gap: 12, marginTop: 28 }}>
+            <a className="btn primary" href="#">Take the quiz <BgIcon name="arrow" size={14} color="#F5F1E4"/></a>
+            <a className="btn ghost" href="#">Coach on BooGMe</a>
+          </div>
+          <div style={heroStyles.trustRow}>
+            <TrustItem icon="shield" label="Escrow protected" />
+            <TrustItem icon="clock" label="48h refund" />
+            <TrustItem icon="wallet" label="Low platform fee" />
+          </div>
+        </div>
+        <div style={heroStyles.splitRight}>
+          <BoardArtwork />
+        </div>
+      </section>
+    );
+  }
+
+  // editorial — default
+  return (
+    <Spotlight>
+      <section style={heroStyles.wrap}>
+        <MeshBg/>
+        <div style={{ position: "relative", zIndex: 2 }}>
+          <div style={heroStyles.topRow}>
+            <span className="eyebrow">01 — The platform</span>
+            <span style={{ fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--gray)", letterSpacing: "0.14em" }}>
+              BOOGME.COM / HOMEPAGE
+            </span>
+          </div>
+
+          <div style={heroStyles.heroGrid}>
+            <div>
+              <Reveal>
+                <h1 style={heroStyles.h1}>
+                  Chess coaching,<br/>
+                  <span className="shimmer">without the risk.</span>
+                </h1>
+              </Reveal>
+              <Reveal delay={120}>
+                <p style={heroStyles.leadeBig}>
+                  Pay only after your lesson. An AI onboarding matches you with a coach tuned to your style, your gaps, and the way you learn. Money held in escrow. 48-hour refund window.
+                </p>
+              </Reveal>
+              <Reveal delay={220}>
+                <div style={{ display: "flex", gap: 12, marginTop: 28, alignItems: "center", flexWrap: "wrap" }}>
+                  <a className="btn primary" href="#">Take the 8-minute quiz <BgIcon name="arrow" size={14} color="#F5F1E4"/></a>
+                  <a className="btn ghost" href="#">I'm a coach →</a>
+                  <span style={{ fontFamily: "var(--f-mono)", fontSize: 10, color: "var(--gray)", letterSpacing: "0.14em" }}>
+                    No signup · No card required
+                  </span>
+                </div>
+              </Reveal>
+            </div>
+            <Reveal delay={160} style={{ minHeight: 460 }}>
+              <HeroScene3D/>
+            </Reveal>
+          </div>
+
+          <hr className="rule" style={{ margin: "56px 0 0", position: "relative", zIndex: 2 }}/>
+          <div style={heroStyles.trustStrip}>
+            <Stat value="0%" label="Platform fee until coaches earn $100" />
+            <Stat value="48h" label="Money-back refund window" />
+            <Stat value="8min" label="To your coach match" />
+            <Stat value="20Q" label="Style & learning assessment" />
+          </div>
+        </div>
+      </section>
+      <Ticker/>
+    </Spotlight>
+  );
+}
+
+function TrustItem({ icon, label }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--charcoal)", fontSize: 12 }}>
+      <BgIcon name={icon} size={16} color="var(--terracotta)"/> {label}
+    </div>
+  );
+}
+
+function Stat({ value, label }) {
+  return (
+    <div style={{ flex: 1, paddingRight: 24 }}>
+      <div style={{ fontSize: 44, fontWeight: 300, color: "var(--terracotta)", letterSpacing: "-0.02em", lineHeight: 1 }}>
+        {value}
+      </div>
+      <div style={{ fontSize: 12, color: "var(--gray)", marginTop: 8, maxWidth: 180, lineHeight: 1.4 }}>
+        {label}
+      </div>
+    </div>
+  );
+}
+
+function BoardArtwork() {
+  // decorative composition using chess board + mark
+  const cells = [];
+  for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
+    const dark = (r + c) % 2 === 1;
+    cells.push(
+      <rect key={`${r}-${c}`} x={c * 56} y={r * 56} width={56} height={56}
+        fill={dark ? "#2C2C2C" : "#F5F1E4"} />
+    );
+  }
+  return (
+    <div style={{ position: "relative", width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <svg viewBox="0 0 448 448" style={{ width: "min(100%, 520px)", height: "auto", border: "1px solid var(--gray-line)" }}>
+        {cells}
+        {/* overlay mark on square */}
+        <g transform="translate(112, 112)">
+          <circle cx="66" cy="60" r="28" fill="#8B4513" />
+          <path d="M112 28 L152 28 L126 82 L158 82 L96 170 L116 104 L88 104 Z" fill="#8B4513" />
+          <path d="M34 172 L166 172 L100 108 Z" fill="#8B4513" />
+        </g>
+      </svg>
+      <div style={{
+        position: "absolute", left: -20, bottom: 16,
+        fontFamily: "var(--f-mono)", fontSize: 10, color: "var(--gray)",
+        letterSpacing: "0.14em", textTransform: "uppercase",
+        writingMode: "vertical-rl", transform: "rotate(180deg)",
+      }}>
+        Fig. 01 — Trust, placed on the board
+      </div>
+    </div>
+  );
+}
+
+const heroStyles = {
+  wrap: { padding: "72px 80px 60px", background: "var(--cream)", borderBottom: "1px solid var(--gray-line)", position: "relative", overflow: "hidden" },
+  topRow: { display: "flex", justifyContent: "space-between", marginBottom: 28, position: "relative", zIndex: 2 },
+  h1: { fontSize: 92, fontWeight: 300, letterSpacing: "-0.025em", lineHeight: 0.96, margin: "0 0 28px", color: "var(--charcoal)" },
+  heroGrid: { display: "grid", gridTemplateColumns: "1.15fr 1fr", gap: 48, alignItems: "center", position: "relative", zIndex: 2 },
+  heroBody: { display: "grid", gridTemplateColumns: "1.3fr 1fr", gap: 64, alignItems: "end" },
+  leadeBig: { fontSize: 20, lineHeight: 1.45, color: "var(--charcoal-soft)", margin: 0, fontFamily: "var(--f-serif)" },
+  ctaCol: { display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 10 },
+  trustStrip: { display: "flex", paddingTop: 40, gap: 24 },
+
+  splitWrap: { display: "grid", gridTemplateColumns: "1.1fr 1fr", gap: 56, padding: "72px 80px", background: "var(--cream)", borderBottom: "1px solid var(--gray-line)", alignItems: "center" },
+  splitLeft: {},
+  splitRight: { display: "flex", alignItems: "center", justifyContent: "center", minHeight: 520 },
+  h1Split: { fontSize: 72, fontWeight: 300, letterSpacing: "-0.02em", lineHeight: 1.0, margin: "20px 0 24px", color: "var(--charcoal)" },
+  lede: { fontSize: 17, lineHeight: 1.55, color: "var(--charcoal-soft)", maxWidth: 520, fontFamily: "var(--f-serif)", margin: 0 },
+  trustRow: { display: "flex", gap: 28, marginTop: 40, paddingTop: 24, borderTop: "1px solid var(--gray-line)" },
+};
+
+// ============ Features / How it works ============
+function WebsiteFeatures() {
+  const items = [
+    { n: "01", title: "Escrow-held payment", body: "Your payment sits in escrow until the lesson is complete. Dispute it within 48 hours, get it all back.", icon: "shield" },
+    { n: "02", title: "AI coach matching", body: "A 20-question assessment learns your style, goals, time, openings, weaknesses — and surfaces 3 coaches tuned to how you learn.", icon: "brain" },
+    { n: "03", title: "Rating-locked payouts", body: "Coaches keep their fees only when ratings hold. Quality is not a badge; it's a gate on payment.", icon: "lock" },
+    { n: "04", title: "Coach-first economics", body: "Low single-digit platform fees. No card required until a coach earns $100. Coaches keep more, students pay less.", icon: "wallet" },
+  ];
+  return (
+    <section style={{ padding: "80px", background: "var(--cream)", borderBottom: "1px solid var(--gray-line)" }}>
+      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 48 }}>
+        <div>
+          <span className="eyebrow">02 — How it works</span>
+          <h2 style={{ fontSize: 56, fontWeight: 300, letterSpacing: "-0.02em", margin: "8px 0 0", color: "var(--charcoal)", lineHeight: 1.05 }}>
+            The infrastructure<br/>coaching never had.
+          </h2>
+        </div>
+        <p style={{ maxWidth: 380, color: "var(--gray)", margin: 0, fontSize: 14, lineHeight: 1.5 }}>
+          BooGMe brings the same trust infrastructure Airbnb brought to lodging and Stripe brought to payments — to chess coaching.
+        </p>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 0, borderTop: "1px solid var(--charcoal)" }}>
+        {items.map((it, i) => (
+          <Reveal key={it.n} delay={i * 80}><div style={{
+            padding: "32px 28px 36px 0",
+            borderRight: i < items.length - 1 ? "1px solid var(--gray-line)" : "none",
+            paddingLeft: i === 0 ? 0 : 28,
+            height: "100%",
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 28 }}>
+              <span style={{ fontFamily: "var(--f-mono)", fontSize: 12, color: "var(--terracotta)", letterSpacing: "0.14em" }}>
+                {it.n}
+              </span>
+              <BgIcon name={it.icon} size={22} color="var(--terracotta)" />
+            </div>
+            <h3 style={{ fontSize: 20, fontWeight: 500, margin: "0 0 12px", letterSpacing: "-0.01em" }}>{it.title}</h3>
+            <p style={{ fontSize: 14, lineHeight: 1.55, color: "var(--charcoal-soft)", margin: 0 }}>{it.body}</p>
+          </div></Reveal>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// ============ Quiz Preview ============
+function QuizPreview() {
+  const [step, setStep] = useState(2);
+  const questions = [
+    { q: "What's your current rating?", opts: ["Unrated", "Under 800", "800–1200", "1200–1600", "1600–2000", "2000+"] },
+    { q: "What's your primary goal?", opts: ["Win my next tournament", "Break a rating plateau", "Play a specific opening system", "Build fundamentals", "Coach my kid", "Have fun & improve casually"] },
+    { q: "When you're stuck in a position, what do you do?", opts: ["Calculate concrete lines", "Look for patterns", "Think about long-term plans", "Play on intuition", "Freeze, honestly"] },
+    { q: "How do you learn best?", opts: ["Analyzing my games", "Structured curriculum", "Studying masters", "Drills & puzzles", "Conversation & questions"] },
+  ];
+  const current = questions[step] || questions[0];
+  const progress = ((step + 1) / 20) * 100;
+  return (
+    <section style={{ padding: "80px", background: "var(--cream-deep)", borderBottom: "1px solid var(--gray-line)" }}>
+      <div style={{ display: "flex", gap: 64, alignItems: "center" }}>
+        <div style={{ flex: 1 }}>
+          <span className="eyebrow">03 — Onboarding</span>
+          <h2 style={{ fontSize: 56, fontWeight: 300, letterSpacing: "-0.02em", margin: "8px 0 20px", color: "var(--charcoal)", lineHeight: 1.05 }}>
+            20 questions.<br/>8 minutes.<br/>One perfect match.
+          </h2>
+          <p style={{ fontSize: 17, lineHeight: 1.5, color: "var(--charcoal-soft)", maxWidth: 440, fontFamily: "var(--f-serif)" }}>
+            We learn your rating, style, goals, learning preferences, weaknesses, schedule, and budget — then recommend three coaches who fit the way you think.
+          </p>
+          <div style={{ display: "flex", gap: 12, marginTop: 28, flexWrap: "wrap" }}>
+            {["Style", "Learning mode", "Goals", "Weaknesses", "Schedule", "Openings"].map(t => (
+              <span key={t} className="tag" style={{ borderColor: "var(--charcoal)", color: "var(--charcoal)" }}>{t}</span>
+            ))}
+          </div>
+        </div>
+
+        {/* Quiz card */}
+        <div style={{ flex: 1, background: "var(--cream)", border: "1px solid var(--charcoal)", padding: 36, minHeight: 480 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+            <BgLogo size={24} color="var(--terracotta)" showWordmark={false} />
+            <span style={{ fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--gray)", letterSpacing: "0.12em" }}>
+              QUESTION {String(step+1).padStart(2, "0")} / 20
+            </span>
+          </div>
+          <div style={{ height: 2, background: "var(--gray-line)", marginBottom: 32 }}>
+            <div style={{ width: `${progress}%`, height: "100%", background: "var(--terracotta)" }} />
+          </div>
+          <h3 style={{ fontSize: 28, fontWeight: 400, lineHeight: 1.2, letterSpacing: "-0.01em", margin: "0 0 28px" }}>
+            {current.q}
+          </h3>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {current.opts.map((o, i) => (
+              <button key={o} style={{
+                textAlign: "left",
+                padding: "14px 18px",
+                background: i === 1 ? "var(--charcoal)" : "transparent",
+                color: i === 1 ? "var(--cream)" : "var(--charcoal)",
+                border: "1px solid var(--charcoal)",
+                fontSize: 14,
+                fontFamily: "inherit",
+                cursor: "pointer",
+                display: "flex", justifyContent: "space-between", alignItems: "center",
+              }}>
+                <span>{o}</span>
+                {i === 1 && <BgIcon name="check" size={16} color="var(--cream)"/>}
+              </button>
+            ))}
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 32, paddingTop: 20, borderTop: "1px solid var(--gray-line)" }}>
+            <button className="btn ghost sm" onClick={() => setStep(Math.max(0, step-1))}>← Back</button>
+            <button className="btn primary sm" onClick={() => setStep(Math.min(questions.length-1, step+1))}>
+              Continue <BgIcon name="arrow" size={12} color="#F5F1E4" />
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ============ Coach Marketplace ============
+function CoachMarketplace() {
+  const coaches = [
+    { name: "GM Nadia Volkov", title: "2582 FIDE · Endgame specialist", match: 94, price: 65, rating: 4.9, reviews: 128, tags: ["Endgames", "Positional", "1600–2200"], initials: "NV" },
+    { name: "IM Tomás Rivera", title: "2445 FIDE · Dynamic play", match: 91, price: 48, rating: 4.8, reviews: 87, tags: ["Attacking", "Openings", "1200–1800"], initials: "TR" },
+    { name: "FM Helena Okafor", title: "2310 FIDE · Junior coaching", match: 88, price: 38, rating: 5.0, reviews: 54, tags: ["Kids", "Fundamentals", "Unrated–1200"], initials: "HO" },
+  ];
+  return (
+    <section style={{ padding: "80px", background: "var(--cream)", borderBottom: "1px solid var(--gray-line)" }}>
+      <div style={{ marginBottom: 48 }}>
+        <span className="eyebrow">04 — Your matches</span>
+        <h2 style={{ fontSize: 56, fontWeight: 300, letterSpacing: "-0.02em", margin: "8px 0 0", color: "var(--charcoal)", lineHeight: 1.05 }}>
+          Three coaches.<br/>Ranked by fit, not ad spend.
+        </h2>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20 }}>
+        {coaches.map((c, i) => (
+          <Reveal key={c.name} delay={i * 120}><CoachCard coach={c} featured={i === 0} /></Reveal>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function CoachCard({ coach, featured }) {
+  return (
+    <div style={{
+      background: featured ? "var(--charcoal)" : "var(--cream)",
+      color: featured ? "var(--cream)" : "var(--charcoal)",
+      border: `1px solid ${featured ? "var(--charcoal)" : "var(--gray-line)"}`,
+      padding: 0,
+      display: "flex", flexDirection: "column",
+    }}>
+      {/* match score strip */}
+      <div style={{
+        padding: "16px 24px",
+        borderBottom: `1px solid ${featured ? "#444" : "var(--gray-line)"}`,
+        display: "flex", justifyContent: "space-between", alignItems: "center",
+      }}>
+        <span style={{ fontFamily: "var(--f-mono)", fontSize: 10, letterSpacing: "0.16em", textTransform: "uppercase", color: featured ? "var(--cream)" : "var(--gray)" }}>
+          Match score
+        </span>
+        <span style={{ fontSize: 32, fontWeight: 300, letterSpacing: "-0.02em", color: featured ? "var(--cream)" : "var(--terracotta)" }}>
+          {coach.match}%
+        </span>
+      </div>
+      <div style={{ padding: 24 }}>
+        <div style={{ display: "flex", gap: 16, alignItems: "center", marginBottom: 20 }}>
+          <BgAvatar size={64} label={coach.initials} accent={featured ? "#F5F1E4" : "#8B4513"} />
+          <div>
+            <div style={{ fontSize: 18, fontWeight: 500, letterSpacing: "-0.01em" }}>{coach.name}</div>
+            <div style={{ fontSize: 12, color: featured ? "#C9C2AE" : "var(--gray)", marginTop: 4 }}>{coach.title}</div>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 20 }}>
+          {coach.tags.map(t => (
+            <span key={t} style={{
+              fontFamily: "var(--f-mono)", fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase",
+              padding: "3px 8px",
+              border: `1px solid ${featured ? "#666" : "var(--gray-line)"}`,
+              color: featured ? "#C9C2AE" : "var(--charcoal-soft)",
+            }}>{t}</span>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: 20, marginBottom: 24, fontSize: 12 }}>
+          <div>
+            <div style={{ fontSize: 9, fontFamily: "var(--f-mono)", letterSpacing: "0.14em", textTransform: "uppercase", color: featured ? "#A89F8A" : "var(--gray)" }}>Rating</div>
+            <div style={{ fontSize: 15, marginTop: 4 }}>★ {coach.rating} <span style={{ color: featured ? "#A89F8A" : "var(--gray)" }}>({coach.reviews})</span></div>
+          </div>
+          <div>
+            <div style={{ fontSize: 9, fontFamily: "var(--f-mono)", letterSpacing: "0.14em", textTransform: "uppercase", color: featured ? "#A89F8A" : "var(--gray)" }}>Per lesson</div>
+            <div style={{ fontSize: 15, marginTop: 4 }}>${coach.price}</div>
+          </div>
+          <div>
+            <div style={{ fontSize: 9, fontFamily: "var(--f-mono)", letterSpacing: "0.14em", textTransform: "uppercase", color: featured ? "#A89F8A" : "var(--gray)" }}>Next slot</div>
+            <div style={{ fontSize: 15, marginTop: 4 }}>Today 7pm</div>
+          </div>
+        </div>
+        <button className="btn primary" style={{ width: "100%", justifyContent: "center" }}>
+          Book a trial lesson <BgIcon name="arrow" size={14} color="#F5F1E4"/>
+        </button>
+        <div style={{ fontSize: 10, textAlign: "center", marginTop: 10, color: featured ? "#A89F8A" : "var(--gray)", fontFamily: "var(--f-mono)", letterSpacing: "0.08em" }}>
+          You won't be charged until the lesson ends.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============ Coach Dashboard preview ============
+function CoachDashboardPreview() {
+  return (
+    <section style={{ padding: "80px", background: "var(--charcoal)", color: "var(--cream)", borderBottom: "1px solid var(--gray-line)" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1.4fr", gap: 64, alignItems: "center" }}>
+        <div>
+          <span className="eyebrow" style={{ color: "#D98B5C" }}>05 — For coaches</span>
+          <h2 style={{ fontSize: 56, fontWeight: 300, letterSpacing: "-0.02em", margin: "8px 0 20px", lineHeight: 1.05 }}>
+            Run your whole coaching business from one place.
+          </h2>
+          <p style={{ fontSize: 17, lineHeight: 1.55, color: "#C9C2AE", maxWidth: 440, fontFamily: "var(--f-serif)" }}>
+            Scheduling, lesson video, payouts, group sessions, pay-per-view tutorials, and made-to-order content — priced by you, protected by escrow, delivered through your own storefront.
+          </p>
+          <ul style={{ marginTop: 32, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 12 }}>
+            {[
+              ["calendar", "Integrated scheduling & availability"],
+              ["video", "Built-in lesson video + annotation"],
+              ["users", "1:1, group, recurring, drop-in"],
+              ["play", "PPV tutorials & on-demand content"],
+              ["chart", "Earnings, retention, NPS in one view"],
+            ].map(([ic, txt]) => (
+              <li key={txt} style={{ display: "flex", alignItems: "center", gap: 14, fontSize: 14 }}>
+                <BgIcon name={ic} size={18} color="#D98B5C" />
+                <span>{txt}</span>
+              </li>
+            ))}
+          </ul>
+          <div style={{ marginTop: 32 }}>
+            <a className="btn" style={{ background: "#D98B5C", borderColor: "#D98B5C", color: "#1A1A1A" }} href="#">
+              Apply as a founding coach <BgIcon name="arrow" size={14} color="#1A1A1A"/>
+            </a>
+          </div>
+        </div>
+        <CoachDashMock />
+      </div>
+    </section>
+  );
+}
+
+function CoachDashMock() {
+  return (
+    <div style={{ background: "#1E1E1E", border: "1px solid #3A3A3A", padding: 0, borderRadius: 2, overflow: "hidden" }}>
+      {/* toolbar */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 16px", borderBottom: "1px solid #3A3A3A", background: "#161616" }}>
+        <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#444" }} />
+        <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#444" }} />
+        <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#444" }} />
+        <span style={{ fontFamily: "var(--f-mono)", fontSize: 10, color: "#888", marginLeft: 12, letterSpacing: "0.12em" }}>
+          boogme.com/dashboard
+        </span>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "160px 1fr", minHeight: 480 }}>
+        {/* sidebar */}
+        <div style={{ borderRight: "1px solid #3A3A3A", padding: "20px 16px", background: "#161616" }}>
+          <BgLogo size={18} color="#D98B5C" wordmarkColor="#F5F1E4" />
+          <div style={{ fontSize: 9, fontFamily: "var(--f-mono)", letterSpacing: "0.14em", textTransform: "uppercase", color: "#666", marginTop: 28, marginBottom: 10 }}>Menu</div>
+          {["Overview", "Schedule", "Students", "Lessons", "Content", "Payouts", "Profile"].map((m, i) => (
+            <div key={m} style={{
+              fontSize: 12, padding: "8px 10px", marginLeft: -10, borderLeft: `2px solid ${i === 0 ? "#D98B5C" : "transparent"}`,
+              color: i === 0 ? "#F5F1E4" : "#888", marginBottom: 2,
+            }}>{m}</div>
+          ))}
+        </div>
+        {/* content */}
+        <div style={{ padding: 24 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 20 }}>
+            <div>
+              <div style={{ fontFamily: "var(--f-mono)", fontSize: 10, color: "#888", letterSpacing: "0.14em" }}>APRIL 2026</div>
+              <div style={{ fontSize: 22, fontWeight: 400, marginTop: 4 }}>Good afternoon, Nadia.</div>
+            </div>
+            <button style={{ background: "#D98B5C", color: "#1A1A1A", border: "none", padding: "8px 14px", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", cursor: "pointer" }}>+ New session</button>
+          </div>
+          {/* stat grid */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 24 }}>
+            {[
+              { l: "This month", v: "$3,840", d: "+22%" },
+              { l: "Lessons taught", v: "48", d: "12 this week" },
+              { l: "Avg rating", v: "4.96", d: "128 reviews" },
+              { l: "Retention", v: "87%", d: "90-day" },
+            ].map(s => (
+              <div key={s.l} style={{ border: "1px solid #3A3A3A", padding: 14 }}>
+                <div style={{ fontFamily: "var(--f-mono)", fontSize: 9, color: "#888", letterSpacing: "0.14em", textTransform: "uppercase" }}>{s.l}</div>
+                <div style={{ fontSize: 26, marginTop: 8, fontWeight: 300, color: "#F5F1E4" }}>{s.v}</div>
+                <div style={{ fontSize: 10, marginTop: 4, color: "#D98B5C", fontFamily: "var(--f-mono)" }}>{s.d}</div>
+              </div>
+            ))}
+          </div>
+          {/* upcoming sessions */}
+          <div style={{ fontFamily: "var(--f-mono)", fontSize: 9, color: "#888", letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 10 }}>Upcoming</div>
+          {[
+            { t: "5:00 PM", who: "Marcus Reid", kind: "1:1 · Endgames · 60min", esc: "Escrow held" },
+            { t: "6:30 PM", who: "Group: Rook endings", kind: "4 students · 45min", esc: "Confirmed" },
+            { t: "8:00 PM", who: "Ava Lindqvist", kind: "1:1 · Opening prep · 60min", esc: "Escrow held" },
+          ].map(r => (
+            <div key={r.who} style={{
+              display: "grid", gridTemplateColumns: "70px 1.4fr 1fr auto", gap: 16, alignItems: "center",
+              padding: "12px 0", borderTop: "1px solid #2A2A2A", fontSize: 12,
+            }}>
+              <span style={{ fontFamily: "var(--f-mono)", color: "#D98B5C" }}>{r.t}</span>
+              <span style={{ color: "#F5F1E4" }}>{r.who}</span>
+              <span style={{ color: "#888" }}>{r.kind}</span>
+              <span style={{ fontSize: 9, fontFamily: "var(--f-mono)", letterSpacing: "0.12em", textTransform: "uppercase", color: r.esc === "Escrow held" ? "#77B377" : "#888" }}>{r.esc}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============ Pricing / plans ============
+function Pricing() {
+  const tiers = [
+    { name: "Student", price: "Free to match", sub: "Pay per lesson, escrow protected", feats: ["20-question match quiz", "3 tailored coach recommendations", "48h refund window on any lesson", "Only pay after the lesson ends"], cta: "Take the quiz" },
+    { name: "Coach — Starter", price: "0%", sub: "Until you earn $100", feats: ["Full coach storefront", "Escrow-protected payouts", "Scheduling & video built in", "No payment details required yet"], cta: "Apply to coach", featured: true },
+    { name: "Coach — Pro", price: "6%", sub: "Flat platform fee · after $100", feats: ["Everything in Starter", "Group sessions & PPV content", "Made-to-order commissions", "Analytics, retention, NPS"], cta: "See pro tools" },
+  ];
+  return (
+    <section style={{ padding: "80px", background: "var(--cream)", borderBottom: "1px solid var(--gray-line)" }}>
+      <div style={{ marginBottom: 48 }}>
+        <span className="eyebrow">06 — Pricing</span>
+        <h2 style={{ fontSize: 56, fontWeight: 300, letterSpacing: "-0.02em", margin: "8px 0 0", color: "var(--charcoal)", lineHeight: 1.05 }}>
+          Fair to the student.<br/>Fair to the coach.
+        </h2>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 0, borderTop: "1px solid var(--charcoal)", borderLeft: "1px solid var(--charcoal)" }}>
+        {tiers.map((t, i) => (
+          <div key={t.name} style={{
+            padding: 32,
+            borderRight: "1px solid var(--charcoal)",
+            borderBottom: "1px solid var(--charcoal)",
+            background: t.featured ? "var(--terracotta)" : "var(--cream)",
+            color: t.featured ? "var(--cream)" : "var(--charcoal)",
+            minHeight: 420,
+            display: "flex", flexDirection: "column",
+          }}>
+            <div style={{ fontFamily: "var(--f-mono)", fontSize: 10, letterSpacing: "0.16em", textTransform: "uppercase", color: t.featured ? "#F0D8BF" : "var(--gray)" }}>
+              0{i+1} {t.featured && "· Founding offer"}
+            </div>
+            <div style={{ fontSize: 22, fontWeight: 500, marginTop: 12 }}>{t.name}</div>
+            <div style={{ fontSize: 48, fontWeight: 300, letterSpacing: "-0.02em", marginTop: 20, lineHeight: 1 }}>{t.price}</div>
+            <div style={{ fontSize: 13, marginTop: 8, color: t.featured ? "#F0D8BF" : "var(--gray)" }}>{t.sub}</div>
+            <ul style={{ padding: 0, listStyle: "none", margin: "28px 0 0", display: "flex", flexDirection: "column", gap: 10 }}>
+              {t.feats.map(f => (
+                <li key={f} style={{ fontSize: 13, display: "flex", gap: 10, alignItems: "flex-start" }}>
+                  <span style={{ flexShrink: 0, marginTop: 3 }}>
+                    <BgIcon name="check" size={14} color={t.featured ? "#F5F1E4" : "#8B4513"} />
+                  </span>
+                  <span>{f}</span>
+                </li>
+              ))}
+            </ul>
+            <div style={{ marginTop: "auto", paddingTop: 28 }}>
+              <button className="btn" style={{
+                width: "100%", justifyContent: "center",
+                background: t.featured ? "var(--cream)" : "var(--charcoal)",
+                color: t.featured ? "var(--terracotta)" : "var(--cream)",
+                borderColor: t.featured ? "var(--cream)" : "var(--charcoal)",
+              }}>
+                {t.cta}
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// ============ Footer ============
+function WebsiteFooter() {
+  return (
+    <footer style={{ padding: "60px 80px 40px", background: "var(--charcoal)", color: "var(--cream)" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 1fr", gap: 48, paddingBottom: 40, borderBottom: "1px solid #3A3A3A" }}>
+        <div>
+          <BgLogo size={36} color="#D98B5C" wordmarkColor="#F5F1E4"/>
+          <p style={{ marginTop: 16, fontSize: 13, color: "#A89F8A", maxWidth: 320, lineHeight: 1.5 }}>
+            Chess coaching with payment protection. Pay only after your lesson. Built by coaches, for coaches and students.
+          </p>
+        </div>
+        {[
+          ["Students", ["Take the quiz", "Browse coaches", "How it works", "Refund policy"]],
+          ["Coaches", ["Apply to coach", "Economics", "Tools & features", "Founding coach program"]],
+          ["Company", ["About", "Careers", "Press", "Contact"]],
+        ].map(([h, items]) => (
+          <div key={h}>
+            <div style={{ fontFamily: "var(--f-mono)", fontSize: 10, letterSpacing: "0.16em", textTransform: "uppercase", color: "#A89F8A", marginBottom: 16 }}>{h}</div>
+            {items.map(i => <div key={i} style={{ fontSize: 13, marginBottom: 8, color: "#F5F1E4" }}>{i}</div>)}
+          </div>
+        ))}
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "var(--f-mono)", fontSize: 10, letterSpacing: "0.14em", color: "#666", marginTop: 24 }}>
+        <span>© 2026 BOOGME, INC.</span>
+        <span>CHESS COACHING, PROFESSIONALIZED.</span>
+      </div>
+    </footer>
+  );
+}
+
+// ============ Main Website tab ============
+function WebsiteTab({ heroVariant }) {
+  return (
+    <div>
+      <div className="wb-sectionhead">
+        <div>
+          <span className="wb-sectionhead-num">Section 01 · Website</span>
+          <h1>Website build</h1>
+          <p>The full marketing site and onboarding flow. Scroll down through hero → how-it-works → quiz → coach matching → coach dashboard → pricing → footer. Swap hero variants in the Tweaks panel.</p>
+        </div>
+        <div style={{ fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--gray)", letterSpacing: "0.14em", textAlign: "right" }}>
+          1440 × AUTO<br/>
+          <span style={{ color: "var(--terracotta)" }}>DESKTOP BREAKPOINT</span>
+        </div>
+      </div>
+      <div className="artboard" style={{ maxWidth: 1440, margin: "0 auto", position: "relative" }}>
+        <span className="artboard-label">boogme.com</span>
+        <span className="artboard-dims">1440px</span>
+        {/* nav */}
+        <nav style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 40px", borderBottom: "1px solid var(--gray-line)", background: "var(--cream)" }}>
+          <BgLogo size={26} color="var(--terracotta)" />
+          <div style={{ display: "flex", gap: 32, fontSize: 13 }}>
+            {["How it works", "For students", "For coaches", "Pricing"].map(l => (
+              <span key={l} style={{ color: "var(--charcoal)" }}>{l}</span>
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <a className="btn ghost sm" href="#">Sign in</a>
+            <a className="btn primary sm" href="#">Take the quiz</a>
+          </div>
+        </nav>
+        <WebsiteHero variant={heroVariant}/>
+        <WebsiteFeatures/>
+        <QuizPreview/>
+        <CoachMarketplace/>
+        <CoachDashboardPreview/>
+        <Pricing/>
+        <WebsiteFooter/>
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { WebsiteTab });
