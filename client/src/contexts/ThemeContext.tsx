@@ -18,24 +18,35 @@ interface ThemeProviderProps {
 
 export function ThemeProvider({
   children,
-  defaultTheme = "light",
+  // Ember Dark is the recommended default per the editorial brief.
+  defaultTheme = "dark",
   switchable = false,
 }: ThemeProviderProps) {
   const [theme, setTheme] = useState<Theme>(() => {
-    if (switchable) {
-      const stored = localStorage.getItem("theme");
-      return (stored as Theme) || defaultTheme;
+    // Always honour a persisted preference if one exists — this lets the
+    // no-flash bootstrap script in index.html and React stay in sync even
+    // when ThemeProvider is mounted with switchable=false.
+    if (typeof window !== "undefined") {
+      const stored = window.localStorage?.getItem("theme");
+      if (stored === "light" || stored === "dark") return stored;
     }
     return defaultTheme;
   });
 
   useEffect(() => {
     const root = document.documentElement;
-    if (theme === "dark") {
-      root.classList.add("dark");
-    } else {
-      root.classList.remove("dark");
-    }
+    // Editorial palette: Ember Dark applies on :root by default, Editorial
+    // Cream opts in via .light. Toggle both classes so either palette can
+    // be the active one regardless of which started as default.
+    root.classList.toggle("dark", theme === "dark");
+    root.classList.toggle("light", theme === "light");
+
+    // Repaint the mobile browser chrome so the address bar matches the
+    // active palette. Surface tokens come straight from Phase 1.
+    const themeColor = theme === "dark" ? "#0F1419" : "#F5F1E4";
+    document
+      .querySelectorAll('meta[name="theme-color"]')
+      .forEach((m) => m.setAttribute("content", themeColor));
 
     if (switchable) {
       localStorage.setItem("theme", theme);

@@ -5,16 +5,20 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * DESIGN SYSTEM: Glass Grandmaster
- * Apple Vision Pro-inspired glassmorphism, gradient mesh backgrounds,
- * frosted panels, 3D depth, and warm ambient light.
- * Primary palette: Burgundy + Terracotta + Glass layers over #0A0A12.
+ * DESIGN SYSTEM: Editorial Cream + Ember Dark
+ * Two-palette Swiss editorial system. Ember Dark is the recommended
+ * default. Semantic accents (safe / signal / match) carry meaning —
+ * never use them decoratively.
+ *
+ * Light palette: terracotta on cream, charcoal text.
+ * Dark palette : ember on ink, bone text.
  */
 
 @theme inline {
   --font-display: "Inter", system-ui, sans-serif;
   --font-body: "Inter", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", monospace;
+  --font-serif: "Source Serif 4", "Source Serif Pro", Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
 
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -55,116 +59,150 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
 
-  /* Glass Grandmaster — primary palette (available as Tailwind utilities) */
-  --color-burgundy: #722F37;
-  --color-burgundy-light: #8B3A43;
-  --color-burgundy-dark: #5A252C;
-  --color-burgundy-muted: #D4A0A6;
+  /* Editorial Cream — light palette */
+  --color-cream: #F5F1E4;
+  --color-cream-deep: #EFEAD8;
+  --color-cream-raised: #F9F5EC;
+  --color-charcoal: #2C2C2C;
+  --color-charcoal-muted: #8A8578;
+  --color-line-cream: #D9D3C1;
+  --color-ink-reverse: #1A1A1A;
+  --color-terracotta: #8B4513;
 
-  --color-terracotta: #C27A4A;
-  --color-terracotta-light: #D08B5C;
-  --color-terracotta-muted: #F0E6D3;
+  /* Ember Dark — dark palette */
+  --color-ink: #0F1419;
+  --color-ink-deep: #151B22;
+  --color-ink-raised: #1A2230;
+  --color-bone: #F4EFE6;
+  --color-bone-muted: #7A8290;
+  --color-line-ink: #22303C;
+  --color-ember: #E8633A;
 
-  --color-forest: #2D5A4A;
-  --color-forest-light: #3A7260;
-  --color-forest-muted: #7BB5A0;
-
-  --color-gold: #B8860B;
-  --color-gold-muted: #D4AA2B;
-
-  --color-iris: #7B68EE;
-
-  --color-obsidian: #0A0A12;
-  --color-charcoal: #111114;
-  --color-surface-elevated: #1A1A1E;
-  --color-warm-white: #FAF8F5;
-  --color-stone: #E8E4DF;
-  --color-slate: #6B6B6B;
+  /* Semantic accents — meaning only, never decorative */
+  --color-safe: #4A9D7F;
+  --color-safe-light: #77B377;
+  --color-signal: #F2B843;
+  --color-signal-light: #D4A24C;
+  --color-match: #6B7BEB;
 }
 
-/* Dark theme as default — Glass Grandmaster */
-:root {
-  --radius: 0.625rem;
+/*
+ * Ember Dark — recommended default theme.
+ * Set on :root so SSR / no-flash matches.
+ */
+:root,
+.dark {
+  --radius: 0.5rem;
 
-  /* Core page / surface background (Glass Grandmaster) */
-  --background: #0A0A12;
-  --foreground: #FAF8F5;
-  --card: #111114;
-  --card-foreground: #FAF8F5;
-  --popover: #111114;
-  --popover-foreground: #FAF8F5;
-  --primary: #722F37;
-  --primary-foreground: #FAF8F5;
-  --secondary: #1A1A1E;
-  --secondary-foreground: #FAF8F5;
-  --muted: #1A1A1E;
-  --muted-foreground: rgba(255, 255, 255, 0.45);
-  --accent: #1A1A1E;
-  --accent-foreground: #FAF8F5;
-  --destructive: #DC2626;
-  --destructive-foreground: #FAF8F5;
-  --border: rgba(255, 255, 255, 0.08);
-  --input: rgba(255, 255, 255, 0.08);
-  --ring: #722F37;
-  --chart-1: #722F37;
-  --chart-2: #C27A4A;
-  --chart-3: #7B68EE;
-  --chart-4: #B8860B;
-  --chart-5: #2D5A4A;
-  --sidebar: #111114;
-  --sidebar-foreground: #FAF8F5;
-  --sidebar-primary: #722F37;
-  --sidebar-primary-foreground: #FAF8F5;
-  --sidebar-accent: #1A1A1E;
-  --sidebar-accent-foreground: #FAF8F5;
-  --sidebar-border: rgba(255, 255, 255, 0.08);
-  --sidebar-ring: #722F37;
+  --background: #0F1419;
+  --foreground: #F4EFE6;
+  --card: #151B22;
+  --card-foreground: #F4EFE6;
+  --popover: #1A2230;
+  --popover-foreground: #F4EFE6;
+  --primary: #E8633A;
+  --primary-foreground: #0F1419;
+  --secondary: #1A2230;
+  --secondary-foreground: #F4EFE6;
+  --muted: #151B22;
+  --muted-foreground: #7A8290;
+  --accent: #1A2230;
+  --accent-foreground: #F4EFE6;
+  --destructive: #E8633A;
+  --destructive-foreground: #F4EFE6;
+  --border: #22303C;
+  --input: #22303C;
+  --ring: #E8633A;
+  --chart-1: #E8633A;
+  --chart-2: #6B7BEB;
+  --chart-3: #4A9D7F;
+  --chart-4: #F2B843;
+  --chart-5: #7A8290;
+  --sidebar: #151B22;
+  --sidebar-foreground: #F4EFE6;
+  --sidebar-primary: #E8633A;
+  --sidebar-primary-foreground: #0F1419;
+  --sidebar-accent: #1A2230;
+  --sidebar-accent-foreground: #F4EFE6;
+  --sidebar-border: #22303C;
+  --sidebar-ring: #E8633A;
 
-  /* Glass Grandmaster — glass + mesh system */
-  --glass-bg: rgba(255, 255, 255, 0.04);
-  --glass-bg-hover: rgba(255, 255, 255, 0.06);
-  --glass-bg-active: rgba(255, 255, 255, 0.08);
-  --glass-border: rgba(255, 255, 255, 0.08);
-  --glass-border-hover: rgba(255, 255, 255, 0.12);
-  --glass-border-active: rgba(255, 255, 255, 0.16);
+  /* Surface aliases — used by editorial layout primitives */
+  --page-bg: #0F1419;
+  --surface: #151B22;
+  --surface-elevated: #1A2230;
+  --line: #22303C;
+
+  /* Legacy glass tokens — Phase 3 will retire glass.css entirely.
+   * These keep glass-card / mesh-bg working in the meantime while
+   * shifting their hue to the new palette. */
+  --glass-bg: rgba(244, 239, 230, 0.04);
+  --glass-bg-hover: rgba(244, 239, 230, 0.06);
+  --glass-bg-active: rgba(244, 239, 230, 0.08);
+  --glass-border: rgba(244, 239, 230, 0.08);
+  --glass-border-hover: rgba(244, 239, 230, 0.14);
+  --glass-border-active: rgba(244, 239, 230, 0.2);
   --glass-blur: 16px;
   --glass-blur-heavy: 24px;
-
-  /* Gradient mesh colors (for background blobs) — bumped opacity for
-   * a more visible "alive" feel. The blobs are still blurred 80px so
-   * they read as ambient light rather than hard shapes. */
-  --mesh-burgundy: rgba(114, 47, 55, 0.45);
-  --mesh-iris: rgba(123, 104, 238, 0.28);
-  --mesh-terracotta: rgba(194, 122, 74, 0.22);
-  --mesh-forest: rgba(45, 90, 74, 0.2);
-
-  /* Page background aliases */
-  --page-bg: #0A0A12;
-  --surface: #111114;
-  --surface-elevated: #1A1A1E;
+  --mesh-burgundy: rgba(232, 99, 58, 0.32);
+  --mesh-iris: rgba(107, 123, 235, 0.18);
+  --mesh-terracotta: rgba(232, 99, 58, 0.18);
+  --mesh-forest: rgba(74, 157, 127, 0.16);
 }
 
-/* Light theme fallback (kept for completeness; site defaults to dark) */
+/*
+ * Editorial Cream — light theme (opt-in via .light on <html> or <body>).
+ * Same WCAG AA contrast budget as Ember Dark.
+ */
 .light {
-  --background: #FAF8F5;
-  --foreground: #0A0A12;
-  --card: #FFFFFF;
-  --card-foreground: #0A0A12;
-  --popover: #FFFFFF;
-  --popover-foreground: #0A0A12;
-  --primary: #722F37;
-  --primary-foreground: #FAF8F5;
-  --secondary: #E8E4DF;
-  --secondary-foreground: #0A0A12;
-  --muted: #F0E6D3;
-  --muted-foreground: #6B6B6B;
-  --accent: #E8E4DF;
-  --accent-foreground: #0A0A12;
-  --destructive: #DC2626;
-  --destructive-foreground: #FAF8F5;
-  --border: rgba(10, 10, 18, 0.1);
-  --input: rgba(10, 10, 18, 0.1);
-  --ring: #722F37;
+  --background: #F5F1E4;
+  --foreground: #2C2C2C;
+  --card: #F9F5EC;
+  --card-foreground: #2C2C2C;
+  --popover: #F9F5EC;
+  --popover-foreground: #2C2C2C;
+  --primary: #8B4513;
+  --primary-foreground: #F5F1E4;
+  --secondary: #EFEAD8;
+  --secondary-foreground: #2C2C2C;
+  --muted: #EFEAD8;
+  --muted-foreground: #8A8578;
+  --accent: #EFEAD8;
+  --accent-foreground: #2C2C2C;
+  --destructive: #8B4513;
+  --destructive-foreground: #F5F1E4;
+  --border: #D9D3C1;
+  --input: #D9D3C1;
+  --ring: #8B4513;
+  --chart-1: #8B4513;
+  --chart-2: #6B7BEB;
+  --chart-3: #77B377;
+  --chart-4: #D4A24C;
+  --chart-5: #8A8578;
+  --sidebar: #F9F5EC;
+  --sidebar-foreground: #2C2C2C;
+  --sidebar-primary: #8B4513;
+  --sidebar-primary-foreground: #F5F1E4;
+  --sidebar-accent: #EFEAD8;
+  --sidebar-accent-foreground: #2C2C2C;
+  --sidebar-border: #D9D3C1;
+  --sidebar-ring: #8B4513;
+
+  --page-bg: #F5F1E4;
+  --surface: #F9F5EC;
+  --surface-elevated: #FFFFFF;
+  --line: #D9D3C1;
+
+  --glass-bg: rgba(44, 44, 44, 0.03);
+  --glass-bg-hover: rgba(44, 44, 44, 0.05);
+  --glass-bg-active: rgba(44, 44, 44, 0.08);
+  --glass-border: rgba(44, 44, 44, 0.08);
+  --glass-border-hover: rgba(44, 44, 44, 0.14);
+  --glass-border-active: rgba(44, 44, 44, 0.2);
+  --mesh-burgundy: rgba(139, 69, 19, 0.18);
+  --mesh-iris: rgba(107, 123, 235, 0.12);
+  --mesh-terracotta: rgba(139, 69, 19, 0.12);
+  --mesh-forest: rgba(119, 179, 119, 0.12);
 }
 
 @layer base {
@@ -175,36 +213,38 @@
     @apply bg-background text-foreground antialiased;
     font-family: var(--font-body);
     font-weight: 400;
-    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
-    letter-spacing: 0.01em;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01";
+    letter-spacing: 0;
   }
-  /* Glass Grandmaster headings — max weight 500, -1.5 to -2px tracking,
-   * Inter at light weight 300 for h1/h2 to create the members-only feel. */
+  /* Editorial type hierarchy — Inter Light for display, tight tracking.
+   * Phase 2 will add Source Serif 4 to the lede class. */
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-display);
-    color: #FAF8F5;
-    line-height: 1.12;
+    color: var(--foreground);
+    line-height: 1.1;
   }
   h1, .h1 {
-    font-size: clamp(32px, 5vw, 48px);
+    font-size: clamp(40px, 7vw, 92px);
     font-weight: 300;
-    letter-spacing: -2px;
-    line-height: 1.08;
+    letter-spacing: -0.025em;
+    line-height: 0.96;
   }
   h2, .h2 {
-    font-size: clamp(28px, 4vw, 36px);
+    font-size: clamp(32px, 5vw, 56px);
     font-weight: 300;
-    letter-spacing: -1.5px;
+    letter-spacing: -0.02em;
+    line-height: 1.05;
   }
   h3, .h3 {
-    font-size: 24px;
+    font-size: 28px;
     font-weight: 400;
-    letter-spacing: -0.5px;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
   }
   h4, .h4 {
     font-size: 18px;
     font-weight: 500;
-    letter-spacing: -0.3px;
+    letter-spacing: -0.005em;
   }
   code, pre, .font-mono {
     font-family: var(--font-mono);
@@ -221,16 +261,15 @@
   input[type="radio"]:not(:disabled) {
     @apply cursor-pointer;
   }
-  
-  /* Smooth scrolling */
+
   html {
     scroll-behavior: smooth;
   }
-  
-  /* Selection styling */
+
+  /* Selection — terracotta/ember tint at 18% */
   ::selection {
-    background-color: oklch(0.98 0.002 80 / 0.15);
-    color: oklch(0.98 0.002 80);
+    background-color: color-mix(in oklab, var(--primary) 22%, transparent);
+    color: var(--foreground);
   }
 }
 
@@ -262,88 +301,88 @@
       max-width: 1400px;
     }
   }
-  
-  /* Palantir-style card with minimal border */
-  .palantir-card {
-    @apply bg-card rounded-lg border border-border/50;
+
+  /* Editorial card — flat surface, hairline border, no glassmorphism. */
+  .editorial-card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
     transition: border-color 0.2s ease, background-color 0.2s ease;
   }
-  
-  .palantir-card:hover {
-    @apply border-border;
-    background-color: oklch(0.16 0.01 280);
+
+  .editorial-card:hover {
+    border-color: color-mix(in oklab, var(--foreground) 25%, var(--line));
   }
-  
-  /* Minimal button styles - Palantir aesthetic */
+
+  /* Phase 1 button utilities — flat, no gradient, no glow. */
   .btn-primary {
-    @apply bg-primary text-primary-foreground px-8 py-3 rounded-md font-light text-sm;
-    transition: all 0.15s ease;
-    letter-spacing: 0.02em;
+    @apply bg-primary text-primary-foreground px-7 py-3 rounded-md text-sm;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    transition: opacity 0.15s ease, transform 0.15s ease;
   }
-  
-  .btn-primary:hover {
-    @apply opacity-85;
-  }
-  
+  .btn-primary:hover { opacity: 0.92; }
+  .btn-primary:active { transform: translateY(1px); }
+
   .btn-secondary {
-    @apply bg-transparent text-foreground px-8 py-3 rounded-md font-light text-sm border border-border;
-    transition: all 0.15s ease;
-    letter-spacing: 0.02em;
+    @apply bg-transparent text-foreground px-7 py-3 rounded-md text-sm border;
+    border-color: var(--line);
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
   }
-  
   .btn-secondary:hover {
-    @apply bg-card border-foreground/30;
+    border-color: var(--foreground);
+    background: color-mix(in oklab, var(--foreground) 4%, transparent);
   }
-  
-  /* Ultra-minimal divider */
+
   .divider {
-    @apply h-px bg-border/30;
+    @apply h-px;
+    background: var(--line);
   }
-  
-  /* Grid layout helpers */
-  .grid-palantir {
+
+  .grid-editorial {
     display: grid;
     grid-template-columns: repeat(12, 1fr);
     gap: 2rem;
   }
-  
-  /* Section spacing - generous whitespace */
+
   .section {
     @apply py-24 md:py-32 lg:py-40;
   }
-  
+
   .section-sm {
     @apply py-16 md:py-20 lg:py-24;
   }
-  
-  .section-sm {
-    @apply py-20 md:py-24;
-  }
-  
-  /* Accent line for headings - minimal */
-  .accent-line {
-    position: relative;
-    display: inline-block;
-  }
-  
-  .accent-line::after {
-    content: '';
-    position: absolute;
-    bottom: -8px;
-    left: 0;
-    width: 40px;
-    height: 1px;
-    background: oklch(0.98 0.002 80);
-  }
-  
-  /* Badge styles - minimal */
-  .badge-minimal {
-    @apply inline-flex items-center px-3 py-1 rounded-md text-xs font-light border border-border/50;
-    letter-spacing: 0.03em;
+
+  /* Numbered eyebrow — JetBrains Mono, uppercase, tight tracking.
+   * Used as `01 — The platform`. */
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 400;
+    letter-spacing: 0.14em;
     text-transform: uppercase;
+    color: var(--muted-foreground);
   }
-  
-  /* Stat number styling */
+
+  .mono-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 400;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted-foreground);
+  }
+
+  .lede {
+    font-family: var(--font-serif);
+    font-size: clamp(17px, 1.6vw, 20px);
+    font-weight: 400;
+    line-height: 1.45;
+    color: color-mix(in oklab, var(--foreground) 78%, transparent);
+  }
+
   .stat-number {
     font-family: var(--font-mono);
     font-weight: 300;
@@ -353,46 +392,32 @@
 }
 
 @layer utilities {
-  .font-display {
-    font-family: var(--font-display);
-  }
-  
-  .font-body {
-    font-family: var(--font-body);
-  }
-  
-  .font-thin {
-    font-weight: 200;
-  }
-  
-  .font-extralight {
-    font-weight: 300;
-  }
-  
-  /* Smooth transitions */
+  .font-display { font-family: var(--font-display); }
+  .font-body { font-family: var(--font-body); }
+  .font-serif { font-family: var(--font-serif); }
+
+  /* Editorial scale uses Light (300) as the heaviest display weight.
+   * font-thin and font-extralight both resolve to 300 — Tailwind's 100/200
+   * weights are not loaded, and substituting Light keeps the editorial feel. */
+  .font-thin { font-weight: 300; }
+  .font-extralight { font-weight: 300; }
+
   .transition-smooth {
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   }
-  
-  /* Text balance for headings */
-  .text-balance {
-    text-wrap: balance;
-  }
-  
-  /* Generous spacing utilities */
-  .space-y-generous > * + * {
-    margin-top: 3rem;
-  }
-  
-  .space-y-extra-generous > * + * {
-    margin-top: 5rem;
-  }
+
+  .text-balance { text-wrap: balance; }
+
+  /* Semantic accent text helpers — use only for their meaning. */
+  .text-safe { color: var(--color-safe); }
+  .text-signal { color: var(--color-signal); }
+  .text-match { color: var(--color-match); }
+
+  .space-y-generous > * + * { margin-top: 3rem; }
+  .space-y-extra-generous > * + * { margin-top: 5rem; }
 }
 
-/* Sprint 8 — on coarse pointers (phones/tablets) bump interactive button
- * heights to meet the 44px minimum touch target recommendation. The shadcn
- * button component sets data-slot="button" on all variants so this scopes
- * cleanly without affecting other elements. */
+/* Accessibility — bump touch targets on coarse pointers (kept from prior pass). */
 @media (pointer: coarse) {
   button[data-slot="button"] {
     min-height: 44px;

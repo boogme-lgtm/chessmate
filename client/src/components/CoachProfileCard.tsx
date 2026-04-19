@@ -1,6 +1,3 @@
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { MapPin, Globe, Star, Clock } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -38,15 +35,6 @@ interface CoachProfileCardProps {
   onBookClick?: () => void;
 }
 
-// Title → color mapping for ambient corner glow + avatar gradient
-function glowForTitle(title: string): string {
-  const t = title.toUpperCase();
-  if (t.includes("GM")) return "rgba(114, 47, 55, 0.2)"; // burgundy
-  if (t.includes("IM")) return "rgba(194, 122, 74, 0.2)"; // terracotta
-  if (t.includes("FM")) return "rgba(123, 104, 238, 0.15)"; // iris
-  return "rgba(45, 90, 74, 0.15)"; // forest
-}
-
 export function CoachProfileCard({ coach, onBookClick }: CoachProfileCardProps) {
   return (
     <motion.div
@@ -55,42 +43,40 @@ export function CoachProfileCard({ coach, onBookClick }: CoachProfileCardProps) 
       viewport={{ once: true }}
       transition={{ duration: 0.5, ease: "easeOut" }}
     >
-      <div className="glass-card h-full flex flex-col overflow-hidden">
-        <div className="card-glow" style={{ background: glowForTitle(coach.title) }} />
-
-        {/* Coach Image */}
-        <div className="relative aspect-[4/5] overflow-hidden bg-charcoal">
+      <div className="border border-border bg-background h-full flex flex-col overflow-hidden hover:border-foreground/30 transition-colors">
+        {/* Coach Image — full bleed, mono title pill in the corner */}
+        <div className="relative aspect-[4/5] overflow-hidden" style={{ background: "var(--surface)" }}>
           <img
             src={coach.imageUrl}
             alt={coach.name}
             className="w-full h-full object-cover object-center"
           />
           <div className="absolute top-3 right-3">
-            <span className="glass-badge text-[11px]">{coach.title}</span>
+            <span className="editorial-pill" style={{ background: "var(--background)" }}>
+              {coach.title}
+            </span>
           </div>
         </div>
 
         {/* Coach Info */}
-        <div className="p-[18px] space-y-4 flex-1 flex flex-col relative z-10">
-          {/* Name and Rating */}
+        <div className="p-5 space-y-4 flex-1 flex flex-col">
           <div>
-            <h3 className="text-[16px] font-medium text-[#FAF8F5] mb-1 leading-tight">{coach.name}</h3>
-            <div className="flex items-center gap-3 text-[11px] text-white/35">
+            <h3 className="text-[18px] font-medium text-foreground mb-1 leading-tight">
+              {coach.name}
+            </h3>
+            <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
               <span className="stat-number">{coach.rating} FIDE</span>
               {coach.reviewRating && (
-                <div className="flex items-center gap-1">
-                  <Star className="w-3 h-3 fill-[#B8860B] text-[#B8860B]" />
-                  <span className="text-[#B8860B]">{coach.reviewRating.toFixed(1)}</span>
+                <div className="flex items-center gap-1 text-signal">
+                  <Star className="w-3 h-3 fill-current" />
+                  <span>{coach.reviewRating.toFixed(1)}</span>
                 </div>
               )}
-              {coach.studentCount && (
-                <span>{coach.studentCount}+ students</span>
-              )}
+              {coach.studentCount && <span>{coach.studentCount}+ students</span>}
             </div>
           </div>
 
-          {/* Location and Languages */}
-          <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-white/35">
+          <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
             <div className="flex items-center gap-1">
               <MapPin className="w-3 h-3" />
               <span>{coach.location}</span>
@@ -101,39 +87,39 @@ export function CoachProfileCard({ coach, onBookClick }: CoachProfileCardProps) 
             </div>
           </div>
 
-          {/* Bio */}
-          <p className="text-[12px] text-white/40 leading-relaxed line-clamp-3 flex-1">
+          <p className="text-sm text-muted-foreground leading-relaxed line-clamp-3 flex-1">
             {coach.bio}
           </p>
 
-          {/* Specializations */}
+          {/* Specializations — mono uppercase chips */}
           <div className="flex flex-wrap gap-1.5">
-            {coach.specializations.slice(0, 3).map((spec, index) => (
+            {coach.specializations.slice(0, 3).map((spec) => (
               <span
-                key={index}
-                className="text-[10px] bg-white/[0.06] text-white/50 rounded-lg px-2 py-0.5"
+                key={spec}
+                className="font-mono text-[10px] uppercase tracking-[0.14em] border border-border text-muted-foreground rounded-full px-2 py-0.5"
               >
                 {spec}
               </span>
             ))}
           </div>
 
-          {/* Price */}
-          <div className="flex items-baseline justify-between pt-3 border-t border-white/[0.06]">
-            <div className="flex items-center gap-1.5 text-[11px] text-white/35">
+          <div className="flex items-baseline justify-between pt-3 border-t border-border">
+            <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
               <Clock className="w-3 h-3" />
               <span>{coach.availability}</span>
             </div>
             <div className="flex items-baseline gap-1">
-              <span className="text-[14px] font-medium text-[#FAF8F5]">${coach.hourlyRate}</span>
-              <span className="text-[11px] text-white/30">/hr</span>
+              <span className="text-[16px] font-medium text-foreground">${coach.hourlyRate}</span>
+              <span className="text-[11px] text-muted-foreground">/hr</span>
             </div>
           </div>
 
-          {/* Book Button */}
-          <Button onClick={onBookClick} className="w-full btn-glass-primary" size="lg">
-            Book Lesson
-          </Button>
+          <button onClick={onBookClick} className="btn-editorial-primary w-full mt-2">
+            Book a trial lesson
+          </button>
+          <p className="mono-label text-center">
+            You won&rsquo;t be charged until the lesson ends.
+          </p>
         </div>
       </div>
     </motion.div>

@@ -1,7 +1,8 @@
 /*
- * DESIGN: Palantir-Inspired Minimalism
- * Ultra-thin typography, dark mode, generous whitespace
- * Tech-forward aesthetic, coach-first messaging
+ * DESIGN: Editorial Cream + Ember Dark
+ * Swiss typographic discipline. Numbered eyebrows (01 — The platform),
+ * Inter Light displays, Source Serif 4 ledes, JetBrains Mono labels.
+ * No gradient CTAs, no glassmorphism, no decorative colour.
  */
 
 import { Button } from "@/components/ui/button";
@@ -15,7 +16,8 @@ import {
   Menu,
   X,
   Loader2,
-  Check
+  Check,
+  Mail
 } from "lucide-react";
 import React, { useState } from "react";
 import { toast } from "sonner";
@@ -29,13 +31,16 @@ import Logo from "@/components/Logo";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl } from "@/const";
 
-// Glass Grandmaster animation system (spec Phase 7)
-// - Section entrance: 0.5s easeOut
-// - Stagger children: 0.08
-// No spring physics, no bouncy transitions, nothing over 1s.
+// Editorial motion tokens (brief spec).
+// Reveal: 900ms cubic-bezier(0.2, 0.7, 0.2, 1), translateY(24px → 0).
+// Stagger children: 0.08s, delay 0.1s.
 const fadeIn = {
-  hidden: { opacity: 0, y: 20 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" } }
+  hidden: { opacity: 0, y: 24 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.9, ease: [0.2, 0.7, 0.2, 1] }
+  }
 } as const;
 
 const staggerContainer = {
@@ -80,10 +85,10 @@ function Navigation({ onOpenAssessment }: { onOpenAssessment: () => void }) {
       transition={{ duration: 0.5, ease: "easeOut" }}
       className="fixed top-0 left-0 right-0 z-50 transition-all duration-300"
       style={{
-        background: isScrolled ? "rgba(10, 10, 18, 0.8)" : "transparent",
-        backdropFilter: isScrolled ? "blur(20px)" : "none",
-        WebkitBackdropFilter: isScrolled ? "blur(20px)" : "none",
-        borderBottom: isScrolled ? "0.5px solid rgba(255, 255, 255, 0.06)" : "0.5px solid transparent",
+        background: isScrolled ? "color-mix(in oklab, var(--background) 88%, transparent)" : "transparent",
+        backdropFilter: isScrolled ? "saturate(140%)" : "none",
+        WebkitBackdropFilter: isScrolled ? "saturate(140%)" : "none",
+        borderBottom: isScrolled ? "1px solid var(--line)" : "1px solid transparent",
       }}
     >
       <div className="container flex items-center justify-between h-[60px]">
@@ -94,31 +99,31 @@ function Navigation({ onOpenAssessment }: { onOpenAssessment: () => void }) {
         <div className="hidden md:flex items-center gap-10">
           <button
             onClick={handleOpenAssessment}
-            className="text-[13px] font-normal text-white/50 hover:text-[#FAF8F5] transition-colors duration-200"
+            className="text-[13px] font-normal text-muted-foreground hover:text-foreground transition-colors duration-200"
           >
             Take AI Assessment
           </button>
           <button
             onClick={() => handleNavClick("features")}
-            className="text-[13px] font-normal text-white/50 hover:text-[#FAF8F5] transition-colors duration-200"
+            className="text-[13px] font-normal text-muted-foreground hover:text-foreground transition-colors duration-200"
           >
             Features
           </button>
           <a
             href="/coaches"
-            className="text-[13px] font-normal text-white/50 hover:text-[#FAF8F5] transition-colors duration-200"
+            className="text-[13px] font-normal text-muted-foreground hover:text-foreground transition-colors duration-200"
           >
             Browse Coaches
           </a>
           <a
             href="/for-coaches"
-            className="text-[13px] font-normal text-white/50 hover:text-[#FAF8F5] transition-colors duration-200"
+            className="text-[13px] font-normal text-muted-foreground hover:text-foreground transition-colors duration-200"
           >
             For Coaches
           </a>
           <button
             onClick={() => handleNavClick("waitlist")}
-            className="text-[13px] font-normal text-white/50 hover:text-[#FAF8F5] transition-colors duration-200"
+            className="text-[13px] font-normal text-muted-foreground hover:text-foreground transition-colors duration-200"
           >
             Join Waitlist
           </button>
@@ -131,7 +136,7 @@ function Navigation({ onOpenAssessment }: { onOpenAssessment: () => void }) {
               <UserMenu />
             ) : (
               <a href="/sign-in">
-                <button className="glass rounded-lg px-4 py-1.5 text-[13px] text-[#FAF8F5] transition-all duration-200">
+                <button className="btn-editorial-ghost px-4 py-1.5 text-[13px]">
                   Sign In
                 </button>
               </a>
@@ -140,7 +145,7 @@ function Navigation({ onOpenAssessment }: { onOpenAssessment: () => void }) {
         </div>
 
         <button
-          className="md:hidden text-[#FAF8F5]"
+          className="md:hidden text-foreground"
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
           aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
         >
@@ -155,47 +160,43 @@ function Navigation({ onOpenAssessment }: { onOpenAssessment: () => void }) {
           animate={{ opacity: 1, height: "auto" }}
           exit={{ opacity: 0, height: 0 }}
           transition={{ duration: 0.25, ease: "easeOut" }}
-          className="md:hidden border-b border-white/[0.06]"
-          style={{
-            background: "rgba(10, 10, 18, 0.95)",
-            backdropFilter: "blur(20px)",
-            WebkitBackdropFilter: "blur(20px)",
-          }}
+          className="md:hidden border-b border-border"
+          style={{ background: "var(--background)" }}
         >
           <div className="container py-6 flex flex-col gap-4">
             <a
               href="/coaches"
-              className="text-base font-light text-white/60 hover:text-[#FAF8F5] transition-colors min-h-[48px] flex items-center"
+              className="text-base font-light text-muted-foreground hover:text-foreground transition-colors min-h-[48px] flex items-center"
             >
               Browse Coaches
             </a>
             <button
               onClick={() => handleNavClick("features")}
-              className="text-base font-light text-white/60 hover:text-[#FAF8F5] transition-colors min-h-[48px] flex items-center text-left"
+              className="text-base font-light text-muted-foreground hover:text-foreground transition-colors min-h-[48px] flex items-center text-left"
             >
               Features
             </button>
             <a
               href="/for-coaches"
-              className="text-base font-light text-white/60 hover:text-[#FAF8F5] transition-colors min-h-[48px] flex items-center"
+              className="text-base font-light text-muted-foreground hover:text-foreground transition-colors min-h-[48px] flex items-center"
             >
               For Coaches
             </a>
             <button
               onClick={() => handleNavClick("waitlist")}
-              className="text-base font-light text-white/60 hover:text-[#FAF8F5] transition-colors min-h-[48px] flex items-center text-left"
+              className="text-base font-light text-muted-foreground hover:text-foreground transition-colors min-h-[48px] flex items-center text-left"
             >
               Join Waitlist
             </button>
 
             {/* Mobile User Menu or Sign In */}
-            <div className="pt-4 border-t border-white/[0.06]">
+            <div className="pt-4 border-t border-border">
               {!loading && (
                 user ? (
                   <UserMenu />
                 ) : (
                   <a href="/sign-in" className="block">
-                    <button className="glass rounded-lg w-full py-3 text-sm text-[#FAF8F5]">
+                    <button className="btn-editorial-ghost w-full py-3 text-sm">
                       Sign In
                     </button>
                   </a>
@@ -209,125 +210,112 @@ function Navigation({ onOpenAssessment }: { onOpenAssessment: () => void }) {
   );
 }
 
-// Hero Section - Palantir minimalism
+// Hero — editorial layout with eyebrow + numbered section, shimmer second line.
 function HeroSection({ onOpenAssessment }: { onOpenAssessment: () => void }) {
   return (
-    <section className="mesh-bg mesh-bg-animated relative min-h-[85vh] flex items-center justify-center pt-20">
-      {/* Third mesh blob (terracotta) */}
+    <section className="mesh-bg mesh-bg-animated relative min-h-[85vh] flex items-center pt-24 pb-16">
       <div className="mesh-accent" />
+      <div className="precision-grid" aria-hidden />
 
       <div className="container relative z-10">
+        {/* Top row — numbered eyebrow + mono URL label */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.6 }}
+          className="flex items-center justify-between mb-12"
+        >
+          <span className="eyebrow">01 — The platform</span>
+          <span className="mono-label hidden sm:inline">BOOGME.COM / HOMEPAGE</span>
+        </motion.div>
+
         <motion.div
           initial="hidden"
           animate="visible"
           variants={staggerContainer}
-          className="max-w-[600px] mx-auto text-center space-y-8"
+          className="max-w-[820px] space-y-8"
         >
-          {/* Badge */}
-          <motion.div variants={fadeIn}>
-            <span className="glass-badge">
-              Founding members — limited spots
-            </span>
-          </motion.div>
-
-          {/* Headline with gradient accent phrase */}
-          <motion.div variants={fadeIn} className="space-y-5">
+          {/* Headline — H1 with shimmer on the second line */}
+          <motion.div variants={fadeIn} className="space-y-6">
             <h1 className="text-balance">
-              Find the coach who{" "}
-              <span className="gradient-text">elevates your game.</span>
+              Chess coaching,
+              <br />
+              <span className="shimmer">without the risk.</span>
             </h1>
-            <p className="text-[15px] leading-relaxed text-white/40 max-w-[400px] mx-auto">
-              AI-matched chess coaches. Payment held in escrow until you're satisfied. No upfront fees, no risk.
+            <p className="lede max-w-[560px]">
+              AI-matched coaches. Payment sits in escrow until your lesson is complete.
+              Dispute it within 48 hours, get every dollar back.
             </p>
           </motion.div>
 
-          {/* CTAs */}
-          <motion.div variants={fadeIn} className="flex flex-col sm:flex-row justify-center gap-3 pt-2">
-            <a href="/coaches">
-              <button className="btn-glass-primary group inline-flex items-center gap-2 w-full sm:w-auto justify-center">
-                Browse Coaches
+          {/* CTAs — primary + ghost, plus mono reassurance */}
+          <motion.div variants={fadeIn} className="flex flex-col sm:flex-row gap-3 items-start sm:items-center pt-2">
+            <button
+              onClick={onOpenAssessment}
+              className="btn-editorial-primary group inline-flex items-center gap-2"
+            >
+              Take the 8-minute quiz
+              <ChevronRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+            </button>
+            <a href="/for-coaches">
+              <button className="btn-editorial-ghost group inline-flex items-center gap-2">
+                I&rsquo;m a coach
                 <ChevronRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
               </button>
             </a>
-            <button
-              onClick={onOpenAssessment}
-              className="glass rounded-[10px] px-7 py-3 text-[14px] font-medium text-white/80 inline-flex items-center gap-2 w-full sm:w-auto justify-center group"
-            >
-              Take AI Assessment
-              <ChevronRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
-            </button>
+            <span className="mono-label sm:ml-3">No signup · No card required</span>
           </motion.div>
 
-          {/* Stat cards */}
-          <motion.div variants={fadeIn} className="grid grid-cols-3 gap-3 pt-6 max-w-[480px] mx-auto">
-            <div className="glass-stat">
-              <div className="text-[10px] uppercase tracking-[1px] text-white/30 mb-1.5">Avg rating gain</div>
-              <div className="stat-number text-2xl font-light text-[#FAF8F5]">+127</div>
-            </div>
-            <div className="glass-stat">
-              <div className="text-[10px] uppercase tracking-[1px] text-white/30 mb-1.5">Match accuracy</div>
-              <div className="stat-number text-2xl font-light text-[#FAF8F5]">94%</div>
-            </div>
-            <div className="glass-stat">
-              <div className="text-[10px] uppercase tracking-[1px] text-white/30 mb-1.5">Coaches keep</div>
-              <div className="stat-number text-2xl font-light text-[#C27A4A]">85%+</div>
-            </div>
-          </motion.div>
-
-          {/* Trust row */}
-          <motion.div variants={fadeIn} className="pt-6">
-            <div className="flex flex-wrap items-center justify-center gap-8 text-[12px] text-white/35">
-              <div className="flex items-center gap-2">
-                <Shield className="w-3.5 h-3.5" />
-                <span>Payment Protection</span>
+          {/* Trust strip — 4-column stats per brief (0% / 48h / 8min / 20Q) */}
+          <motion.div
+            variants={fadeIn}
+            className="grid grid-cols-2 sm:grid-cols-4 gap-px mt-12 border-t border-b border-border"
+          >
+            {[
+              { value: "0%", label: "Platform fee until $100" },
+              { value: "48h", label: "Refund window" },
+              { value: "8min", label: "Match assessment" },
+              { value: "20Q", label: "Style + goals + schedule" },
+            ].map((stat) => (
+              <div key={stat.label} className="bg-background py-6 px-4">
+                <div className="stat-number text-3xl font-light text-foreground">{stat.value}</div>
+                <div className="mono-label mt-2">{stat.label}</div>
               </div>
-              <div className="flex items-center gap-2">
-                <Users className="w-3.5 h-3.5" />
-                <span>Elite Coaches</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Clock className="w-3.5 h-3.5" />
-                <span>24/7 Support</span>
-              </div>
-            </div>
+            ))}
           </motion.div>
         </motion.div>
-
-        {/* Scroll indicator */}
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 animate-float">
-          <ChevronRight className="w-5 h-5 text-white/15 rotate-90" />
-        </div>
       </div>
     </section>
   );
 }
 
-// Features Section → How It Works (4-step horizontal flow per spec 5e)
+// 02 — How it works. Four editorial cells, mono numbers, vertical dividers,
+// per the brief's "infrastructure coaching never had" section.
 function FeaturesSection() {
-  const steps = [
+  const features = [
     {
-      num: 1,
-      title: "Pick a time",
-      subtitle: "Real availability",
-      gradient: "linear-gradient(135deg, #722F37, #8B3A43)",
+      num: "01",
+      icon: Shield,
+      title: "Escrow-held payment",
+      copy: "Your payment sits in escrow until the lesson is complete. Dispute it within 48 hours, get it all back.",
     },
     {
-      num: 2,
-      title: "Coach confirms",
-      subtitle: "Within 24 hours",
-      gradient: "linear-gradient(135deg, #C27A4A, #D08B5C)",
+      num: "02",
+      icon: Users,
+      title: "AI coach matching",
+      copy: "A 20-question assessment learns your style, goals, time, openings, weaknesses — and surfaces 3 coaches tuned to how you learn.",
     },
     {
-      num: 3,
-      title: "Pay securely",
-      subtitle: "Escrow protected",
-      gradient: "linear-gradient(135deg, #2D5A4A, #3A7260)",
+      num: "03",
+      icon: Check,
+      title: "Rating-locked payouts",
+      copy: "Coaches keep their fees only when ratings hold. Quality is not a badge; it's a gate on payment.",
     },
     {
-      num: 4,
-      title: "Learn & review",
-      subtitle: "Rate your experience",
-      gradient: "linear-gradient(135deg, #B8860B, #D4AA2B)",
+      num: "04",
+      icon: Clock,
+      title: "Coach-first economics",
+      copy: "Low single-digit platform fees. No card required until a coach earns $100. Coaches keep more, students pay less.",
     },
   ];
 
@@ -341,32 +329,45 @@ function FeaturesSection() {
           variants={staggerContainer}
           className="space-y-16"
         >
-          <motion.div variants={fadeIn} className="text-center space-y-4 max-w-3xl mx-auto">
-            <div className="section-label">How it works</div>
-            <h2>Four steps to better chess</h2>
+          <motion.div
+            variants={fadeIn}
+            className="grid md:grid-cols-[1fr_380px] gap-8 md:gap-12 items-end"
+          >
+            <div className="space-y-5">
+              <span className="eyebrow">02 — How it works</span>
+              <h2 className="text-balance">
+                The infrastructure
+                <br />
+                coaching never had.
+              </h2>
+            </div>
+            <p className="lede text-muted-foreground md:text-right">
+              Built for the long lesson arc — from first match to hundredth session — not the
+              one-time Zoom link.
+            </p>
           </motion.div>
 
-          {/* Horizontal flow with dashed connector (hidden on mobile) */}
-          <div className="relative grid grid-cols-1 md:grid-cols-4 gap-6 md:gap-4">
-            {/* Dashed connector line (desktop only) */}
-            <div className="hidden md:block absolute top-8 left-[12.5%] right-[12.5%] h-px border-t border-dashed border-white/[0.08] z-0" />
-
-            {steps.map((step) => (
-              <motion.div key={step.num} variants={fadeIn} className="relative z-10">
-                <div className="glass-stat text-center space-y-3 h-full">
-                  <div
-                    className="w-8 h-8 rounded-full flex items-center justify-center text-[13px] font-medium text-[#FAF8F5] mx-auto"
-                    style={{ background: step.gradient }}
-                  >
-                    {step.num}
+          {/* 4-column editorial grid, hairline top + vertical dividers between cells */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 border-t border-border">
+            {features.map((f, i) => {
+              const Icon = f.icon;
+              return (
+                <motion.div
+                  key={f.num}
+                  variants={fadeIn}
+                  className={`p-6 md:p-8 space-y-6 border-border ${
+                    i > 0 ? "lg:border-l" : ""
+                  } ${i > 0 ? "sm:border-t-0 border-t" : ""}`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="mono-label">{f.num}</span>
+                    <Icon className="w-4 h-4 text-muted-foreground" strokeWidth={1.5} />
                   </div>
-                  <div>
-                    <div className="text-[13px] font-medium text-[#FAF8F5]">{step.title}</div>
-                    <div className="text-[11px] text-white/35 mt-0.5">{step.subtitle}</div>
-                  </div>
-                </div>
-              </motion.div>
-            ))}
+                  <h3 className="text-foreground">{f.title}</h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed">{f.copy}</p>
+                </motion.div>
+              );
+            })}
           </div>
         </motion.div>
       </div>
@@ -388,7 +389,7 @@ function PaymentProtectionSection() {
   ];
 
   return (
-    <section className="mesh-bg mesh-bg-warm section-sm relative">
+    <section className="section-sm relative" style={{ background: "var(--surface)" }}>
       <div className="container relative z-10">
         <motion.div
           initial="hidden"
@@ -397,20 +398,18 @@ function PaymentProtectionSection() {
           variants={staggerContainer}
           className="max-w-5xl mx-auto"
         >
-          <motion.div variants={fadeIn} className="glass-heavy rounded-[20px] p-7 md:p-10 grid md:grid-cols-2 gap-6 md:gap-10">
+          <motion.div variants={fadeIn} className="grid md:grid-cols-2 gap-px bg-border">
             {/* Students column */}
-            <div className="space-y-4">
-              <div className="section-label">For students</div>
-              <h3 className="text-[20px] font-normal text-[#FAF8F5] leading-snug">
-                Improve faster with the right coach
-              </h3>
-              <p className="body-muted">
+            <div className="bg-background p-8 md:p-10 space-y-5">
+              <span className="eyebrow">For students</span>
+              <h3 className="text-foreground">Improve faster with the right coach</h3>
+              <p className="lede text-muted-foreground text-base">
                 Matched to your goals, protected by escrow, reviewed by the community.
               </p>
-              <ul className="space-y-2.5 pt-2">
+              <ul className="space-y-3 pt-2 border-t border-border">
                 {studentPoints.map((point) => (
-                  <li key={point} className="flex items-start gap-3 text-[13px] text-white/60">
-                    <span className="mt-[7px] w-1 h-1 rounded-full bg-[#B8860B] flex-shrink-0" />
+                  <li key={point} className="flex items-start gap-3 text-sm text-foreground pt-3">
+                    <Check className="w-4 h-4 text-safe mt-0.5 flex-shrink-0" strokeWidth={1.5} />
                     <span>{point}</span>
                   </li>
                 ))}
@@ -418,18 +417,16 @@ function PaymentProtectionSection() {
             </div>
 
             {/* Coaches column */}
-            <div className="space-y-4">
-              <div className="section-label">For coaches</div>
-              <h3 className="text-[20px] font-normal text-[#FAF8F5] leading-snug">
-                Build your business, keep your earnings
-              </h3>
-              <p className="body-muted">
+            <div className="bg-background p-8 md:p-10 space-y-5">
+              <span className="eyebrow">For coaches</span>
+              <h3 className="text-foreground">Build your business, keep your earnings</h3>
+              <p className="lede text-muted-foreground text-base">
                 Focus on teaching. We handle matching, scheduling, escrow, and payouts.
               </p>
-              <ul className="space-y-2.5 pt-2">
+              <ul className="space-y-3 pt-2 border-t border-border">
                 {coachPoints.map((point) => (
-                  <li key={point} className="flex items-start gap-3 text-[13px] text-white/60">
-                    <span className="mt-[7px] w-1 h-1 rounded-full bg-[#B8860B] flex-shrink-0" />
+                  <li key={point} className="flex items-start gap-3 text-sm text-foreground pt-3">
+                    <Check className="w-4 h-4 text-safe mt-0.5 flex-shrink-0" strokeWidth={1.5} />
                     <span>{point}</span>
                   </li>
                 ))}
@@ -463,35 +460,31 @@ function ForCoachesSection() {
           variants={staggerContainer}
           className="max-w-4xl mx-auto space-y-16"
         >
-          <motion.div variants={fadeIn} className="text-center space-y-6">
-            <h2 className="text-5xl md:text-6xl font-thin tracking-tighter leading-tight">
-              For Chess Coaches
+          <motion.div variants={fadeIn} className="space-y-5">
+            <span className="eyebrow">04 — For coaches</span>
+            <h2 className="text-balance">
+              Full-service marketplace,
+              <br />
+              not a listing board.
             </h2>
-            <p className="text-xl md:text-2xl font-light text-muted-foreground max-w-3xl mx-auto leading-relaxed">
-              Full-service marketplace with payment protection, AI matching, and escrow. Not just a listing board.
+            <p className="lede max-w-2xl">
+              Payment protection, AI matching, escrow, scheduling — built so you can focus
+              entirely on teaching.
             </p>
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20">
-              <span style={{ color: '#ffffff', fontWeight: 500, textShadow: '0 1px 2px rgba(0,0,0,0.5)' }} className="text-sm">Limited spots for founding coaches</span>
-            </div>
           </motion.div>
 
-          <motion.div variants={fadeIn} className="space-y-4">
-            {coachBenefits.map((benefit, index) => (
-              <div key={index} className="flex gap-4 items-start">
-                <div className="flex-shrink-0 mt-1">
-                  <Check className="w-5 h-5 text-foreground" strokeWidth={1.5} />
-                </div>
-                <p className="text-base font-light text-muted-foreground">
-                  {benefit}
-                </p>
+          <motion.div variants={fadeIn} className="grid sm:grid-cols-2 gap-x-10 gap-y-5 border-t border-border pt-10">
+            {coachBenefits.map((benefit) => (
+              <div key={benefit} className="flex gap-3 items-start">
+                <Check className="w-4 h-4 text-safe mt-1 flex-shrink-0" strokeWidth={1.5} />
+                <p className="text-sm text-foreground leading-relaxed">{benefit}</p>
               </div>
             ))}
           </motion.div>
 
-          <motion.div variants={fadeIn} className="text-center pt-8">
-            <Button 
-              size="lg" 
-              className="btn-secondary"
+          <motion.div variants={fadeIn} className="pt-4 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+            <button
+              className="btn-editorial-primary inline-flex items-center gap-2"
               onClick={() => {
                 const element = document.getElementById("waitlist");
                 if (element) {
@@ -499,9 +492,10 @@ function ForCoachesSection() {
                 }
               }}
             >
-              Apply as Coach
-              <ChevronRight className="w-4 h-4 ml-2" />
-            </Button>
+              Apply as coach
+              <ChevronRight className="w-4 h-4" />
+            </button>
+            <span className="mono-label">Limited founding-class spots</span>
           </motion.div>
         </motion.div>
       </div>
@@ -547,7 +541,7 @@ function WaitlistSection() {
   };
 
   return (
-    <section id="waitlist" className="mesh-bg section relative">
+    <section id="waitlist" className="mesh-bg mesh-bg-animated section relative">
       <div className="mesh-accent" />
       <div className="container relative z-10">
         <motion.div
@@ -555,29 +549,34 @@ function WaitlistSection() {
           whileInView="visible"
           viewport={{ once: true, margin: "-100px" }}
           variants={staggerContainer}
-          className="max-w-[480px] mx-auto"
+          className="max-w-[520px] mx-auto"
         >
-          <motion.div variants={fadeIn} className="glass-heavy rounded-[20px] p-7 md:p-10 space-y-6">
-            <div className="text-center space-y-3">
-              <span className="glass-badge">Founding members — limited spots</span>
-              <h2>Join the founding class</h2>
-              <p className="body-muted max-w-sm mx-auto">
-                We're launching soon. Be first to access elite chess coaching with payment protection.
+          <motion.div
+            variants={fadeIn}
+            className="bg-background border border-border p-8 md:p-10 space-y-7"
+          >
+            <div className="space-y-4">
+              <span className="eyebrow">05 — Get started</span>
+              <h2>Join the founding class.</h2>
+              <p className="lede text-base">
+                We&rsquo;re launching soon. Be first to access elite chess coaching with payment
+                protection.
               </p>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-5 pt-4 border-t border-border">
               <div className="relative">
+                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <input
                   type="email"
-                  placeholder="✉  you@example.com"
+                  placeholder="you@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="glass-input"
+                  className="editorial-input with-icon"
                 />
               </div>
 
-              <div className="flex items-center justify-center gap-5 text-[13px]">
+              <div className="flex items-center gap-6 text-[13px]">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="radio"
@@ -585,9 +584,9 @@ function WaitlistSection() {
                     value="student"
                     checked={userType === "student"}
                     onChange={() => setUserType("student")}
-                    className="accent-[#722F37] w-3.5 h-3.5"
+                    className="accent-primary w-3.5 h-3.5"
                   />
-                  <span className="text-white/60">I'm a Student</span>
+                  <span className="text-foreground">I&rsquo;m a student</span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
@@ -596,16 +595,16 @@ function WaitlistSection() {
                     value="coach"
                     checked={userType === "coach"}
                     onChange={() => setUserType("coach")}
-                    className="accent-[#722F37] w-3.5 h-3.5"
+                    className="accent-primary w-3.5 h-3.5"
                   />
-                  <span className="text-white/60">I'm a Coach</span>
+                  <span className="text-foreground">I&rsquo;m a coach</span>
                 </label>
               </div>
 
               <button
                 type="submit"
                 disabled={joinWaitlist.isPending}
-                className="btn-glass-primary w-full disabled:opacity-60"
+                className="btn-editorial-primary w-full disabled:opacity-60"
               >
                 {joinWaitlist.isPending ? (
                   <span className="inline-flex items-center gap-2 justify-center">
@@ -613,12 +612,12 @@ function WaitlistSection() {
                     Joining…
                   </span>
                 ) : (
-                  "Join Waitlist"
+                  "Join the waitlist"
                 )}
               </button>
 
-              <p className="text-[10px] text-white/20 text-center">
-                No spam. Unsubscribe anytime.
+              <p className="mono-label text-center">
+                No spam · Unsubscribe anytime
               </p>
             </form>
           </motion.div>
@@ -702,12 +701,16 @@ function MeetOurCoachesSection() {
           variants={staggerContainer}
           className="space-y-16"
         >
-          <motion.div variants={fadeIn} className="text-center space-y-6 max-w-3xl mx-auto">
-            <h2 className="text-5xl md:text-6xl font-thin tracking-tighter leading-tight">
-              Our Coach Community
+          <motion.div variants={fadeIn} className="space-y-5 max-w-3xl">
+            <span className="eyebrow">03 — Your matches</span>
+            <h2 className="text-balance">
+              Three coaches.
+              <br />
+              Ranked by fit, not ad spend.
             </h2>
-            <p className="text-xl md:text-2xl font-light text-muted-foreground leading-relaxed">
-              We're building a curated network of elite chess coaches. Join the waitlist to be notified when our founding coaches launch.
+            <p className="lede">
+              We&rsquo;re building a curated network of elite chess coaches. Join the waitlist to be
+              notified when our founding coaches launch.
             </p>
           </motion.div>
 
@@ -733,29 +736,30 @@ function MeetOurCoachesSection() {
           {coaches.length === 0 ? (
             <motion.div
               variants={fadeIn}
-              className="text-center py-24 space-y-6"
+              className="border border-border p-10 md:p-14 space-y-6"
             >
-              <div className="space-y-4">
+              <div className="space-y-4 max-w-2xl">
+                <span className="eyebrow">In review</span>
                 <p className="text-2xl font-light text-foreground">
                   Our founding coaches are coming soon.
                 </p>
-                <p className="text-lg font-light text-muted-foreground max-w-2xl mx-auto">
-                  We're currently vetting applications from elite chess coaches. Join the waitlist below to be notified when they launch.
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  We&rsquo;re currently vetting applications from elite chess coaches. Join the
+                  waitlist below to be notified when they launch.
                 </p>
               </div>
-              <Button
-                size="lg"
+              <button
                 onClick={() => {
                   const element = document.getElementById("waitlist");
                   if (element) {
                     element.scrollIntoView({ behavior: "smooth" });
                   }
                 }}
-                className="font-light"
+                className="btn-editorial-primary inline-flex items-center gap-2"
               >
-                Join Waitlist
-                <ChevronRight className="ml-2 h-4 w-4" />
-              </Button>
+                Join the waitlist
+                <ChevronRight className="h-4 w-4" />
+              </button>
             </motion.div>
           ) : filteredCoaches.length > 0 ? (
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
@@ -798,53 +802,51 @@ function MeetOurCoachesSection() {
   );
 }
 
-// Footer — Glass Grandmaster editorial
+// Footer — editorial. Hairline dividers, mono labels, semantic tokens.
 function Footer() {
   return (
-    <footer className="bg-[#0A0A12] border-t border-white/[0.04] py-12 md:py-14">
+    <footer className="border-t border-border py-14" style={{ background: "var(--surface)" }}>
       <div className="container">
         <div className="grid md:grid-cols-[1fr_auto] gap-10 md:gap-16">
-          {/* Brand */}
-          <div className="space-y-3 opacity-50">
-            <Logo height={24} fallbackClassName="opacity-80" />
-            <p className="text-[11px] text-white/30">The chess coaching marketplace</p>
+          <div className="space-y-3">
+            <Logo height={24} />
+            <p className="mono-label">The chess coaching marketplace</p>
           </div>
 
-          {/* Link columns */}
           <nav aria-label="Footer" className="grid grid-cols-2 md:grid-cols-4 gap-8 md:gap-12">
             <div className="space-y-3">
-              <div className="text-[11px] uppercase tracking-[1px] text-white/25">Platform</div>
+              <div className="mono-label">Platform</div>
               <ul className="space-y-2">
-                <li><a href="/coaches" className="text-[13px] text-white/35 hover:text-white/60 transition-colors">Browse Coaches</a></li>
-                <li><a href="/for-coaches" className="text-[13px] text-white/35 hover:text-white/60 transition-colors">For Coaches</a></li>
-                <li><a href="/?openAssessment=1" className="text-[13px] text-white/35 hover:text-white/60 transition-colors">AI Matching</a></li>
+                <li><a href="/coaches" className="text-[13px] text-muted-foreground hover:text-foreground transition-colors">Browse coaches</a></li>
+                <li><a href="/for-coaches" className="text-[13px] text-muted-foreground hover:text-foreground transition-colors">For coaches</a></li>
+                <li><a href="/?openAssessment=1" className="text-[13px] text-muted-foreground hover:text-foreground transition-colors">AI matching</a></li>
               </ul>
             </div>
             <div className="space-y-3">
-              <div className="text-[11px] uppercase tracking-[1px] text-white/25">Company</div>
+              <div className="mono-label">Company</div>
               <ul className="space-y-2">
-                <li><a href="#" className="text-[13px] text-white/35 hover:text-white/60 transition-colors">About</a></li>
-                <li><a href="#" className="text-[13px] text-white/35 hover:text-white/60 transition-colors">Blog</a></li>
+                <li><a href="#" className="text-[13px] text-muted-foreground hover:text-foreground transition-colors">About</a></li>
+                <li><a href="#" className="text-[13px] text-muted-foreground hover:text-foreground transition-colors">Blog</a></li>
               </ul>
             </div>
             <div className="space-y-3">
-              <div className="text-[11px] uppercase tracking-[1px] text-white/25">Legal</div>
+              <div className="mono-label">Legal</div>
               <ul className="space-y-2">
-                <li><a href="/privacy" className="text-[13px] text-white/35 hover:text-white/60 transition-colors">Privacy Policy</a></li>
-                <li><a href="/terms" className="text-[13px] text-white/35 hover:text-white/60 transition-colors">Terms of Service</a></li>
+                <li><a href="/privacy" className="text-[13px] text-muted-foreground hover:text-foreground transition-colors">Privacy</a></li>
+                <li><a href="/terms" className="text-[13px] text-muted-foreground hover:text-foreground transition-colors">Terms</a></li>
               </ul>
             </div>
             <div className="space-y-3">
-              <div className="text-[11px] uppercase tracking-[1px] text-white/25">Connect</div>
+              <div className="mono-label">Connect</div>
               <ul className="space-y-2">
-                <li><a href="mailto:hello@boogme.com" className="text-[13px] text-white/35 hover:text-white/60 transition-colors">Email</a></li>
+                <li><a href="mailto:hello@boogme.com" className="text-[13px] text-muted-foreground hover:text-foreground transition-colors">Email</a></li>
               </ul>
             </div>
           </nav>
         </div>
 
-        <div className="mt-12 pt-6 border-t border-white/[0.04]">
-          <p className="text-[11px] text-white/15">© 2026 BooGMe. All rights reserved.</p>
+        <div className="mt-12 pt-6 border-t border-border">
+          <p className="mono-label">© 2026 BooGMe. All rights reserved.</p>
         </div>
       </div>
     </footer>

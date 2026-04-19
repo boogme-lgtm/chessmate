@@ -1,54 +1,55 @@
 /*
- * Glass Grandmaster — utility classes
- * Import this file from client/src/index.css
+ * Editorial utilities — replaces the previous Glass Grandmaster sheet.
+ * The filename is kept (still imported from index.css) so Phase 4/5 can
+ * swap call sites incrementally; the visual language is fully editorial:
  *
- * All classes assume the CSS custom properties defined in index.css :root
- * (--glass-bg, --glass-border, --glass-blur, --mesh-*, etc.).
+ *   - No gradient CTAs, no drop-shadowed pills, no glassmorphism.
+ *   - Surfaces are flat with 1px hairline borders.
+ *   - Mesh background remains (three soft blurred blobs) but in primary
+ *     tint only — colour is meaning, never decoration.
+ *   - Adds the brief's `.shimmer`, `.ticker`, `.reveal`, `.precision-grid`
+ *     primitives so Phase 4 can apply them in markup.
  *
- * Performance note: backdrop-filter is expensive on older devices.
- * The @supports block at the bottom of this file provides solid-background
- * fallbacks for browsers that can't render the frosted effect.
- *
- * Reduced motion: respects prefers-reduced-motion — freezes mesh drift,
- * float, and logo pulse animations for users who request it.
+ * Legacy class names (`.glass`, `.glass-card`, `.btn-glass-primary`, etc.)
+ * are aliased to their editorial equivalents for non-breaking migration.
  */
 
-/* ─── Glass panels ────────────────────────────────────────────────── */
+/* ─── Surfaces ────────────────────────────────────────────────────── */
 
-.glass {
-  background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur)) saturate(180%);
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(180%);
-  border: 0.5px solid var(--glass-border);
-  /* Drop shadow + top-edge highlight — the panel lifts off the page. */
-  box-shadow:
-    0 8px 32px rgba(0, 0, 0, 0.35),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
-}
-
-.glass:hover {
-  background: var(--glass-bg-hover);
-  border-color: var(--glass-border-hover);
-  box-shadow:
-    0 12px 40px rgba(0, 0, 0, 0.4),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
-}
-
+.surface-flat,
+.glass,
+.glass-card,
+.glass-stat,
 .glass-heavy {
-  background: rgba(255, 255, 255, 0.06);
-  backdrop-filter: blur(var(--glass-blur-heavy)) saturate(180%);
-  -webkit-backdrop-filter: blur(var(--glass-blur-heavy)) saturate(180%);
-  border: 0.5px solid rgba(255, 255, 255, 0.1);
-  /* Heavier depth — stronger drop + more pronounced top highlight. */
-  box-shadow:
-    0 16px 48px rgba(0, 0, 0, 0.45),
-    0 2px 8px rgba(0, 0, 0, 0.2),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
 }
 
-/* ─── Gradient mesh backgrounds ───────────────────────────────────── */
-/* Apply .mesh-bg to a section to get two soft radial gradient blobs.
- * Add an inner <div class="mesh-accent"/> for a third blob. */
+.surface-raised {
+  background: var(--surface-elevated);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.surface-flat:hover,
+.glass:hover,
+.glass-card:hover,
+.glass-stat:hover {
+  border-color: color-mix(in oklab, var(--foreground) 28%, var(--line));
+}
+
+/* The card-glow ambient corner from the glass system is silenced.
+ * Editorial cards do not glow. */
+.glass-card .card-glow { display: none; }
+
+/* ─── Mesh background ─────────────────────────────────────────────── */
+/* Three soft blurred blobs in primary tint. Used on hero + closing CTA
+ * sections per the brief's MeshBg primitive. */
 
 .mesh-bg {
   position: relative;
@@ -66,8 +67,8 @@
 }
 
 .mesh-bg::before {
-  top: -30%;
-  left: -15%;
+  top: -28%;
+  left: -18%;
   width: 60%;
   height: 60%;
   background: radial-gradient(circle, var(--mesh-burgundy), transparent 70%);
@@ -75,7 +76,7 @@
 
 .mesh-bg::after {
   bottom: -25%;
-  right: -10%;
+  right: -12%;
   width: 50%;
   height: 50%;
   background: radial-gradient(circle, var(--mesh-iris), transparent 70%);
@@ -83,16 +84,15 @@
 
 .mesh-accent {
   position: absolute;
-  top: 15%;
-  right: 15%;
-  width: 35%;
-  height: 35%;
+  top: 18%;
+  right: 14%;
+  width: 38%;
+  height: 38%;
   background: radial-gradient(circle, var(--mesh-terracotta), transparent 70%);
   filter: blur(60px);
   pointer-events: none;
 }
 
-/* Alternate mesh variant (forest + terracotta) for value-prop section */
 .mesh-bg-warm::before {
   background: radial-gradient(circle, var(--mesh-forest), transparent 70%);
 }
@@ -100,300 +100,301 @@
   background: radial-gradient(circle, var(--mesh-terracotta), transparent 70%);
 }
 
-/* Slow drift animation for the mesh blobs — bigger travel so the
- * motion reads as "alive" rather than accidental. Scales lightly to
- * suggest breathing. */
+/* ─── Mesh drift animation (22–28s, brief spec) ───────────────────── */
+
 @keyframes meshDrift {
   0%, 100% { transform: translate(0, 0) scale(1); }
-  25% { transform: translate(40px, -30px) scale(1.08); }
-  50% { transform: translate(-25px, 35px) scale(0.95); }
-  75% { transform: translate(30px, 20px) scale(1.05); }
+  25% { transform: translate(40px, -30px) scale(1.06); }
+  50% { transform: translate(-25px, 35px) scale(0.96); }
+  75% { transform: translate(30px, 20px) scale(1.04); }
 }
 
 @keyframes meshDriftAlt {
   0%, 100% { transform: translate(0, 0) scale(1); }
-  25% { transform: translate(-35px, 25px) scale(1.05); }
-  50% { transform: translate(30px, -20px) scale(0.95); }
-  75% { transform: translate(-15px, -30px) scale(1.08); }
+  25% { transform: translate(-35px, 25px) scale(1.04); }
+  50% { transform: translate(30px, -20px) scale(0.96); }
+  75% { transform: translate(-15px, -30px) scale(1.06); }
 }
 
-.mesh-bg-animated::before {
-  animation: meshDrift 24s ease-in-out infinite;
-}
+.mesh-bg-animated::before { animation: meshDrift 24s ease-in-out infinite alternate; }
+.mesh-bg-animated::after  { animation: meshDriftAlt 28s ease-in-out infinite alternate; }
+.mesh-bg-animated .mesh-accent { animation: meshDrift 22s ease-in-out infinite alternate reverse; }
 
-.mesh-bg-animated::after {
-  animation: meshDriftAlt 28s ease-in-out infinite;
-}
+/* ─── Precision grid overlay ──────────────────────────────────────── */
+/* Faint editorial grid laid over hero sections. Mask falls off at the
+ * edges so it reads as fabric, not a wireframe. */
 
-.mesh-bg-animated .mesh-accent {
-  animation: meshDrift 32s ease-in-out infinite reverse;
-}
-
-/* ─── Glass cards ─────────────────────────────────────────────────── */
-
-.glass-card {
-  background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur)) saturate(180%);
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(180%);
-  border: 0.5px solid var(--glass-border);
-  border-radius: 16px;
-  position: relative;
-  overflow: hidden;
-  /* Layered shadow for depth + subtle inner top highlight that reads as light
-   * catching the top edge of the panel. */
-  box-shadow:
-    0 10px 30px rgba(0, 0, 0, 0.35),
-    0 2px 8px rgba(0, 0, 0, 0.15),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
-              box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1),
-              background 0.3s ease,
-              border-color 0.3s ease;
-}
-
-.glass-card:hover {
-  background: var(--glass-bg-hover);
-  border-color: var(--glass-border-hover);
-  transform: translateY(-4px);
-  /* The panel lifts — shadow grows, highlight strengthens. */
-  box-shadow:
-    0 20px 50px rgba(0, 0, 0, 0.5),
-    0 4px 12px rgba(0, 0, 0, 0.2),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1);
-}
-
-/* Ambient corner glow inside a glass-card. Add <div class="card-glow"/> */
-.glass-card .card-glow {
+.precision-grid {
   position: absolute;
-  top: -15px;
-  right: -15px;
-  width: 60px;
-  height: 60px;
-  border-radius: 50%;
-  filter: blur(20px);
+  inset: 0;
+  background-image:
+    linear-gradient(to right, var(--line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--line) 1px, transparent 1px);
+  background-size: 80px 80px;
+  opacity: 0.35;
+  mask-image: radial-gradient(ellipse at center, black 40%, transparent 80%);
+  -webkit-mask-image: radial-gradient(ellipse at center, black 40%, transparent 80%);
   pointer-events: none;
 }
 
-/* ─── Glass badge / pill ──────────────────────────────────────────── */
+/* ─── Editorial pill / badge ──────────────────────────────────────── */
+/* Mono label badge — flat, hairline border, never glassy.
+ * `.glass-badge` aliased for back-compat. */
 
+.editorial-pill,
 .glass-badge {
-  background: rgba(255, 255, 255, 0.06);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 0.5px solid rgba(255, 255, 255, 0.08);
-  border-radius: 20px;
-  padding: 5px 14px;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-family: var(--font-mono);
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.7);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: none;
 }
 
-/* ─── Glass stat card ─────────────────────────────────────────────── */
+/* ─── Editorial input ─────────────────────────────────────────────── */
 
-.glass-stat {
-  background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur)) saturate(180%);
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(180%);
-  border: 0.5px solid var(--glass-border);
-  border-radius: 14px;
-  padding: 16px;
-  text-align: center;
-  box-shadow:
-    0 6px 20px rgba(0, 0, 0, 0.25),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
-}
-
-/* ─── Gradient text ───────────────────────────────────────────────── */
-
-.gradient-text {
-  background: linear-gradient(135deg, #C27A4A, #7B68EE);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  color: transparent;
-}
-
-/* ─── Glass input ─────────────────────────────────────────────────── */
-
+.editorial-input,
 .glass-input {
-  background: rgba(255, 255, 255, 0.04);
-  border: 0.5px solid rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
-  padding: 10px 14px;
-  color: #FAF8F5;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  color: var(--foreground);
   font-size: 14px;
-  transition: all 0.2s ease;
+  font-family: var(--font-body);
+  transition: border-color 0.15s ease, background-color 0.15s ease;
   width: 100%;
 }
 
-/* When glass-input is preceded by an icon in a relative container,
- * add left padding via the pl-11 Tailwind class (2.75rem = 44px).
- * This is applied directly in the JSX: className="glass-input pl-11" */
-
+/* Padding-left override when an icon is present in a relative container */
+.editorial-input.with-icon,
+.glass-input.with-icon {
+  padding-left: 2.75rem;
+}
+.editorial-input:focus,
 .glass-input:focus {
   outline: none;
-  border-color: #722F37;
-  background: rgba(255, 255, 255, 0.06);
-  box-shadow: 0 0 0 3px rgba(114, 47, 55, 0.15);
+  border-color: var(--primary);
+  background: color-mix(in oklab, var(--primary) 4%, transparent);
+  box-shadow: none;
 }
 
+.editorial-input::placeholder,
 .glass-input::placeholder {
-  color: rgba(255, 255, 255, 0.25);
+  color: var(--muted-foreground);
+  opacity: 0.7;
 }
 
-/* ─── Primary / accent buttons (gradient) ─────────────────────────── */
+/* ─── Buttons ─────────────────────────────────────────────────────── */
+/* Flat. No gradient. No glow. Aliased so legacy `.btn-glass-*` calls
+ * keep rendering until Phase 4/5 replace them. */
 
+.btn-editorial-primary,
 .btn-glass-primary {
-  background: linear-gradient(135deg, #722F37, #8B3A43);
-  color: #FAF8F5;
-  border: none;
-  border-radius: 10px;
-  padding: 12px 28px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border: 1px solid var(--primary);
+  border-radius: var(--radius);
+  padding: 12px 24px;
+  font-family: var(--font-body);
   font-size: 14px;
   font-weight: 500;
-  box-shadow: 0 4px 20px rgba(114, 47, 55, 0.35);
-  transition: all 0.2s ease;
+  letter-spacing: 0.01em;
+  box-shadow: none;
+  transition: opacity 0.15s ease, transform 0.1s ease;
   cursor: pointer;
 }
+.btn-editorial-primary:hover,
+.btn-glass-primary:hover { opacity: 0.92; transform: none; }
+.btn-editorial-primary:active,
+.btn-glass-primary:active { transform: translateY(1px); }
 
-.btn-glass-primary:hover {
-  box-shadow: 0 6px 28px rgba(114, 47, 55, 0.45);
-  transform: translateY(-1px);
-}
-
-.btn-glass-primary:active {
-  transform: scale(0.98);
-}
-
-.btn-glass-accent {
-  background: linear-gradient(135deg, #C27A4A, #D08B5C);
-  color: #FAF8F5;
-  border: none;
-  border-radius: 10px;
-  padding: 12px 28px;
-  font-size: 14px;
-  font-weight: 500;
-  box-shadow: 0 4px 16px rgba(194, 122, 74, 0.25);
-  transition: all 0.2s ease;
-  cursor: pointer;
-}
-
-.btn-glass-accent:hover {
-  box-shadow: 0 6px 24px rgba(194, 122, 74, 0.35);
-  transform: translateY(-1px);
-}
-
+.btn-editorial-ghost,
+.btn-glass-accent,
 .btn-glass-gold {
-  background: linear-gradient(135deg, #B8860B, #D4AA2B);
-  color: #0A0A12;
-  border: none;
-  border-radius: 10px;
-  padding: 12px 28px;
+  background: transparent;
+  color: var(--foreground);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px 24px;
+  font-family: var(--font-body);
   font-size: 14px;
   font-weight: 500;
-  box-shadow: 0 4px 16px rgba(184, 134, 11, 0.3);
-  transition: all 0.2s ease;
+  letter-spacing: 0.01em;
+  box-shadow: none;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
   cursor: pointer;
 }
-
+.btn-editorial-ghost:hover,
+.btn-glass-accent:hover,
 .btn-glass-gold:hover {
-  box-shadow: 0 6px 24px rgba(184, 134, 11, 0.4);
-  transform: translateY(-1px);
+  border-color: var(--foreground);
+  background: color-mix(in oklab, var(--foreground) 5%, transparent);
+  transform: none;
 }
 
-/* ─── Typography helpers ──────────────────────────────────────────── */
+/* ─── Typography helpers (legacy) ─────────────────────────────────── */
 
 .section-label {
+  font-family: var(--font-mono);
   font-size: 11px;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  letter-spacing: 1.5px;
-  color: rgba(255, 255, 255, 0.25);
-  font-weight: 500;
+  color: var(--muted-foreground);
+  font-weight: 400;
 }
 
 .body-muted {
   font-size: 14px;
   line-height: 1.6;
-  color: rgba(255, 255, 255, 0.45);
+  color: var(--muted-foreground);
 }
 
-/* ─── Animations ─────────────────────────────────────────────────── */
+/* The Glass Grandmaster's burgundy→iris gradient is replaced with a
+ * solid primary so headings read as editorial — the .shimmer class below
+ * provides the hero's animated second line per brief. */
+.gradient-text {
+  background: none;
+  -webkit-background-clip: initial;
+  -webkit-text-fill-color: currentColor;
+  color: var(--primary);
+}
 
+/* ─── Shimmer (hero second line) ──────────────────────────────────── */
+/* 6s linear loop, sweeping a light highlight across the text. Per brief
+ * spec used on the hero H1's second line only ("without the risk."). */
+
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--foreground) 0%,
+    var(--foreground) 35%,
+    color-mix(in oklab, var(--primary) 65%, var(--foreground)) 50%,
+    var(--foreground) 65%,
+    var(--foreground) 100%
+  );
+  background-size: 200% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer 6s linear infinite;
+}
+
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: 0 0; }
+}
+
+/* ─── Ticker (40s marquee) ────────────────────────────────────────── */
+
+.ticker {
+  display: flex;
+  overflow: hidden;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.ticker-track {
+  display: flex;
+  gap: 64px;
+  flex-shrink: 0;
+  padding: 16px 32px;
+  animation: ticker 40s linear infinite;
+  white-space: nowrap;
+}
+
+.ticker-item {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+@keyframes ticker {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+/* ─── Reveal (900ms entry) ────────────────────────────────────────── */
+/* Component opt-in: add `.reveal` to start hidden, `.reveal-in` to
+ * trigger. Use the React `<Reveal>` wrapper from Phase 6. */
+
+.reveal {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 900ms cubic-bezier(0.2, 0.7, 0.2, 1),
+              transform 900ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  will-change: opacity, transform;
+}
+
+.reveal-in {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ─── Float variants (hero scene children, brief spec 7s/9s/11s) ──── */
+
+@keyframes floatA { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-10px)} }
+@keyframes floatB { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-14px)} }
+@keyframes floatC { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)}  }
+
+.float-a { animation: floatA 7s  ease-in-out infinite alternate; }
+.float-b { animation: floatB 9s  ease-in-out infinite alternate; }
+.float-c { animation: floatC 11s ease-in-out infinite alternate; }
+
+/* Legacy float / pulse — retuned to brief timings. */
 @keyframes float {
   0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(4px); }
+  50% { transform: translateY(-4px); }
 }
-
-.animate-float {
-  animation: float 2s ease-in-out infinite;
-}
+.animate-float { animation: float 4s ease-in-out infinite; }
 
 @keyframes logoPulse {
-  0%, 100% { opacity: 0.8; }
+  0%, 100% { opacity: 0.85; }
   50% { opacity: 1; }
 }
-
-.animate-logo-pulse {
-  animation: logoPulse 2s ease-in-out infinite;
-}
-
-/* ─── Backdrop-filter fallback ────────────────────────────────────── */
-/* Older browsers / low-power devices that don't support backdrop-filter
- * get solid slightly-lighter-than-background fills that still read as
- * "floating panels" without the GPU cost of the blur pass. */
-@supports not (backdrop-filter: blur(16px)) {
-  .glass,
-  .glass-heavy,
-  .glass-card,
-  .glass-stat,
-  .glass-badge,
-  .glass-input {
-    background: rgba(20, 20, 30, 0.9);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-  }
-}
+.animate-logo-pulse { animation: logoPulse 3s ease-in-out infinite; }
 
 /* ─── Reduced motion ──────────────────────────────────────────────── */
-/* Respect users who opt out of motion in their OS. Kills the mesh drift,
- * float, and logo pulse loops while keeping functional transitions
- * (hover state changes) intact. */
+
 @media (prefers-reduced-motion: reduce) {
   .mesh-bg-animated::before,
   .mesh-bg-animated::after,
   .mesh-bg-animated .mesh-accent,
   .animate-float,
-  .animate-logo-pulse {
+  .animate-logo-pulse,
+  .float-a, .float-b, .float-c,
+  .shimmer,
+  .ticker-track {
     animation: none !important;
   }
-  .glass-card,
-  .btn-glass-primary,
-  .btn-glass-accent,
-  .btn-glass-gold {
-    transition: none !important;
-  }
-  .glass-card:hover,
-  .btn-glass-primary:hover,
-  .btn-glass-accent:hover,
-  .btn-glass-gold:hover {
+  .reveal {
+    opacity: 1 !important;
     transform: none !important;
+    transition: none !important;
   }
 }
 
 /* ─── Small-screen tuning ─────────────────────────────────────────── */
-/* Reduce blur radius on narrow viewports to save GPU cycles — the visual
- * difference is imperceptible at small sizes but the performance impact
- * is real on older phones. */
+
 @media (max-width: 640px) {
-  :root {
-    --glass-blur: 12px;
-    --glass-blur-heavy: 18px;
-  }
-  /* Shrink the mesh blobs so they don't overwhelm small viewports */
   .mesh-bg::before,
   .mesh-bg::after {
     filter: blur(60px);
+  }
+  .precision-grid {
+    background-size: 48px 48px;
+    opacity: 0.25;
   }
 }

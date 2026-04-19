@@ -51,28 +51,28 @@ export default function SignIn() {
   };
 
   return (
-    <div className="mesh-bg min-h-screen flex items-center justify-center p-4 relative">
+    <div className="mesh-bg mesh-bg-animated min-h-screen flex items-center justify-center p-4 relative">
       <div className="mesh-accent" />
-      <div className="w-full max-w-[400px] glass-heavy rounded-[20px] p-7 relative z-10">
-        <div className="text-center mb-6 space-y-3">
-          <div className="flex justify-center">
-            <Logo height={48} />
-          </div>
-          <div>
-            <h2 className="text-[24px] font-normal text-[#FAF8F5]">Welcome back</h2>
-            <p className="body-muted text-[13px] mt-1">Sign in to your BooGMe account</p>
-          </div>
+      <div className="w-full max-w-[420px] bg-background border border-border p-8 relative z-10">
+        <div className="space-y-3 mb-8">
+          <Logo height={36} />
+          <span className="eyebrow block">Sign in</span>
+          <h2>Welcome back.</h2>
+          <p className="text-sm text-muted-foreground">Sign in to your BooGMe account.</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && (
-            <div className="rounded-lg bg-[rgba(220,38,38,0.08)] border border-[rgba(220,38,38,0.2)] px-3 py-2.5 text-[13px] text-[#F87171]">
+            <div
+              className="border border-primary/30 bg-primary/5 px-3 py-2.5 text-[13px] text-foreground"
+              role="alert"
+            >
               {error}
             </div>
           )}
 
           <div className="space-y-1.5">
-            <label htmlFor="email" className="text-[12px] text-white/60">Email</label>
+            <label htmlFor="email" className="mono-label block">Email</label>
             <input
               id="email"
               type="email"
@@ -82,16 +82,16 @@ export default function SignIn() {
               disabled={loginMutation.isPending}
               required
               autoFocus
-              className="glass-input"
+              className="editorial-input"
             />
           </div>
 
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <label htmlFor="password" className="text-[12px] text-white/60">Password</label>
+              <label htmlFor="password" className="mono-label">Password</label>
               <Link
                 href="/forgot-password"
-                className="text-[12px] text-[#C27A4A] hover:text-[#D08B5C] transition-colors"
+                className="text-[12px] text-primary hover:opacity-80 transition-opacity"
               >
                 Forgot password?
               </Link>
@@ -105,12 +105,12 @@ export default function SignIn() {
                 onChange={(e) => setPassword(e.target.value)}
                 disabled={loginMutation.isPending}
                 required
-                className="glass-input pr-10"
+                className="editorial-input pr-10"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-[#FAF8F5] transition-colors"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                 tabIndex={-1}
                 aria-label={showPassword ? "Hide password" : "Show password"}
               >
@@ -121,19 +121,19 @@ export default function SignIn() {
 
           <button
             type="submit"
-            className="btn-glass-primary w-full inline-flex items-center justify-center gap-2 disabled:opacity-60"
+            className="btn-editorial-primary w-full inline-flex items-center justify-center gap-2 disabled:opacity-60"
             disabled={loginMutation.isPending}
           >
             {loginMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-            Sign In
+            Sign in
           </button>
 
           <div className="relative py-2">
             <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t border-white/[0.08]" />
+              <span className="w-full border-t border-border" />
             </div>
             <div className="relative flex justify-center">
-              <span className="px-3 text-[10px] uppercase tracking-[1.5px] text-white/25 bg-transparent">
+              <span className="mono-label px-3" style={{ background: "var(--background)" }}>
                 Or continue with
               </span>
             </div>
@@ -141,7 +141,7 @@ export default function SignIn() {
 
           <button
             type="button"
-            className="glass rounded-[10px] w-full py-3 inline-flex items-center justify-center gap-2 text-[14px] text-[#FAF8F5]/80 hover:text-[#FAF8F5] transition-colors"
+            className="btn-editorial-ghost w-full inline-flex items-center justify-center gap-2"
             onClick={() => {
               localStorage.setItem("postLoginRedirect", redirect);
               window.location.href = getLoginUrl();
@@ -156,11 +156,11 @@ export default function SignIn() {
             Sign in with Google
           </button>
 
-          <p className="text-[13px] text-center text-white/35 pt-1">
-            Don't have an account?{" "}
+          <p className="text-[13px] text-center text-muted-foreground pt-2">
+            Don&rsquo;t have an account?{" "}
             <Link
               href={`/register?redirect=${encodeURIComponent(redirect)}`}
-              className="text-[#C27A4A] hover:text-[#D08B5C] transition-colors font-medium"
+              className="text-primary hover:opacity-80 transition-opacity font-medium"
             >
               Create one
             </Link>

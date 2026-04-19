@@ -13,6 +13,36 @@
     <!-- Favicon -->
     <link rel="icon" type="image/png" href="https://files.manuscdn.com/user_upload_by_module/session_file/310519663188415081/TDPkPQHPJsimfVTe.png" />
 
+    <!--
+      Ember Dark is the recommended default per the editorial brief.
+      Painting the mobile browser chrome to match avoids the white flash
+      between page load and first React paint.
+    -->
+    <meta name="theme-color" content="#0F1419" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#0F1419" />
+    <meta name="color-scheme" content="dark light" />
+    <style>
+      /* Pre-React paint background — matches Ember Dark surface so the page
+       * never flashes white before the bundle hydrates. */
+      html, body { background: #0F1419; }
+      html.light, html.light body { background: #F5F1E4; }
+    </style>
+    <script>
+      // No-flash theme bootstrap. Reads the persisted theme (if the user
+      // ever toggled light) and applies the matching class on <html> before
+      // React renders, so :root tokens are correct on first paint.
+      (function () {
+        try {
+          var stored = localStorage.getItem("theme");
+          var theme = stored === "light" || stored === "dark" ? stored : "dark";
+          document.documentElement.classList.toggle("dark", theme === "dark");
+          document.documentElement.classList.toggle("light", theme === "light");
+        } catch (_) {
+          document.documentElement.classList.add("dark");
+        }
+      })();
+    </script>
+
     <!-- Open Graph -->
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://boogme.com/" />
@@ -30,7 +60,7 @@
     <meta name="twitter:image" content="https://d2xsxph8kpxj0f.cloudfront.net/310519663188415081/Xkyng35xnYFybYAdmyVo96/boogme-og-image_0b103eae.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600&family=JetBrains+Mono:wght@300;400&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Source+Serif+4:ital,wght@0,400;0,500;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
     
     <!-- Force HTTPS redirect -->
     <script>

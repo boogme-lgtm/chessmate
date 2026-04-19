@@ -458,7 +458,7 @@ function StatRing({ pct, color, label, value }: { pct: number; color: string; la
           <span className="text-lg font-black" style={{ color }}>{value}</span>
         </div>
       </div>
-      <span className="text-xs text-white/40 text-center leading-tight">{label}</span>
+      <span className="text-xs text-muted-foreground text-center leading-tight">{label}</span>
     </div>
   );
 }

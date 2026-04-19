@@ -428,7 +428,7 @@ export default function CoachDashboard() {
                             );
                           default:
                             return (
-                              <div className="text-xs px-2 py-0.5 rounded-full inline-block bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400">
+                              <div className="text-xs px-2 py-0.5 rounded-full inline-block bg-muted text-muted-foreground">
                                 {lesson.status}
                               </div>
                             );

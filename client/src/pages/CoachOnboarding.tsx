@@ -346,27 +346,27 @@ export default function CoachOnboarding() {
   const progress = ((step - 1) / (STEPS.length - 1)) * 100;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white">
+    <div className="min-h-screen bg-background text-foreground">
       {/* Header */}
-      <div className="border-b border-white/10 bg-slate-950/80 backdrop-blur-sm sticky top-0 z-10">
+      <div className="border-b border-border sticky top-0 z-10 bg-background/95 backdrop-blur-sm">
         <div className="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between gap-4">
           <a
             href="/"
-            className="inline-flex items-center gap-2 text-[13px] text-white/50 hover:text-white transition-colors"
+            className="inline-flex items-center gap-2 text-[13px] text-muted-foreground hover:text-foreground transition-colors"
           >
             <ChevronLeft className="h-4 w-4" />
             Back to Home
           </a>
           <div className="flex items-center gap-3 flex-1 justify-center">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-black font-bold text-sm">B</div>
-            <span className="font-semibold text-white hidden sm:inline">Coach Setup</span>
+            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-bold text-sm">B</div>
+            <span className="font-semibold hidden sm:inline">Coach Setup</span>
           </div>
-          <span className="text-sm text-slate-400 whitespace-nowrap">Step {step} of {STEPS.length}</span>
+          <span className="text-sm text-muted-foreground whitespace-nowrap">Step {step} of {STEPS.length}</span>
         </div>
         {/* Progress bar */}
-        <div className="h-1 bg-slate-800">
+        <div className="h-1 bg-muted">
           <div
-            className="h-full bg-gradient-to-r from-amber-400 to-orange-500 transition-all duration-500"
+            className="h-full bg-primary transition-all duration-500"
             style={{ width: `${progress}%` }}
           />
         </div>
@@ -382,13 +382,13 @@ export default function CoachOnboarding() {
             return (
               <div key={s.id} className="flex flex-col items-center gap-1">
                 <div className={`w-9 h-9 rounded-full flex items-center justify-center transition-all duration-300 ${
-                  isComplete ? "bg-amber-400 text-black" :
-                  isCurrent ? "bg-amber-400/20 border-2 border-amber-400 text-amber-400" :
-                  "bg-slate-800 text-slate-500"
+                  isComplete ? "bg-primary text-primary-foreground" :
+                  isCurrent ? "bg-primary/20 border-2 border-primary text-primary" :
+                  "bg-muted text-muted-foreground"
                 }`}>
                   {isComplete ? <CheckCircle2 className="w-5 h-5" /> : <Icon className="w-4 h-4" />}
                 </div>
-                <span className={`text-xs hidden sm:block ${isCurrent ? "text-amber-400" : isComplete ? "text-slate-300" : "text-slate-600"}`}>
+                <span className={`text-xs hidden sm:block ${isCurrent ? "text-primary" : isComplete ? "text-foreground" : "text-muted-foreground"}`}>
                   {s.label}
                 </span>
               </div>
@@ -397,17 +397,17 @@ export default function CoachOnboarding() {
         </div>
 
         {/* ── Step Content ── */}
-        <div className="bg-slate-900/60 border border-white/10 rounded-2xl p-6 sm:p-8 backdrop-blur-sm">
+        <div className="surface-flat rounded-2xl p-6 sm:p-8">
 
           {/* STEP 1: Welcome */}
           {step === 1 && (
             <div className="space-y-6">
               <div className="text-center space-y-3">
-                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center mx-auto">
-                  <Sparkles className="w-8 h-8 text-black" />
+                <div className="w-16 h-16 rounded-2xl bg-primary flex items-center justify-center mx-auto">
+                  <Sparkles className="w-8 h-8 text-primary-foreground" />
                 </div>
-                <h1 className="text-2xl font-bold">Welcome to BooGMe Coaching</h1>
-                <p className="text-slate-400 max-w-md mx-auto">
+                <h1 className="text-2xl font-thin tracking-tighter">Welcome to BooGMe Coaching</h1>
+                <p className="text-muted-foreground max-w-md mx-auto">
                   Let's set up your coach profile in 7 quick steps. This takes about 5 minutes and you can save and return anytime.
                 </p>
               </div>
@@ -418,18 +418,18 @@ export default function CoachOnboarding() {
                   { icon: Calendar, title: "Your schedule", desc: "Teach when it suits you" },
                   { icon: Shield, title: "Secure payments", desc: "Stripe-powered payouts" },
                 ].map(({ icon: Icon, title, desc }) => (
-                  <div key={title} className="flex items-start gap-3 p-4 rounded-xl bg-slate-800/50 border border-white/5">
-                    <div className="w-9 h-9 rounded-lg bg-amber-400/10 flex items-center justify-center flex-shrink-0">
-                      <Icon className="w-4 h-4 text-amber-400" />
+                  <div key={title} className="flex items-start gap-3 p-4 rounded-xl border border-border bg-muted/30">
+                    <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                      <Icon className="w-4 h-4 text-primary" />
                     </div>
                     <div>
                       <p className="font-medium text-sm">{title}</p>
-                      <p className="text-xs text-slate-400">{desc}</p>
+                      <p className="text-xs text-muted-foreground">{desc}</p>
                     </div>
                   </div>
                 ))}
               </div>
-              <Button onClick={() => setStep(2)} className="w-full bg-amber-400 hover:bg-amber-500 text-black font-semibold h-12">
+              <Button onClick={() => setStep(2)} className="w-full btn-editorial-primary h-12">
                 Get Started <ChevronRight className="w-4 h-4 ml-1" />
               </Button>
             </div>
@@ -439,27 +439,27 @@ export default function CoachOnboarding() {
           {step === 2 && (
             <div className="space-y-5">
               <div>
-                <h2 className="text-xl font-bold flex items-center gap-2"><User className="w-5 h-5 text-amber-400" /> Personal Profile</h2>
-                <p className="text-slate-400 text-sm mt-1">This is what students see on your coach card.</p>
+                <h2 className="text-xl font-thin tracking-tighter flex items-center gap-2"><User className="w-5 h-5 text-primary" /> Personal Profile</h2>
+                <p className="text-muted-foreground text-sm mt-1">This is what students see on your coach card.</p>
               </div>
               <div className="space-y-4">
                 <div>
-                  <Label className="text-slate-300 mb-1.5 block">Full Name *</Label>
-                  <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Magnus Carlsen" className="bg-slate-800 border-slate-700 text-white" />
+                  <Label className="text-foreground/80 mb-1.5 block">Full Name *</Label>
+                  <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Magnus Carlsen" className="bg-transparent border-border text-foreground" />
                 </div>
                 <div>
-                  <Label className="text-slate-300 mb-1.5 block">Bio <span className="text-slate-500 text-xs">({bio.length}/2000)</span></Label>
+                  <Label className="text-foreground/80 mb-1.5 block">Bio <span className="text-muted-foreground text-xs">({bio.length}/2000)</span></Label>
                   <Textarea
                     value={bio}
                     onChange={(e) => setBio(e.target.value)}
                     placeholder="Tell students about your chess background, coaching philosophy, and what makes your sessions unique..."
-                    className="bg-slate-800 border-slate-700 text-white min-h-[120px]"
+                    className="bg-transparent border-border text-foreground min-h-[120px]"
                     maxLength={2000}
                   />
                 </div>
                 {/* Profile Photo Upload */}
                 <div>
-                  <Label className="text-slate-300 mb-2 block">Profile Photo</Label>
+                  <Label className="text-foreground/80 mb-2 block">Profile Photo</Label>
                   {/* Hidden file input */}
                   <input
                     ref={photoInputRef}
@@ -480,7 +480,7 @@ export default function CoachOnboarding() {
                           <img
                             src={avatarUrl}
                             alt="Profile preview"
-                            className="w-20 h-20 rounded-full object-cover border-2 border-amber-400/40"
+                            className="w-20 h-20 rounded-full object-cover border-2 border-primary/40"
                             onError={() => setAvatarUrl("")}
                           />
                           <button
@@ -492,8 +492,8 @@ export default function CoachOnboarding() {
                           </button>
                         </div>
                       ) : (
-                        <div className="w-20 h-20 rounded-full bg-slate-800 border-2 border-dashed border-slate-600 flex items-center justify-center">
-                          <Camera className="w-7 h-7 text-slate-500" />
+                        <div className="w-20 h-20 rounded-full bg-muted border-2 border-dashed border-border flex items-center justify-center">
+                          <Camera className="w-7 h-7 text-muted-foreground" />
                         </div>
                       )}
                     </div>
@@ -501,8 +501,8 @@ export default function CoachOnboarding() {
                     <div
                       className={`flex-1 border-2 border-dashed rounded-xl p-5 text-center cursor-pointer transition-all ${
                         photoDragOver
-                          ? "border-amber-400 bg-amber-400/10"
-                          : "border-slate-700 hover:border-slate-500 bg-slate-800/50"
+                          ? "border-primary bg-primary/10"
+                          : "border-border hover:border-primary/40 bg-muted/50"
                       }`}
                       onClick={() => photoInputRef.current?.click()}
                       onDragOver={(e) => { e.preventDefault(); setPhotoDragOver(true); }}
@@ -516,14 +516,14 @@ export default function CoachOnboarding() {
                     >
                       {photoUploading ? (
                         <div className="flex flex-col items-center gap-2">
-                          <div className="w-7 h-7 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
-                          <span className="text-sm text-slate-400">Uploading...</span>
+                          <div className="w-7 h-7 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                          <span className="text-sm text-muted-foreground">Uploading...</span>
                         </div>
                       ) : (
                         <div className="flex flex-col items-center gap-2">
-                          <Upload className="w-6 h-6 text-slate-400" />
-                          <p className="text-sm text-slate-300 font-medium">Drop photo here or click to browse</p>
-                          <p className="text-xs text-slate-500">JPEG, PNG, WebP or GIF · max 8 MB</p>
+                          <Upload className="w-6 h-6 text-muted-foreground" />
+                          <p className="text-sm text-foreground/80 font-medium">Drop photo here or click to browse</p>
+                          <p className="text-xs text-muted-foreground">JPEG, PNG, WebP or GIF · max 8 MB</p>
                         </div>
                       )}
                     </div>
@@ -531,12 +531,12 @@ export default function CoachOnboarding() {
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <Label className="text-slate-300 mb-1.5 block">Country</Label>
-                    <Input value={country} onChange={(e) => setCountry(e.target.value)} placeholder="e.g. United States" className="bg-slate-800 border-slate-700 text-white" />
+                    <Label className="text-foreground/80 mb-1.5 block">Country</Label>
+                    <Input value={country} onChange={(e) => setCountry(e.target.value)} placeholder="e.g. United States" className="bg-transparent border-border text-foreground" />
                   </div>
                   <div>
-                    <Label className="text-slate-300 mb-1.5 block">Timezone</Label>
-                    <Input value={timezone} onChange={(e) => setTimezone(e.target.value)} placeholder="America/New_York" className="bg-slate-800 border-slate-700 text-white" />
+                    <Label className="text-foreground/80 mb-1.5 block">Timezone</Label>
+                    <Input value={timezone} onChange={(e) => setTimezone(e.target.value)} placeholder="America/New_York" className="bg-transparent border-border text-foreground" />
                   </div>
                 </div>
               </div>
@@ -547,12 +547,12 @@ export default function CoachOnboarding() {
           {step === 3 && (
             <div className="space-y-5">
               <div>
-                <h2 className="text-xl font-bold flex items-center gap-2"><Trophy className="w-5 h-5 text-amber-400" /> Chess Credentials</h2>
-                <p className="text-slate-400 text-sm mt-1">Help students understand your chess background.</p>
+                <h2 className="text-xl font-thin tracking-tighter flex items-center gap-2"><Trophy className="w-5 h-5 text-primary" /> Chess Credentials</h2>
+                <p className="text-muted-foreground text-sm mt-1">Help students understand your chess background.</p>
               </div>
               <div className="space-y-4">
                 <div>
-                  <Label className="text-slate-300 mb-2 block">FIDE Title</Label>
+                  <Label className="text-foreground/80 mb-2 block">FIDE Title</Label>
                   <div className="flex flex-wrap gap-2">
                     {TITLES.map((t) => (
                       <button
@@ -560,8 +560,8 @@ export default function CoachOnboarding() {
                         onClick={() => setTitle(t)}
                         className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-all ${
                           title === t
-                            ? "bg-amber-400 border-amber-400 text-black"
-                            : "bg-slate-800 border-slate-700 text-slate-300 hover:border-amber-400/50"
+                            ? "bg-primary border-primary text-primary-foreground"
+                            : "bg-muted border-border text-foreground/80 hover:border-primary/50"
                         }`}
                       >
                         {t === "none" ? "No Title" : t}
@@ -570,12 +570,12 @@ export default function CoachOnboarding() {
                   </div>
                 </div>
                 <div>
-                  <Label className="text-slate-300 mb-1.5 block">FIDE Rating</Label>
+                  <Label className="text-foreground/80 mb-1.5 block">FIDE Rating</Label>
                   <Input
                     value={fideRating}
                     onChange={(e) => setFideRating(e.target.value.replace(/\D/g, ""))}
                     placeholder="e.g. 2650"
-                    className="bg-slate-800 border-slate-700 text-white"
+                    className="bg-transparent border-border text-foreground"
                     type="number"
                     min={0}
                     max={3000}
@@ -583,16 +583,16 @@ export default function CoachOnboarding() {
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <Label className="text-slate-300 mb-1.5 block">Lichess Username</Label>
-                    <Input value={lichessUsername} onChange={(e) => setLichessUsername(e.target.value)} placeholder="your-username" className="bg-slate-800 border-slate-700 text-white" />
+                    <Label className="text-foreground/80 mb-1.5 block">Lichess Username</Label>
+                    <Input value={lichessUsername} onChange={(e) => setLichessUsername(e.target.value)} placeholder="your-username" className="bg-transparent border-border text-foreground" />
                   </div>
                   <div>
-                    <Label className="text-slate-300 mb-1.5 block">Chess.com Username</Label>
-                    <Input value={chesscomUsername} onChange={(e) => setChesscomUsername(e.target.value)} placeholder="your-username" className="bg-slate-800 border-slate-700 text-white" />
+                    <Label className="text-foreground/80 mb-1.5 block">Chess.com Username</Label>
+                    <Input value={chesscomUsername} onChange={(e) => setChesscomUsername(e.target.value)} placeholder="your-username" className="bg-transparent border-border text-foreground" />
                   </div>
                 </div>
                 <div>
-                  <Label className="text-slate-300 mb-2 block">Years of Coaching Experience: <span className="text-amber-400">{experienceYears}</span></Label>
+                  <Label className="text-foreground/80 mb-2 block">Years of Coaching Experience: <span className="text-primary">{experienceYears}</span></Label>
                   <Slider
                     value={[experienceYears]}
                     onValueChange={([v]) => setExperienceYears(v)}
@@ -601,7 +601,7 @@ export default function CoachOnboarding() {
                     step={1}
                     className="w-full"
                   />
-                  <div className="flex justify-between text-xs text-slate-500 mt-1">
+                  <div className="flex justify-between text-xs text-muted-foreground mt-1">
                     <span>0</span><span>10</span><span>20</span><span>30+</span>
                   </div>
                 </div>
@@ -613,11 +613,11 @@ export default function CoachOnboarding() {
           {step === 4 && (
             <div className="space-y-5">
               <div>
-                <h2 className="text-xl font-bold flex items-center gap-2"><BookOpen className="w-5 h-5 text-amber-400" /> Teaching Style</h2>
-                <p className="text-slate-400 text-sm mt-1">Help students find the right coach for their learning style.</p>
+                <h2 className="text-xl font-thin tracking-tighter flex items-center gap-2"><BookOpen className="w-5 h-5 text-primary" /> Teaching Style</h2>
+                <p className="text-muted-foreground text-sm mt-1">Help students find the right coach for their learning style.</p>
               </div>
               <div>
-                <Label className="text-slate-300 mb-2 block">Specialties <span className="text-slate-500 text-xs">(select all that apply)</span></Label>
+                <Label className="text-foreground/80 mb-2 block">Specialties <span className="text-muted-foreground text-xs">(select all that apply)</span></Label>
                 <div className="flex flex-wrap gap-2">
                   {SPECIALTIES.map((s) => (
                     <button
@@ -625,8 +625,8 @@ export default function CoachOnboarding() {
                       onClick={() => toggleSpecialty(s)}
                       className={`px-3 py-1.5 rounded-full text-sm border transition-all ${
                         specialties.includes(s)
-                          ? "bg-amber-400/20 border-amber-400 text-amber-300"
-                          : "bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-500"
+                          ? "bg-primary/20 border-primary text-primary"
+                          : "bg-muted border-border text-muted-foreground hover:border-primary/40"
                       }`}
                     >
                       {s}
@@ -635,7 +635,7 @@ export default function CoachOnboarding() {
                 </div>
               </div>
               <div>
-                <Label className="text-slate-300 mb-2 block">Teaching Style</Label>
+                <Label className="text-foreground/80 mb-2 block">Teaching Style</Label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {[
                     { value: "visual", label: "Visual", desc: "Diagrams, boards, visual patterns" },
@@ -648,18 +648,18 @@ export default function CoachOnboarding() {
                       onClick={() => setTeachingStyle(value as any)}
                       className={`p-3 rounded-xl text-left border transition-all ${
                         teachingStyle === value
-                          ? "bg-amber-400/10 border-amber-400 text-white"
-                          : "bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-600"
+                          ? "bg-primary/10 border-primary text-foreground"
+                          : "bg-muted border-border text-muted-foreground hover:border-border"
                       }`}
                     >
                       <p className="font-medium text-sm">{label}</p>
-                      <p className="text-xs text-slate-500 mt-0.5">{desc}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{desc}</p>
                     </button>
                   ))}
                 </div>
               </div>
               <div>
-                <Label className="text-slate-300 mb-2 block">Languages</Label>
+                <Label className="text-foreground/80 mb-2 block">Languages</Label>
                 <div className="flex flex-wrap gap-2">
                   {LANGUAGES.map(({ code, label }) => (
                     <button
@@ -667,8 +667,8 @@ export default function CoachOnboarding() {
                       onClick={() => toggleLanguage(code)}
                       className={`px-3 py-1.5 rounded-full text-sm border transition-all ${
                         languages.includes(code)
-                          ? "bg-amber-400/20 border-amber-400 text-amber-300"
-                          : "bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-500"
+                          ? "bg-primary/20 border-primary text-primary"
+                          : "bg-muted border-border text-muted-foreground hover:border-primary/40"
                       }`}
                     >
                       {label}
@@ -683,12 +683,12 @@ export default function CoachOnboarding() {
           {step === 5 && (
             <div className="space-y-5">
               <div>
-                <h2 className="text-xl font-bold flex items-center gap-2"><DollarSign className="w-5 h-5 text-amber-400" /> Pricing & Lessons</h2>
-                <p className="text-slate-400 text-sm mt-1">Set your rates and lesson preferences.</p>
+                <h2 className="text-xl font-thin tracking-tighter flex items-center gap-2"><DollarSign className="w-5 h-5 text-primary" /> Pricing & Lessons</h2>
+                <p className="text-muted-foreground text-sm mt-1">Set your rates and lesson preferences.</p>
               </div>
               <div>
-                <Label className="text-slate-300 mb-2 block">
-                  Hourly Rate: <span className="text-amber-400 font-bold">${hourlyRate}/hr</span>
+                <Label className="text-foreground/80 mb-2 block">
+                  Hourly Rate: <span className="text-primary font-bold">${hourlyRate}/hr</span>
                 </Label>
                 <Slider
                   value={[hourlyRate]}
@@ -698,15 +698,15 @@ export default function CoachOnboarding() {
                   step={5}
                   className="w-full"
                 />
-                <div className="flex justify-between text-xs text-slate-500 mt-1">
+                <div className="flex justify-between text-xs text-muted-foreground mt-1">
                   <span>$5</span><span>$100</span><span>$250</span><span>$500</span>
                 </div>
-                <p className="text-xs text-slate-500 mt-2">
-                  BooGMe takes a 15% platform fee. You receive <span className="text-green-400">${(hourlyRate * 0.85).toFixed(0)}/hr</span>.
+                <p className="text-xs text-muted-foreground mt-2">
+                  BooGMe takes a 15% platform fee. You receive <span className="text-safe">${(hourlyRate * 0.85).toFixed(0)}/hr</span>.
                 </p>
               </div>
               <div>
-                <Label className="text-slate-300 mb-2 block">Lesson Durations Offered</Label>
+                <Label className="text-foreground/80 mb-2 block">Lesson Durations Offered</Label>
                 <div className="flex gap-3">
                   {[30, 45, 60, 90, 120].map((d) => (
                     <button
@@ -714,8 +714,8 @@ export default function CoachOnboarding() {
                       onClick={() => toggleDuration(d)}
                       className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-all ${
                         lessonDurations.includes(d)
-                          ? "bg-amber-400 border-amber-400 text-black"
-                          : "bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-600"
+                          ? "bg-primary border-primary text-primary-foreground"
+                          : "bg-muted border-border text-muted-foreground hover:border-border"
                       }`}
                     >
                       {d}m
@@ -729,13 +729,13 @@ export default function CoachOnboarding() {
                     id="pkg"
                     checked={packageDiscount}
                     onCheckedChange={(v) => setPackageDiscount(!!v)}
-                    className="border-slate-600"
+                    className="border-border"
                   />
-                  <Label htmlFor="pkg" className="text-slate-300 cursor-pointer">Offer package discount</Label>
+                  <Label htmlFor="pkg" className="text-foreground/80 cursor-pointer">Offer package discount</Label>
                 </div>
                 {packageDiscount && (
                   <div>
-                    <Label className="text-slate-300 mb-2 block">Discount: <span className="text-amber-400">{packageDiscountPercent}%</span> off 5+ lessons</Label>
+                    <Label className="text-foreground/80 mb-2 block">Discount: <span className="text-primary">{packageDiscountPercent}%</span> off 5+ lessons</Label>
                     <Slider
                       value={[packageDiscountPercent]}
                       onValueChange={([v]) => setPackageDiscountPercent(v)}
@@ -749,7 +749,7 @@ export default function CoachOnboarding() {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                  <Label className="text-slate-300 mb-1.5 block text-xs">Min advance notice</Label>
+                  <Label className="text-foreground/80 mb-1.5 block text-xs">Min advance notice</Label>
                   <div className="flex items-center gap-1">
                     <Input
                       type="number"
@@ -757,13 +757,13 @@ export default function CoachOnboarding() {
                       onChange={(e) => setMinAdvanceHours(Number(e.target.value))}
                       min={1}
                       max={168}
-                      className="bg-slate-800 border-slate-700 text-white text-sm"
+                      className="bg-transparent border-border text-foreground text-sm"
                     />
-                    <span className="text-slate-500 text-xs">hrs</span>
+                    <span className="text-muted-foreground text-xs">hrs</span>
                   </div>
                 </div>
                 <div>
-                  <Label className="text-slate-300 mb-1.5 block text-xs">Max advance booking</Label>
+                  <Label className="text-foreground/80 mb-1.5 block text-xs">Max advance booking</Label>
                   <div className="flex items-center gap-1">
                     <Input
                       type="number"
@@ -771,13 +771,13 @@ export default function CoachOnboarding() {
                       onChange={(e) => setMaxAdvanceDays(Number(e.target.value))}
                       min={1}
                       max={90}
-                      className="bg-slate-800 border-slate-700 text-white text-sm"
+                      className="bg-transparent border-border text-foreground text-sm"
                     />
-                    <span className="text-slate-500 text-xs">days</span>
+                    <span className="text-muted-foreground text-xs">days</span>
                   </div>
                 </div>
                 <div>
-                  <Label className="text-slate-300 mb-1.5 block text-xs">Buffer between lessons</Label>
+                  <Label className="text-foreground/80 mb-1.5 block text-xs">Buffer between lessons</Label>
                   <div className="flex items-center gap-1">
                     <Input
                       type="number"
@@ -786,9 +786,9 @@ export default function CoachOnboarding() {
                       min={0}
                       max={60}
                       step={5}
-                      className="bg-slate-800 border-slate-700 text-white text-sm"
+                      className="bg-transparent border-border text-foreground text-sm"
                     />
-                    <span className="text-slate-500 text-xs">min</span>
+                    <span className="text-muted-foreground text-xs">min</span>
                   </div>
                 </div>
               </div>
@@ -799,21 +799,21 @@ export default function CoachOnboarding() {
           {step === 6 && (
             <div className="space-y-5">
               <div>
-                <h2 className="text-xl font-bold flex items-center gap-2"><Calendar className="w-5 h-5 text-amber-400" /> Weekly Schedule</h2>
-                <p className="text-slate-400 text-sm mt-1">Set your default weekly availability. Students can only book during these hours.</p>
+                <h2 className="text-xl font-thin tracking-tighter flex items-center gap-2"><Calendar className="w-5 h-5 text-primary" /> Weekly Schedule</h2>
+                <p className="text-muted-foreground text-sm mt-1">Set your default weekly availability. Students can only book during these hours.</p>
               </div>
               <div className="space-y-2">
                 {DAYS.map((day) => {
                   const dayData = schedule[day] ?? { enabled: false, slots: [{ start: "09:00", end: "17:00" }] };
                   return (
-                    <div key={day} className={`rounded-xl border p-3 transition-all ${dayData.enabled ? "bg-slate-800/60 border-slate-700" : "bg-slate-900/40 border-slate-800"}`}>
+                    <div key={day} className={`rounded-xl border p-3 transition-all ${dayData.enabled ? "bg-muted/60 border-border" : "bg-background border-border"}`}>
                       <div className="flex items-center gap-3">
                         <Checkbox
                           checked={dayData.enabled}
                           onCheckedChange={() => toggleDay(day)}
-                          className="border-slate-600"
+                          className="border-border"
                         />
-                        <span className={`w-10 text-sm font-medium ${dayData.enabled ? "text-white" : "text-slate-500"}`}>
+                        <span className={`w-10 text-sm font-medium ${dayData.enabled ? "text-foreground" : "text-muted-foreground"}`}>
                           {DAY_LABELS[day]}
                         </span>
                         {dayData.enabled && dayData.slots.map((slot, idx) => (
@@ -822,18 +822,18 @@ export default function CoachOnboarding() {
                               type="time"
                               value={slot.start}
                               onChange={(e) => updateSlot(day, idx, "start", e.target.value)}
-                              className="bg-slate-700 border-slate-600 text-white text-sm h-8 min-w-0 flex-1 max-w-[120px]"
+                              className="bg-transparent border-border text-foreground text-sm h-8 min-w-0 flex-1 max-w-[120px]"
                             />
-                            <span className="text-slate-500 text-xs">to</span>
+                            <span className="text-muted-foreground text-xs">to</span>
                             <Input
                               type="time"
                               value={slot.end}
                               onChange={(e) => updateSlot(day, idx, "end", e.target.value)}
-                              className="bg-slate-700 border-slate-600 text-white text-sm h-8 min-w-0 flex-1 max-w-[120px]"
+                              className="bg-transparent border-border text-foreground text-sm h-8 min-w-0 flex-1 max-w-[120px]"
                             />
                           </div>
                         ))}
-                        {!dayData.enabled && <span className="text-slate-600 text-sm">Unavailable</span>}
+                        {!dayData.enabled && <span className="text-muted-foreground text-sm">Unavailable</span>}
                       </div>
                     </div>
                   );
@@ -846,25 +846,25 @@ export default function CoachOnboarding() {
           {step === 7 && (
             <div className="space-y-6">
               <div className="text-center space-y-2">
-                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center mx-auto">
-                  <Zap className="w-8 h-8 text-black" />
+                <div className="w-16 h-16 rounded-2xl bg-primary flex items-center justify-center mx-auto">
+                  <Zap className="w-8 h-8 text-primary-foreground" />
                 </div>
                 <h2 className="text-2xl font-bold">Almost there!</h2>
-                <p className="text-slate-400 text-sm">Set up payments and agree to our guidelines to go live.</p>
+                <p className="text-muted-foreground text-sm">Set up payments and agree to our guidelines to go live.</p>
               </div>
 
               {/* Stripe Connect */}
-              <div className="p-4 rounded-xl bg-slate-800/60 border border-slate-700 space-y-3">
+              <div className="p-4 rounded-xl bg-muted/60 border border-border space-y-3">
                 <div className="flex items-center gap-3">
-                  <CreditCard className="w-5 h-5 text-amber-400" />
+                  <CreditCard className="w-5 h-5 text-primary" />
                   <div>
                     <p className="font-medium text-sm">Stripe Connect</p>
-                    <p className="text-xs text-slate-400">Required to receive lesson payments</p>
+                    <p className="text-xs text-muted-foreground">Required to receive lesson payments</p>
                   </div>
                   {profileData?.user?.stripeConnectOnboarded ? (
-                    <Badge className="ml-auto bg-green-500/20 text-green-400 border-green-500/30">Connected</Badge>
+                    <Badge className="ml-auto bg-safe/20 text-safe border-safe/30">Connected</Badge>
                   ) : (
-                    <Badge className="ml-auto bg-slate-700 text-slate-400 border-slate-600">Not set up</Badge>
+                    <Badge className="ml-auto bg-muted text-muted-foreground border-border">Not set up</Badge>
                   )}
                 </div>
                 {!profileData?.user?.stripeConnectOnboarded && (
@@ -872,7 +872,7 @@ export default function CoachOnboarding() {
                     onClick={handleStripeConnect}
                     disabled={saving}
                     variant="outline"
-                    className="w-full border-amber-400/50 text-amber-400 hover:bg-amber-400/10"
+                    className="w-full border-primary/50 text-primary hover:bg-primary/15"
                   >
                     <CreditCard className="w-4 h-4 mr-2" />
                     Set Up Stripe Payments
@@ -881,8 +881,8 @@ export default function CoachOnboarding() {
               </div>
 
               {/* Profile summary */}
-              <div className="p-4 rounded-xl bg-slate-800/40 border border-slate-700 space-y-2">
-                <p className="font-medium text-sm text-slate-300 mb-3">Profile Summary</p>
+              <div className="p-4 rounded-xl bg-muted/40 border border-border space-y-2">
+                <p className="font-medium text-sm text-foreground/80 mb-3">Profile Summary</p>
                 {[
                   { label: "Name", value: name || user?.name },
                   { label: "Title", value: title !== "none" ? title : "No title" },
@@ -891,25 +891,25 @@ export default function CoachOnboarding() {
                   { label: "Schedule", value: `${Object.values(schedule).filter((d) => d.enabled).length} days/week` },
                 ].map(({ label, value }) => (
                   <div key={label} className="flex justify-between text-sm">
-                    <span className="text-slate-500">{label}</span>
-                    <span className="text-slate-200">{value}</span>
+                    <span className="text-muted-foreground">{label}</span>
+                    <span className="text-foreground">{value}</span>
                   </div>
                 ))}
               </div>
 
               {/* Guidelines agreement */}
-              <div className="flex items-start gap-3 p-4 rounded-xl bg-slate-800/40 border border-slate-700">
+              <div className="flex items-start gap-3 p-4 rounded-xl bg-muted/40 border border-border">
                 <Checkbox
                   id="guidelines"
                   checked={guidelinesAgreed}
                   onCheckedChange={(v) => setGuidelinesAgreed(!!v)}
-                  className="border-slate-600 mt-0.5"
+                  className="border-border mt-0.5"
                 />
-                <Label htmlFor="guidelines" className="text-slate-300 text-sm cursor-pointer leading-relaxed">
+                <Label htmlFor="guidelines" className="text-foreground/80 text-sm cursor-pointer leading-relaxed">
                   I agree to the{" "}
-                  <a href="/terms" target="_blank" className="text-amber-400 hover:underline">Coach Guidelines</a>
+                  <a href="/terms" target="_blank" className="text-primary hover:underline">Coach Guidelines</a>
                   {" "}and{" "}
-                  <a href="/terms" target="_blank" className="text-amber-400 hover:underline">Terms of Service</a>.
+                  <a href="/terms" target="_blank" className="text-primary hover:underline">Terms of Service</a>.
                   I understand that BooGMe takes a 15% platform fee on all lessons.
                 </Label>
               </div>
@@ -917,7 +917,7 @@ export default function CoachOnboarding() {
               <Button
                 onClick={handleGoLive}
                 disabled={saving || !guidelinesAgreed}
-                className="w-full bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-500 hover:to-orange-600 text-black font-bold h-12 text-base"
+                className="w-full btn-editorial-primary h-12 text-base"
               >
                 <Star className="w-5 h-5 mr-2" />
                 Go Live — Publish My Profile
@@ -931,14 +931,14 @@ export default function CoachOnboarding() {
               <Button
                 variant="outline"
                 onClick={() => setStep((s) => s - 1)}
-                className="flex-1 border-slate-700 text-slate-300 hover:bg-slate-800"
+                className="flex-1 btn-editorial-ghost"
               >
                 <ChevronLeft className="w-4 h-4 mr-1" /> Back
               </Button>
               <Button
                 onClick={saveAndNext}
                 disabled={saving}
-                className="flex-1 bg-amber-400 hover:bg-amber-500 text-black font-semibold"
+                className="flex-1 btn-editorial-primary font-medium"
               >
                 {saving ? "Saving..." : "Continue"} <ChevronRight className="w-4 h-4 ml-1" />
               </Button>
