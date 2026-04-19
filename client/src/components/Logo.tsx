@@ -39,7 +39,7 @@ export default function Logo({
         }}
       />
       <span
-        className={`font-display font-medium tracking-tight text-[#FAF8F5] ${fallbackClassName}`}
+        className={`font-display font-medium tracking-tight text-foreground ${fallbackClassName}`}
         style={{ fontSize: `${fontSize}px`, display: "none" }}
       >
         BooGMe

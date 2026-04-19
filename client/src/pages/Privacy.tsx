@@ -11,7 +11,7 @@ export default function Privacy() {
   return (
     <div className="min-h-screen bg-background">
       {/* Back to Home */}
-      <div className="border-b border-white/[0.06]">
+      <div className="border-b border-border">
         <div className="container py-4">
           <Link
             href="/"
