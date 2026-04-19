@@ -31,13 +31,16 @@ import Logo from "@/components/Logo";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl } from "@/const";
 
-// Glass Grandmaster animation system (spec Phase 7)
-// - Section entrance: 0.5s easeOut
-// - Stagger children: 0.08
-// No spring physics, no bouncy transitions, nothing over 1s.
+// Editorial motion tokens (brief spec).
+// Reveal: 900ms cubic-bezier(0.2, 0.7, 0.2, 1), translateY(24px → 0).
+// Stagger children: 0.08s, delay 0.1s.
 const fadeIn = {
-  hidden: { opacity: 0, y: 20 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" } }
+  hidden: { opacity: 0, y: 24 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.9, ease: [0.2, 0.7, 0.2, 1] }
+  }
 } as const;
 
 const staggerContainer = {
