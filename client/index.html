@@ -13,6 +13,36 @@
     <!-- Favicon -->
     <link rel="icon" type="image/png" href="https://files.manuscdn.com/user_upload_by_module/session_file/310519663188415081/TDPkPQHPJsimfVTe.png" />
 
+    <!--
+      Ember Dark is the recommended default per the editorial brief.
+      Painting the mobile browser chrome to match avoids the white flash
+      between page load and first React paint.
+    -->
+    <meta name="theme-color" content="#0F1419" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#0F1419" />
+    <meta name="color-scheme" content="dark light" />
+    <style>
+      /* Pre-React paint background — matches Ember Dark surface so the page
+       * never flashes white before the bundle hydrates. */
+      html, body { background: #0F1419; }
+      html.light, html.light body { background: #F5F1E4; }
+    </style>
+    <script>
+      // No-flash theme bootstrap. Reads the persisted theme (if the user
+      // ever toggled light) and applies the matching class on <html> before
+      // React renders, so :root tokens are correct on first paint.
+      (function () {
+        try {
+          var stored = localStorage.getItem("theme");
+          var theme = stored === "light" || stored === "dark" ? stored : "dark";
+          document.documentElement.classList.toggle("dark", theme === "dark");
+          document.documentElement.classList.toggle("light", theme === "light");
+        } catch (_) {
+          document.documentElement.classList.add("dark");
+        }
+      })();
+    </script>
+
     <!-- Open Graph -->
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://boogme.com/" />
