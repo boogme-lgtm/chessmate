@@ -8,7 +8,6 @@ import Home from "./pages/Home";
 import Coaches from "./pages/Coaches";
 import CoachBrowse from "./pages/CoachBrowse";
 import CoachDashboard from "./pages/CoachDashboard";
-import CoachApplicationPage from "./pages/CoachApplicationPage";
 import AdminApplications from "./pages/AdminApplications";
 import AdminWaitlist from "./pages/AdminWaitlist";
 import Unsubscribe from "./pages/Unsubscribe";
@@ -35,7 +34,10 @@ function Router() {
       <Route path={"/assessment"} component={() => { window.location.replace("/?openAssessment=1"); return null; }} />
       <Route path={"/coaches"} component={CoachBrowse} />
       <Route path={"/for-coaches"} component={Coaches} />
-      <Route path={"/coach/apply"} component={CoachApplicationPage} />
+      {/* /coach/apply is deprecated — the canonical coach flow is /coach/onboarding.
+          CoachApplicationPage.tsx is intentionally left in place so the route can
+          be restored quickly if needed. */}
+      <Route path={"/coach/apply"} component={() => { window.location.replace("/coach/onboarding"); return null; }} />
       <Route path={"/coach/onboarding"} component={CoachOnboarding} />
       <Route path={"/coach/onboarding/complete"} component={() => { window.location.href = "/coach/onboarding?stripe_return=1"; return null; }} />
       <Route path={"/coach/onboarding/refresh"} component={() => { window.location.href = "/coach/onboarding?stripe_refresh=1"; return null; }} />

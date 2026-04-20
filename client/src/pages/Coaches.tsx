@@ -199,7 +199,7 @@ function CoachHeroSection() {
           >
             <Button
               onClick={() => {
-                window.location.href = "/coach/apply";
+                window.location.href = "/coach/onboarding";
               }}
               size="lg"
               className="btn-primary group"

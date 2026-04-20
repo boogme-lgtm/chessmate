@@ -23,7 +23,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Slider } from "@/components/ui/slider";
 import { toast } from "sonner";
 import {
-  CheckCircle2,
   ChevronRight,
   ChevronLeft,
   User,
@@ -89,9 +88,18 @@ function defaultSchedule(): WeekSchedule {
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function CoachOnboarding() {
   const [, navigate] = useLocation();
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, loading: authLoading } = useAuth();
   const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
+
+  // Auth gate: coach onboarding is the canonical flow (replacing /coach/apply,
+  // which was unauthenticated). Bounce unauth users to sign-in with a redirect
+  // back to this page after they log in. SignIn honours ?redirect= safely.
+  useEffect(() => {
+    if (authLoading) return;
+    if (isAuthenticated) return;
+    window.location.href = `/sign-in?redirect=${encodeURIComponent("/coach/onboarding")}`;
+  }, [authLoading, isAuthenticated]);
 
   // ── Form state ──
   const [name, setName] = useState("");
@@ -372,25 +380,27 @@ export default function CoachOnboarding() {
         </div>
       </div>
 
-      {/* Step indicators */}
+      {/* Step indicators — editorial style. Text-only labels with a 1px
+          underline marking the active step. No filled icon bubbles. Visible
+          on sm+; small screens rely on the "Step N of 7" counter + progress
+          bar in the header. */}
       <div className="max-w-3xl mx-auto px-4 py-6">
-        <div className="flex items-center justify-between mb-8">
-          {STEPS.map((s, i) => {
-            const Icon = s.icon;
+        <div className="hidden sm:flex items-center justify-between mb-8 gap-2">
+          {STEPS.map((s) => {
             const isComplete = step > s.id;
             const isCurrent = step === s.id;
             return (
-              <div key={s.id} className="flex flex-col items-center gap-1">
-                <div className={`w-9 h-9 rounded-full flex items-center justify-center transition-all duration-300 ${
-                  isComplete ? "bg-primary text-primary-foreground" :
-                  isCurrent ? "bg-primary/20 border-2 border-primary text-primary" :
-                  "bg-muted text-muted-foreground"
-                }`}>
-                  {isComplete ? <CheckCircle2 className="w-5 h-5" /> : <Icon className="w-4 h-4" />}
-                </div>
-                <span className={`text-xs hidden sm:block ${isCurrent ? "text-primary" : isComplete ? "text-foreground" : "text-muted-foreground"}`}>
-                  {s.label}
-                </span>
+              <div
+                key={s.id}
+                className={`flex-1 text-center pb-2 border-b transition-colors ${
+                  isCurrent
+                    ? "border-primary text-foreground"
+                    : isComplete
+                    ? "border-border text-foreground"
+                    : "border-border text-muted-foreground"
+                }`}
+              >
+                <span className="mono-label">{s.label}</span>
               </div>
             );
           })}
@@ -439,13 +449,13 @@ export default function CoachOnboarding() {
           {step === 2 && (
             <div className="space-y-5">
               <div>
-                <h2 className="text-xl font-thin tracking-tighter flex items-center gap-2"><User className="w-5 h-5 text-primary" /> Personal Profile</h2>
+                <h2 className="text-2xl font-serif font-normal flex items-center gap-3"><User className="w-5 h-5 text-primary" /> Personal Profile</h2>
                 <p className="text-muted-foreground text-sm mt-1">This is what students see on your coach card.</p>
               </div>
               <div className="space-y-4">
                 <div>
                   <Label className="text-foreground/80 mb-1.5 block">Full Name *</Label>
-                  <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Magnus Carlsen" className="bg-transparent border-border text-foreground" />
+                  <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Magnus Carlsen" />
                 </div>
                 <div>
                   <Label className="text-foreground/80 mb-1.5 block">Bio <span className="text-muted-foreground text-xs">({bio.length}/2000)</span></Label>
@@ -453,7 +463,7 @@ export default function CoachOnboarding() {
                     value={bio}
                     onChange={(e) => setBio(e.target.value)}
                     placeholder="Tell students about your chess background, coaching philosophy, and what makes your sessions unique..."
-                    className="bg-transparent border-border text-foreground min-h-[120px]"
+                    className="min-h-[120px]"
                     maxLength={2000}
                   />
                 </div>
@@ -532,11 +542,11 @@ export default function CoachOnboarding() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <Label className="text-foreground/80 mb-1.5 block">Country</Label>
-                    <Input value={country} onChange={(e) => setCountry(e.target.value)} placeholder="e.g. United States" className="bg-transparent border-border text-foreground" />
+                    <Input value={country} onChange={(e) => setCountry(e.target.value)} placeholder="e.g. United States" />
                   </div>
                   <div>
                     <Label className="text-foreground/80 mb-1.5 block">Timezone</Label>
-                    <Input value={timezone} onChange={(e) => setTimezone(e.target.value)} placeholder="America/New_York" className="bg-transparent border-border text-foreground" />
+                    <Input value={timezone} onChange={(e) => setTimezone(e.target.value)} placeholder="America/New_York" />
                   </div>
                 </div>
               </div>
@@ -547,7 +557,7 @@ export default function CoachOnboarding() {
           {step === 3 && (
             <div className="space-y-5">
               <div>
-                <h2 className="text-xl font-thin tracking-tighter flex items-center gap-2"><Trophy className="w-5 h-5 text-primary" /> Chess Credentials</h2>
+                <h2 className="text-2xl font-serif font-normal flex items-center gap-3"><Trophy className="w-5 h-5 text-primary" /> Chess Credentials</h2>
                 <p className="text-muted-foreground text-sm mt-1">Help students understand your chess background.</p>
               </div>
               <div className="space-y-4">
@@ -575,7 +585,6 @@ export default function CoachOnboarding() {
                     value={fideRating}
                     onChange={(e) => setFideRating(e.target.value.replace(/\D/g, ""))}
                     placeholder="e.g. 2650"
-                    className="bg-transparent border-border text-foreground"
                     type="number"
                     min={0}
                     max={3000}
@@ -584,11 +593,11 @@ export default function CoachOnboarding() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <Label className="text-foreground/80 mb-1.5 block">Lichess Username</Label>
-                    <Input value={lichessUsername} onChange={(e) => setLichessUsername(e.target.value)} placeholder="your-username" className="bg-transparent border-border text-foreground" />
+                    <Input value={lichessUsername} onChange={(e) => setLichessUsername(e.target.value)} placeholder="your-username" />
                   </div>
                   <div>
                     <Label className="text-foreground/80 mb-1.5 block">Chess.com Username</Label>
-                    <Input value={chesscomUsername} onChange={(e) => setChesscomUsername(e.target.value)} placeholder="your-username" className="bg-transparent border-border text-foreground" />
+                    <Input value={chesscomUsername} onChange={(e) => setChesscomUsername(e.target.value)} placeholder="your-username" />
                   </div>
                 </div>
                 <div>
@@ -613,7 +622,7 @@ export default function CoachOnboarding() {
           {step === 4 && (
             <div className="space-y-5">
               <div>
-                <h2 className="text-xl font-thin tracking-tighter flex items-center gap-2"><BookOpen className="w-5 h-5 text-primary" /> Teaching Style</h2>
+                <h2 className="text-2xl font-serif font-normal flex items-center gap-3"><BookOpen className="w-5 h-5 text-primary" /> Teaching Style</h2>
                 <p className="text-muted-foreground text-sm mt-1">Help students find the right coach for their learning style.</p>
               </div>
               <div>
@@ -683,7 +692,7 @@ export default function CoachOnboarding() {
           {step === 5 && (
             <div className="space-y-5">
               <div>
-                <h2 className="text-xl font-thin tracking-tighter flex items-center gap-2"><DollarSign className="w-5 h-5 text-primary" /> Pricing & Lessons</h2>
+                <h2 className="text-2xl font-serif font-normal flex items-center gap-3"><DollarSign className="w-5 h-5 text-primary" /> Pricing & Lessons</h2>
                 <p className="text-muted-foreground text-sm mt-1">Set your rates and lesson preferences.</p>
               </div>
               <div>
@@ -757,7 +766,7 @@ export default function CoachOnboarding() {
                       onChange={(e) => setMinAdvanceHours(Number(e.target.value))}
                       min={1}
                       max={168}
-                      className="bg-transparent border-border text-foreground text-sm"
+                      className="text-sm"
                     />
                     <span className="text-muted-foreground text-xs">hrs</span>
                   </div>
@@ -771,7 +780,7 @@ export default function CoachOnboarding() {
                       onChange={(e) => setMaxAdvanceDays(Number(e.target.value))}
                       min={1}
                       max={90}
-                      className="bg-transparent border-border text-foreground text-sm"
+                      className="text-sm"
                     />
                     <span className="text-muted-foreground text-xs">days</span>
                   </div>
@@ -786,7 +795,7 @@ export default function CoachOnboarding() {
                       min={0}
                       max={60}
                       step={5}
-                      className="bg-transparent border-border text-foreground text-sm"
+                      className="text-sm"
                     />
                     <span className="text-muted-foreground text-xs">min</span>
                   </div>
@@ -799,7 +808,7 @@ export default function CoachOnboarding() {
           {step === 6 && (
             <div className="space-y-5">
               <div>
-                <h2 className="text-xl font-thin tracking-tighter flex items-center gap-2"><Calendar className="w-5 h-5 text-primary" /> Weekly Schedule</h2>
+                <h2 className="text-2xl font-serif font-normal flex items-center gap-3"><Calendar className="w-5 h-5 text-primary" /> Weekly Schedule</h2>
                 <p className="text-muted-foreground text-sm mt-1">Set your default weekly availability. Students can only book during these hours.</p>
               </div>
               <div className="space-y-2">
@@ -822,14 +831,14 @@ export default function CoachOnboarding() {
                               type="time"
                               value={slot.start}
                               onChange={(e) => updateSlot(day, idx, "start", e.target.value)}
-                              className="bg-transparent border-border text-foreground text-sm h-8 min-w-0 flex-1 max-w-[120px]"
+                              className="text-sm h-8 min-w-0 flex-1 max-w-[120px]"
                             />
                             <span className="text-muted-foreground text-xs">to</span>
                             <Input
                               type="time"
                               value={slot.end}
                               onChange={(e) => updateSlot(day, idx, "end", e.target.value)}
-                              className="bg-transparent border-border text-foreground text-sm h-8 min-w-0 flex-1 max-w-[120px]"
+                              className="text-sm h-8 min-w-0 flex-1 max-w-[120px]"
                             />
                           </div>
                         ))}
