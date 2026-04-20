@@ -28,7 +28,7 @@ import { CoachFilters, type FilterState } from "@/components/CoachFilters";
 import { WelcomePopup } from "@/components/WelcomePopup";
 import { UserMenu } from "@/components/UserMenu";
 import Logo from "@/components/Logo";
-import HeroBrandMark from "@/components/hero/HeroBrandMark";
+import HeroScene3D from "@/components/hero/HeroScene3D";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl } from "@/const";
 
@@ -218,14 +218,14 @@ function HeroSection({ onOpenAssessment }: { onOpenAssessment: () => void }) {
       <div className="mesh-accent" />
       <div className="precision-grid" aria-hidden />
 
-      {/* Brand mark — circle + bolt + triangle motif. Absolutely positioned
-          on the right on lg+ so the editorial text layout stays anchored
-          left. Hidden below lg to keep mobile bundle/perf light. */}
+      {/* 3D brand scene — floating glass cards + logo primitives.
+          Positioned on the right on lg+ so the editorial text layout
+          stays anchored left. Hidden below lg for mobile perf. */}
       <div
-        aria-hidden
-        className="hidden lg:block absolute right-0 top-1/2 -translate-y-1/2 w-[48%] max-w-[640px] aspect-[3/2] pointer-events-none z-0"
+        className="hidden lg:block absolute right-0 top-1/2 -translate-y-1/2 w-[50%] max-w-[680px] pointer-events-none z-0"
+        style={{ height: 560 }}
       >
-        <HeroBrandMark />
+        <HeroScene3D />
       </div>
 
       <div className="container relative z-10">
