@@ -754,7 +754,7 @@ export const appRouter = router({
       }),
 
     // Upload profile photo to S3 and return the public URL
-    uploadPhoto: coachProcedure
+    uploadPhoto: protectedProcedure
       .input(z.object({
         // Base64-encoded image data (without the data:image/...;base64, prefix)
         base64Data: z.string().min(1).max(10_000_000), // ~7.5 MB max
