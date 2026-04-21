@@ -585,36 +585,51 @@ export const appRouter = router({
 
     // Start Stripe Connect onboarding
     startOnboarding: protectedProcedure.mutation(async ({ ctx }) => {
-      const user = await db.getUserById(ctx.user.id);
-      if (!user) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
-      }
+      try {
+        console.log("[Onboarding] Starting for user:", ctx.user.id);
+        const user = await db.getUserById(ctx.user.id);
+        if (!user) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
+        }
 
-      let accountId = user.stripeConnectAccountId;
+        let accountId = user.stripeConnectAccountId;
 
-      // Create Connect account if doesn't exist
-      if (!accountId) {
-        const account = await stripeService.createConnectAccount(
-          user.email || "",
-          user.id,
-          user.country || "US"
+        // Create Connect account if doesn't exist
+        if (!accountId) {
+          console.log("[Onboarding] Creating Connect account for:", user.email, "country:", user.country);
+          const account = await stripeService.createConnectAccount(
+            user.email || "",
+            user.id,
+            user.country || "US"
+          );
+          accountId = account.id;
+          console.log("[Onboarding] Connect account created:", accountId);
+          await db.updateUserStripeConnectAccount(user.id, accountId, false);
+        } else {
+          console.log("[Onboarding] Using existing Connect account:", accountId);
+        }
+
+        // Generate onboarding link
+        const baseUrl = ENV.frontendUrl || (ENV.isProduction 
+          ? "https://boogme.com" 
+          : "http://localhost:3000");
+        console.log("[Onboarding] Using baseUrl:", baseUrl);
+        
+        const onboardingLink = await stripeService.createConnectOnboardingLink(
+          accountId,
+          `${baseUrl}/coach/onboarding/refresh`,
+          `${baseUrl}/coach/onboarding/complete`
         );
-        accountId = account.id;
-        await db.updateUserStripeConnectAccount(user.id, accountId, false);
+        console.log("[Onboarding] Link generated successfully");
+        return { url: onboardingLink.url };
+      } catch (err: any) {
+        console.error("[Onboarding] ERROR:", err.message, "type:", err.type, "code:", err.code, "statusCode:", err.statusCode);
+        if (err instanceof TRPCError) throw err;
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Stripe onboarding failed: ${err.message}`,
+        });
       }
-
-      // Generate onboarding link
-      const baseUrl = ENV.isProduction 
-        ? "https://boogme.com" 
-        : "http://localhost:3000";
-      
-      const onboardingLink = await stripeService.createConnectOnboardingLink(
-        accountId,
-        `${baseUrl}/coach/onboarding/refresh`,
-        `${baseUrl}/coach/onboarding/complete`
-      );
-
-      return { url: onboardingLink.url };
     }),
 
     /**
