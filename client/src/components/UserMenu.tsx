@@ -8,7 +8,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { User, LogOut, Calendar, Settings } from "lucide-react";
+import { User, LogOut, Calendar, Settings, LayoutDashboard } from "lucide-react";
 import { useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -69,7 +69,16 @@ export function UserMenu() {
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem 
+        {((user as any).userType === "coach" || (user as any).userType === "both") && (
+          <DropdownMenuItem
+            onClick={() => setLocation("/coach/dashboard")}
+            className="cursor-pointer"
+          >
+            <LayoutDashboard className="mr-2 h-4 w-4" />
+            <span>Coach Dashboard</span>
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuItem
           onClick={() => setLocation("/dashboard")}
           className="cursor-pointer"
         >
