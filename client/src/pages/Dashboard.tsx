@@ -69,7 +69,7 @@ export default function Dashboard() {
               <div>
                 <div className="flex items-center gap-3 mb-2">
                   <h1 className="text-3xl font-semibold">Dashboard</h1>
-                  <Badge variant="secondary" className="text-sm font-medium">
+                  <Badge className="bg-primary/10 text-primary border-0 text-sm font-medium">
                     {headerBadge}
                   </Badge>
                 </div>
@@ -100,13 +100,13 @@ function RoleSwitcher({
   onChange: (view: DashboardView) => void;
 }) {
   return (
-    <div className="flex items-center gap-2 bg-muted/50 rounded-lg p-1">
+    <div className="flex items-center gap-1 bg-secondary rounded-lg p-1">
       <button
         onClick={() => onChange("student")}
         className={cn(
           "px-4 py-1.5 rounded-md text-sm font-medium transition-colors",
           active === "student"
-            ? "bg-background text-foreground shadow-sm"
+            ? "bg-primary text-primary-foreground"
             : "text-muted-foreground hover:text-foreground"
         )}
       >
@@ -117,7 +117,7 @@ function RoleSwitcher({
         className={cn(
           "px-4 py-1.5 rounded-md text-sm font-medium transition-colors",
           active === "coach"
-            ? "bg-background text-foreground shadow-sm"
+            ? "bg-primary text-primary-foreground"
             : "text-muted-foreground hover:text-foreground"
         )}
       >

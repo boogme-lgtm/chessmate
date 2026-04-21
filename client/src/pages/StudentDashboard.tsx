@@ -125,6 +125,7 @@ export function StudentDashboardContent({ user }: { user: any }) {
   return (
     <div className="container py-8 space-y-6">
       <PendingReviewsCard />
+      <span className="eyebrow">01 — Your lessons</span>
       <Tabs defaultValue="upcoming" className="space-y-6">
         <TabsList>
           <TabsTrigger value="upcoming">
@@ -655,7 +656,11 @@ function PendingReviewsCard() {
     reviewingAs: "student" | "coach";
   } | null>(null);
 
-  if (isLoading || !pending || pending.length === 0) return null;
+  // Show only student-role reviews here; coach-role reviews belong on the
+  // coach dashboard and would be confusing on the student view.
+  const studentPending = (pending || []).filter((r: any) => r.reviewingAs === "student");
+
+  if (isLoading || studentPending.length === 0) return null;
 
   return (
     <>
@@ -665,7 +670,7 @@ function PendingReviewsCard() {
             <Star className="h-5 w-5 text-yellow-600 mt-0.5" />
             <div>
               <h3 className="text-base font-semibold">
-                Pending Reviews ({pending.length})
+                Pending Reviews ({studentPending.length})
               </h3>
               <p className="text-sm text-muted-foreground">
                 You have completed lessons waiting for a review. Both sides stay
@@ -674,7 +679,7 @@ function PendingReviewsCard() {
             </div>
           </div>
           <div className="space-y-2">
-            {pending.map((p: any) => (
+            {studentPending.map((p: any) => (
               <div
                 key={p.lessonId}
                 className="flex items-center justify-between p-3 rounded-md border border-border/60"
