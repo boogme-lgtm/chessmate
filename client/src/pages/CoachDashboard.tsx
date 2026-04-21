@@ -158,7 +158,7 @@ export function CoachDashboardContent({ user }: { user: any }) {
 
   const startOnboarding = trpc.coach.startOnboarding.useMutation({
     onSuccess: (data) => {
-      window.location.href = data.url;
+      window.open(data.url, '_blank');
     },
     onError: (err) => {
       toast.error(err.message || "Failed to start onboarding. Please try again.");
