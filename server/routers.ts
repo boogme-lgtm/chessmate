@@ -581,7 +581,7 @@ export const appRouter = router({
       }),
 
     // Start Stripe Connect onboarding
-    startOnboarding: coachProcedure.mutation(async ({ ctx }) => {
+    startOnboarding: protectedProcedure.mutation(async ({ ctx }) => {
       const user = await db.getUserById(ctx.user.id);
       if (!user) {
         throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
@@ -618,7 +618,7 @@ export const appRouter = router({
      * After Stripe redirect, the client calls this to verify the Connect
      * account is fully onboarded and persist the flag to the DB.
      */
-    confirmStripeOnboarded: coachProcedure.mutation(async ({ ctx }) => {
+    confirmStripeOnboarded: protectedProcedure.mutation(async ({ ctx }) => {
       const user = await db.getUserById(ctx.user.id);
       if (!user?.stripeConnectAccountId) {
         return { onboarded: false };
@@ -632,7 +632,7 @@ export const appRouter = router({
     }),
 
     // Check onboarding status
-    getOnboardingStatus: coachProcedure.query(async ({ ctx }) => {
+    getOnboardingStatus: protectedProcedure.query(async ({ ctx }) => {
       const user = await db.getUserById(ctx.user.id);
       if (!user?.stripeConnectAccountId) {
         return { onboarded: false, status: null };
@@ -672,14 +672,14 @@ export const appRouter = router({
     }),
 
     // Get my own coach profile (for wizard pre-filling)
-    getMyProfile: coachProcedure.query(async ({ ctx }) => {
+    getMyProfile: protectedProcedure.query(async ({ ctx }) => {
       const profile = await db.getCoachProfileByUserId(ctx.user.id);
       const user = await db.getUserById(ctx.user.id);
       return { profile, user };
     }),
 
     // Update coach profile (used by onboarding wizard)
-    updateProfile: coachProcedure
+    updateProfile: protectedProcedure
       .input(z.object({
         // User-level fields
         name: z.string().min(2).max(100).optional(),
@@ -733,6 +733,12 @@ export const appRouter = router({
           const durations = profile?.lessonDurations ? JSON.parse(profile.lessonDurations) : [];
           if (!Array.isArray(durations) || durations.length === 0) {
             throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Please select at least one lesson duration" });
+          }
+
+          // Promote userType so post-onboarding coachProcedure endpoints
+          // (dashboard, earnings, lesson management) become accessible.
+          if (user.userType === "student") {
+            await db.updateUserType(ctx.user.id, "coach");
           }
         }
 
@@ -788,7 +794,7 @@ export const appRouter = router({
       }),
 
     // Check if coach needs to complete Stripe onboarding
-    checkOnboardingRequired: coachProcedure.query(async ({ ctx }) => {
+    checkOnboardingRequired: protectedProcedure.query(async ({ ctx }) => {
       const user = await db.getUserById(ctx.user.id);
       if (user?.stripeConnectOnboarded) {
         return { required: false, reason: "already_onboarded" };

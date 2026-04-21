@@ -179,6 +179,15 @@ export async function updateUserProfile(userId: number, data: { name?: string; b
     .where(eq(users.id, userId));
 }
 
+export async function updateUserType(userId: number, userType: "student" | "coach" | "both") {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.update(users)
+    .set({ userType })
+    .where(eq(users.id, userId));
+}
+
 export async function getCoachProfileByUserId(userId: number) {
   const db = await getDb();
   if (!db) return undefined;
