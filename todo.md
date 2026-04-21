@@ -651,3 +651,9 @@
 - [ ] Verify AI vetting auto-approves the application
 - [ ] Confirm coach profile appears in /coaches browse page
 - [ ] Test booking flow against Cristian's coach profile
+
+## Sprint 10: Coach Dashboard Link + Email Funnel (April 20, 2026)
+- [x] Add conditional "Coach Dashboard" link to UserMenu dropdown (visible for userType coach/both)
+- [x] Email notification on coach Go Live: welcome email to coach via Resend
+- [x] Email notification on coach Go Live: owner notification via notifyOwner helper
+- [x] Fire-and-forget email sends (Promise.allSettled, never blocks Go Live)
