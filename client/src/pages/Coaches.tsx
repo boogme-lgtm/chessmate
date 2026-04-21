@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Slider } from "@/components/ui/slider";
 import { motion } from "framer-motion";
+import { PRICING_TIERS, DEFAULT_PRICING_TIER } from "@shared/pricing";
 import {
   DollarSign,
   Users,
@@ -251,7 +252,10 @@ function EarningsCalculator() {
   const monthlyEarnings = weeklyEarnings * 4;
   const yearlyEarnings = monthlyEarnings * 12;
 
-  const platformFee = 0.15; // 15% commission
+  // Show Free-tier economics in the marketing calculator (worst-case for the
+  // coach; Pro/Elite take home more). Sourced from the shared pricing module
+  // so all tier changes flow through automatically.
+  const platformFee = PRICING_TIERS[DEFAULT_PRICING_TIER].platformFeePercent / 100;
   const takeHome = {
     weekly: weeklyEarnings * (1 - platformFee),
     monthly: monthlyEarnings * (1 - platformFee),

@@ -289,37 +289,6 @@ export async function createRefund(params: {
 }
 
 /**
- * Calculate platform fee based on coach subscription tier
- * Free: 15%, Growth: 10%, Business: 5%
- */
-export function calculatePlatformFee(params: {
-  amountCents: number;
-  tier: 'free' | 'growth' | 'business';
-}): {
-  platformFeeCents: number;
-  coachPayoutCents: number;
-  feePercent: number;
-} {
-  const feePercent = params.tier === 'free' ? 15 : params.tier === 'growth' ? 10 : 5;
-  const platformFeeCents = Math.round((params.amountCents * feePercent) / 100);
-  const coachPayoutCents = params.amountCents - platformFeeCents;
-
-  return {
-    platformFeeCents,
-    coachPayoutCents,
-    feePercent,
-  };
-}
-
-/**
- * Calculate Stripe processing fee (2.9% + $0.30)
- * Only charged to Business tier coaches (5% platform fee)
- */
-export function calculateProcessingFee(amountCents: number): number {
-  return Math.round(amountCents * 0.029 + 30);
-}
-
-/**
  * Calculate refund amount based on cancellation timing
  * >24hrs: 100% refund
  * <24hrs: 50% refund

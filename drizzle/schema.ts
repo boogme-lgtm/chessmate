@@ -64,11 +64,16 @@ export const coachProfiles = mysqlTable("coach_profiles", {
   currency: varchar("currency", { length: 3 }).default("USD"),
   
   // Coach subscription tier determines platform fee
+  // Legacy column kept for backwards compatibility — pricingTier supersedes it.
   subscriptionTier: mysqlEnum("subscriptionTier", ["free", "growth", "business"]).default("free"),
-  
-  // Platform commission rate (percentage, e.g., 15 = 15%)
-  // Free: 15%, Growth: 10%, Business: 5%
-  commissionRate: int("commissionRate").default(15),
+
+  // Active pricing tier — drives platform fee on every lesson.
+  // Free: 12%, Pro: 8% ($49/mo), Elite: 5% ($99/mo). See shared/pricing.ts.
+  pricingTier: mysqlEnum("pricingTier", ["free", "pro", "elite"]).default("free").notNull(),
+
+  // Platform commission rate (percentage, e.g., 12 = 12%)
+  // Legacy column kept in sync with pricingTier for backwards compatibility.
+  commissionRate: int("commissionRate").default(12),
   
   // Stats
   totalStudents: int("totalStudents").default(0),

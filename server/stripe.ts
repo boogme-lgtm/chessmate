@@ -1,13 +1,11 @@
 import Stripe from "stripe";
 import { ENV } from "./_core/env";
+import { DEFAULT_PRICING_TIER, getTierFeePercent, calculateStripeFeeCents } from "@shared/pricing";
 
 // Initialize Stripe with the secret key
 const stripe = new Stripe(ENV.stripeSecretKey || "", {
   apiVersion: "2026-01-28.clover",
 });
-
-// Platform commission rate (15%)
-const PLATFORM_COMMISSION_RATE = 0.15;
 
 // ============ CUSTOMER OPERATIONS ============
 
@@ -100,32 +98,42 @@ export async function getConnectAccountStatus(accountId: string) {
 
 /**
  * Create a PaymentIntent for a lesson booking
- * Funds are captured but held until lesson completion
+ * Funds are captured but held until lesson completion.
+ *
+ * Pricing: the student is charged `lessonPriceCents + stripeFee`. The coach
+ * receives `lessonPriceCents - tierPlatformFee`. The platform's
+ * application_fee covers the platform's tier % plus the Stripe processing
+ * fee (so the coach takes home exactly their tier's share of the lesson).
  */
 export async function createLessonPaymentIntent(params: {
-  amountCents: number;
+  lessonPriceCents: number;
   currency: string;
   studentCustomerId: string;
   coachConnectAccountId: string;
+  coachPricingTier: string | null | undefined;
   lessonId: number;
   studentId: number;
   coachId: number;
 }) {
   const {
-    amountCents,
+    lessonPriceCents,
     currency,
     studentCustomerId,
     coachConnectAccountId,
+    coachPricingTier,
     lessonId,
     studentId,
     coachId,
   } = params;
 
-  // Calculate platform fee (commission)
-  const platformFeeCents = Math.round(amountCents * PLATFORM_COMMISSION_RATE);
+  const feePercent = getTierFeePercent(coachPricingTier ?? DEFAULT_PRICING_TIER);
+  const platformFeeCents = Math.round((lessonPriceCents * feePercent) / 100);
+  const stripeFeeCents = calculateStripeFeeCents(lessonPriceCents);
+  const studentTotalCents = lessonPriceCents + stripeFeeCents;
+  const applicationFeeCents = platformFeeCents + stripeFeeCents;
 
   const paymentIntent = await stripe.paymentIntents.create({
-    amount: amountCents,
+    amount: studentTotalCents,
     currency: currency.toLowerCase(),
     customer: studentCustomerId,
     // Capture manually to implement escrow
@@ -134,14 +142,16 @@ export async function createLessonPaymentIntent(params: {
     transfer_data: {
       destination: coachConnectAccountId,
     },
-    // Platform takes commission
-    application_fee_amount: platformFeeCents,
+    // Platform takes tier-based commission + recovers Stripe processing fee
+    application_fee_amount: applicationFeeCents,
     metadata: {
       lessonId: lessonId.toString(),
       studentId: studentId.toString(),
       coachId: coachId.toString(),
       platform: "boogme",
       type: "lesson_payment",
+      tier: coachPricingTier ?? DEFAULT_PRICING_TIER,
+      feePercent: feePercent.toString(),
     },
   });
 
@@ -199,32 +209,40 @@ export async function createRefund(
 
 /**
  * Create a Checkout Session for lesson payment
- * Alternative to PaymentIntent for simpler integration
+ *
+ * The student is charged the lesson price plus a separate Stripe processing
+ * fee line item, so the coach takes home exactly their tier's share of the
+ * lesson price.
  */
 export async function createLessonCheckoutSession(params: {
-  amountCents: number;
+  lessonPriceCents: number;
   currency: string;
   lessonId: number;
   studentId: number;
   studentEmail: string;
   coachName: string;
   coachConnectAccountId: string;
+  coachPricingTier: string | null | undefined;
   successUrl: string;
   cancelUrl: string;
 }) {
   const {
-    amountCents,
+    lessonPriceCents,
     currency,
     lessonId,
     studentId,
     studentEmail,
     coachName,
     coachConnectAccountId,
+    coachPricingTier,
     successUrl,
     cancelUrl,
   } = params;
 
-  const platformFeeCents = Math.round(amountCents * PLATFORM_COMMISSION_RATE);
+  const feePercent = getTierFeePercent(coachPricingTier ?? DEFAULT_PRICING_TIER);
+  const platformFeeCents = Math.round((lessonPriceCents * feePercent) / 100);
+  const stripeFeeCents = calculateStripeFeeCents(lessonPriceCents);
+  const applicationFeeCents = platformFeeCents + stripeFeeCents;
 
   // Check if this is a test/mock coach account (starts with "acct_test_coach_")
   const isTestAccount = coachConnectAccountId.startsWith("acct_test_coach_");
@@ -236,6 +254,8 @@ export async function createLessonCheckoutSession(params: {
       lessonId: lessonId.toString(),
       studentId: studentId.toString(),
       platform: "boogme",
+      tier: coachPricingTier ?? DEFAULT_PRICING_TIER,
+      feePercent: feePercent.toString(),
     },
   };
 
@@ -244,7 +264,7 @@ export async function createLessonCheckoutSession(params: {
     paymentIntentData.transfer_data = {
       destination: coachConnectAccountId,
     };
-    paymentIntentData.application_fee_amount = platformFeeCents;
+    paymentIntentData.application_fee_amount = applicationFeeCents;
   }
 
   const session = await stripe.checkout.sessions.create({
@@ -259,7 +279,18 @@ export async function createLessonCheckoutSession(params: {
             name: `Chess Lesson with ${coachName}`,
             description: "60-minute private chess coaching session",
           },
-          unit_amount: amountCents,
+          unit_amount: lessonPriceCents,
+        },
+        quantity: 1,
+      },
+      {
+        price_data: {
+          currency: currency.toLowerCase(),
+          product_data: {
+            name: "Payment processing fee",
+            description: "Covers Stripe's 2.9% + $0.30 processing charge",
+          },
+          unit_amount: stripeFeeCents,
         },
         quantity: 1,
       },

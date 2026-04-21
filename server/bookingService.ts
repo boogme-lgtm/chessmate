@@ -1,6 +1,7 @@
 import { getDb, createLesson } from "./db";
 import { lessons, coachProfiles, users } from "../drizzle/schema";
 import { eq, and, ne, notInArray } from "drizzle-orm";
+import { calculateLessonBreakdown, getTierFeePercent } from "@shared/pricing";
 
 function safeJsonParse<T>(value: string | null | undefined, fallback: T): T {
   if (!value) return fallback;
@@ -33,20 +34,19 @@ export async function calculateLessonPricing(coachId: number, durationMinutes: n
   const hourlyRate = coach.hourlyRateCents || 5000; // Default $50
   const totalCents = Math.round((hourlyRate / 60) * durationMinutes);
 
-  // Calculate platform commission
-  const commissionRate = coach.commissionRate || 15; // Default 15%
-  const commissionCents = Math.round(totalCents * (commissionRate / 100));
-
-  // Coach payout after commission
-  const coachPayoutCents = totalCents - commissionCents;
+  // Tier-based platform commission (Free=12%, Pro=8%, Elite=5%).
+  const breakdown = calculateLessonBreakdown({
+    lessonPriceCents: totalCents,
+    tier: coach.pricingTier,
+  });
 
   return {
     totalCents,
-    commissionCents,
-    coachPayoutCents,
+    commissionCents: breakdown.platformFeeCents,
+    coachPayoutCents: breakdown.coachPayoutCents,
     currency: coach.currency || "USD",
     hourlyRateCents: hourlyRate,
-    commissionRate,
+    commissionRate: getTierFeePercent(coach.pricingTier),
   };
 }
 
