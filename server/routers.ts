@@ -739,10 +739,12 @@ export const appRouter = router({
             throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Please select at least one lesson duration" });
           }
 
-          // Promote userType so post-onboarding coachProcedure endpoints
-          // (dashboard, earnings, lesson management) become accessible.
+          // Promote userType — if the student has ever booked a lesson, they've
+          // acted in both roles, so set "both". Otherwise just "coach".
           if (user.userType === "student") {
-            await db.updateUserType(ctx.user.id, "coach");
+            const studentLessons = await db.getLessonsByStudent(ctx.user.id, 1);
+            const hasStudentBookings = Array.isArray(studentLessons) && studentLessons.length > 0;
+            await db.updateUserType(ctx.user.id, hasStudentBookings ? "both" : "coach");
           }
         }
 
@@ -948,6 +950,11 @@ export const appRouter = router({
           coachPayoutCents,
           status: "pending_confirmation",
         });
+
+        // If a coach is booking a lesson as a student for the first time, promote to "both"
+        if (ctx.user.userType === "coach") {
+          await db.updateUserType(ctx.user.id, "both");
+        }
 
         // Best-effort "new booking request" email to the coach.
         (async () => {
