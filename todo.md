@@ -666,3 +666,8 @@
 - [x] Rename DashboardLayout sidebar "My Lessons" → "Dashboard"
 - [x] Make /for-coaches page redirect logged-in coaches to /dashboard
 - [x] Homepage nav: "For Coaches" → "My Dashboard" for logged-in coaches (desktop + mobile)
+
+## Sprint 12: Smart userType Promotion (April 21, 2026)
+- [x] Go Live: promote student→both if they have lesson bookings, otherwise student→coach
+- [x] Lesson booking: promote coach→both on first student booking
+- [x] Manual DB fix: updated Cristian + 3 test coaches from coach→both
