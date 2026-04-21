@@ -10,6 +10,7 @@ import * as db from "./db";
 import * as stripeService from "./stripe";
 import { ENV } from "./_core/env";
 import { PRICING_TIERS, type PricingTier, calculateLessonBreakdown } from "@shared/pricing";
+import { toCountryCode } from "@shared/countries";
 import {
   sendEmail,
   getWaitlistConfirmationEmail,
@@ -594,10 +595,14 @@ export const appRouter = router({
 
       // Create Connect account if doesn't exist
       if (!accountId) {
+        // Stripe requires ISO 3166-1 alpha-2 codes. New records already store
+        // codes; legacy records may still have full country names which
+        // toCountryCode normalizes. Unresolved values fall back to "US".
+        const countryCode = toCountryCode(user.country, "US");
         const account = await stripeService.createConnectAccount(
           user.email || "",
           user.id,
-          user.country || "US"
+          countryCode
         );
         accountId = account.id;
         await db.updateUserStripeConnectAccount(user.id, accountId, false);

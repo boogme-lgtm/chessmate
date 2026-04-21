@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
+import { COUNTRIES, getCountryName } from "@shared/countries";
 
 interface ApplicationData {
   // Step 1: About You
@@ -115,17 +116,6 @@ const LANGUAGES = [
   "Portuguese",
   "Italian",
   "Other",
-];
-
-const COUNTRIES = [
-  "United States", "Canada", "United Kingdom", "Australia", "Germany", "France", "Spain", "Italy",
-  "Netherlands", "Belgium", "Switzerland", "Austria", "Sweden", "Norway", "Denmark", "Finland",
-  "Poland", "Czech Republic", "Hungary", "Romania", "Bulgaria", "Greece", "Portugal", "Ireland",
-  "Russia", "Ukraine", "Belarus", "Kazakhstan", "Georgia", "Armenia", "Azerbaijan",
-  "China", "Japan", "South Korea", "India", "Singapore", "Malaysia", "Thailand", "Vietnam",
-  "Philippines", "Indonesia", "Taiwan", "Hong Kong", "Israel", "Turkey", "Saudi Arabia",
-  "United Arab Emirates", "Brazil", "Argentina", "Chile", "Colombia", "Mexico", "Peru",
-  "South Africa", "Egypt", "Morocco", "Kenya", "Nigeria", "Other"
 ];
 
 const TIMEZONES = [
@@ -541,9 +531,9 @@ function Step1AboutYou({
                 <SelectValue placeholder="Select country" />
               </SelectTrigger>
               <SelectContent className="max-h-[300px]">
-                {COUNTRIES.map((country) => (
-                  <SelectItem key={country} value={country}>
-                    {country}
+                {COUNTRIES.map((c) => (
+                  <SelectItem key={c.code} value={c.code}>
+                    {c.name}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -1066,7 +1056,7 @@ function Step5ReviewSubmit({
                   <strong>Email:</strong> {formData.email}
                 </p>
                 <p>
-                  <strong>Location:</strong> {formData.city}, {formData.country}
+                  <strong>Location:</strong> {formData.city}, {getCountryName(formData.country)}
                 </p>
                 <p>
                   <strong>Title:</strong> {formData.chessTitle} • Rating: {formData.currentRating} (
