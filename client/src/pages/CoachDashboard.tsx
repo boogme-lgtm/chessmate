@@ -39,53 +39,6 @@ import { format } from "date-fns";
 
 export default function CoachDashboard() {
   const { user, loading: authLoading, isAuthenticated } = useAuth();
-  
-  // Fetch coach profile to check onboarding status
-  const { data: profileData } = trpc.coach.getMyProfile.useQuery(
-    undefined,
-    { enabled: isAuthenticated }
-  );
-  const onboardingIncomplete = profileData?.profile && !profileData.profile.onboardingCompleted;
-
-  // Fetch coach earnings data
-  const { data: earnings, isLoading: earningsLoading } = trpc.coach.getEarnings.useQuery(
-    undefined,
-    { enabled: isAuthenticated }
-  );
-  
-  // Fetch coach lessons
-  const { data: lessons, isLoading: lessonsLoading, refetch: refetchLessons } = trpc.lesson.coachLessons.useQuery(
-    { limit: 10 },
-    { enabled: isAuthenticated }
-  );
-
-  // Unread message counts for all visible lessons
-  const lessonIds = (lessons || []).map((l: any) => l.id);
-  const { data: unreadCounts } = trpc.messages.getUnreadCounts.useQuery(
-    { lessonIds },
-    { enabled: lessonIds.length > 0, refetchInterval: 30000 }
-  );
-
-  // Pending reviews
-  const { data: pendingReviews } = trpc.review.getPending.useQuery(
-    undefined,
-    { enabled: isAuthenticated }
-  );
-
-  // Start Stripe onboarding mutation
-  const startOnboarding = trpc.coach.startOnboarding.useMutation({
-    onSuccess: (data) => {
-      window.location.href = data.url;
-    },
-    onError: () => {
-      toast.error("Failed to start onboarding. Please try again.");
-    },
-  });
-
-  // Get Stripe dashboard link
-  const getDashboardLink = trpc.coach.getDashboardLink.useQuery(undefined, {
-    enabled: isAuthenticated && earnings?.stripeOnboarded,
-  });
 
   if (authLoading) {
     return (
@@ -138,16 +91,6 @@ export default function CoachDashboard() {
     );
   }
 
-  const isLoading = earningsLoading || lessonsLoading;
-
-  // Format currency from cents
-  const formatCurrency = (cents: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(cents / 100);
-  };
-
   return (
     <div className="min-h-screen bg-stone dark:bg-background">
       {/* Header */}
@@ -172,22 +115,85 @@ export default function CoachDashboard() {
               </p>
             </div>
           </div>
-          
-          {earnings?.stripeOnboarded && getDashboardLink.data?.url && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => window.open(getDashboardLink.data?.url, "_blank")}
-              className="gap-2"
-            >
-              <ExternalLink className="w-4 h-4" />
-              Stripe Dashboard
-            </Button>
-          )}
         </div>
       </header>
 
-      <main className="container py-8">
+      <CoachDashboardContent user={user} />
+    </div>
+  );
+}
+
+/**
+ * Body content for the coach dashboard — queries, earnings cards, lesson
+ * list. Extracted so the unified /dashboard page can render it alongside
+ * the student dashboard body under a single header with a role switcher.
+ */
+export function CoachDashboardContent({ user }: { user: any }) {
+  const { data: profileData } = trpc.coach.getMyProfile.useQuery(
+    undefined,
+    { enabled: !!user }
+  );
+  const onboardingIncomplete = profileData?.profile && !profileData.profile.onboardingCompleted;
+
+  const { data: earnings, isLoading: earningsLoading } = trpc.coach.getEarnings.useQuery(
+    undefined,
+    { enabled: !!user }
+  );
+
+  const { data: lessons, isLoading: lessonsLoading, refetch: refetchLessons } = trpc.lesson.coachLessons.useQuery(
+    { limit: 10 },
+    { enabled: !!user }
+  );
+
+  const lessonIds = (lessons || []).map((l: any) => l.id);
+  const { data: unreadCounts } = trpc.messages.getUnreadCounts.useQuery(
+    { lessonIds },
+    { enabled: lessonIds.length > 0, refetchInterval: 30000 }
+  );
+
+  const { data: pendingReviews } = trpc.review.getPending.useQuery(
+    undefined,
+    { enabled: !!user }
+  );
+
+  const startOnboarding = trpc.coach.startOnboarding.useMutation({
+    onSuccess: (data) => {
+      window.location.href = data.url;
+    },
+    onError: () => {
+      toast.error("Failed to start onboarding. Please try again.");
+    },
+  });
+
+  const getDashboardLink = trpc.coach.getDashboardLink.useQuery(undefined, {
+    enabled: !!user && earnings?.stripeOnboarded,
+  });
+
+  const isLoading = earningsLoading || lessonsLoading;
+
+  const formatCurrency = (cents: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+    }).format(cents / 100);
+  };
+
+  return (
+    <main className="container py-8">
+      {/* Stripe Dashboard quick link — previously in the page header */}
+      {earnings?.stripeOnboarded && getDashboardLink.data?.url && (
+        <div className="flex justify-end mb-4">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => window.open(getDashboardLink.data?.url, "_blank")}
+            className="gap-2"
+          >
+            <ExternalLink className="w-4 h-4" />
+            Stripe Dashboard
+          </Button>
+        </div>
+      )}
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="w-8 h-8 animate-spin text-burgundy" />
@@ -457,7 +463,6 @@ export default function CoachDashboard() {
           </div>
         )}
       </main>
-    </div>
   );
 }
 

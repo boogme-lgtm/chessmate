@@ -43,39 +43,17 @@ export default function StudentDashboard() {
   const { user, loading: authLoading } = useAuth();
   const [, setLocation] = useLocation();
 
-  const { data: lessons, isLoading } = trpc.lesson.myLessons.useQuery(
-    { limit: 50 },
-    { enabled: !!user }
-  );
-
-  const lessonIds = (lessons || []).map((l: any) => l.id);
-  const { data: unreadCounts } = trpc.messages.getUnreadCounts.useQuery(
-    { lessonIds },
-    { enabled: lessonIds.length > 0, refetchInterval: 30000 }
-  );
-
   useEffect(() => {
     if (!authLoading && !user) {
       setLocation("/");
     }
   }, [authLoading, user, setLocation]);
 
-  if (authLoading || isLoading) {
+  if (authLoading) {
     return <DashboardSkeleton />;
   }
 
   if (!user) return null;
-
-  const upcomingLessons = lessons?.filter((l: any) =>
-    isFuture(new Date(l.scheduledAt)) && !["cancelled", "completed", "declined", "refunded"].includes(l.status)
-  ) || [];
-
-  const pastLessons = lessons?.filter((l: any) =>
-    isPast(new Date(l.scheduledAt)) || l.status === "completed" || l.status === "cancelled"
-  ) || [];
-
-  const unreadForLesson = (lessonId: number) =>
-    (unreadCounts as Record<number, number> | undefined)?.[lessonId] || 0;
 
   return (
     <DashboardLayout>
@@ -104,69 +82,108 @@ export default function StudentDashboard() {
           </div>
         </div>
 
-        <div className="container py-8 space-y-6">
-          <PendingReviewsCard />
-          <Tabs defaultValue="upcoming" className="space-y-6">
-            <TabsList>
-              <TabsTrigger value="upcoming">
-                Upcoming ({upcomingLessons.length})
-              </TabsTrigger>
-              <TabsTrigger value="past">
-                Past ({pastLessons.length})
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="upcoming" className="space-y-4">
-              {upcomingLessons.length === 0 ? (
-                <Card>
-                  <CardContent className="py-12 text-center">
-                    <Calendar className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
-                    <h3 className="text-lg font-semibold mb-2">No upcoming lessons</h3>
-                    <p className="text-muted-foreground mb-6">
-                      Book a lesson with a coach to get started
-                    </p>
-                    <Button onClick={() => setLocation("/coaches")}>
-                      Browse Coaches
-                    </Button>
-                  </CardContent>
-                </Card>
-              ) : (
-                upcomingLessons.map((lesson: any) => (
-                  <LessonCard
-                    key={lesson.id}
-                    lesson={lesson}
-                    unreadCount={unreadForLesson(lesson.id)}
-                  />
-                ))
-              )}
-            </TabsContent>
-
-            <TabsContent value="past" className="space-y-4">
-              {pastLessons.length === 0 ? (
-                <Card>
-                  <CardContent className="py-12 text-center">
-                    <Clock className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
-                    <h3 className="text-lg font-semibold mb-2">No past lessons</h3>
-                    <p className="text-muted-foreground">
-                      Your completed lessons will appear here
-                    </p>
-                  </CardContent>
-                </Card>
-              ) : (
-                pastLessons.map((lesson: any) => (
-                  <LessonCard
-                    key={lesson.id}
-                    lesson={lesson}
-                    isPast
-                    unreadCount={unreadForLesson(lesson.id)}
-                  />
-                ))
-              )}
-            </TabsContent>
-          </Tabs>
-        </div>
+        <StudentDashboardContent user={user} />
       </div>
     </DashboardLayout>
+  );
+}
+
+/**
+ * Body content for the student dashboard — queries + lesson lists.
+ * Extracted so the unified /dashboard page can render it alongside the
+ * coach dashboard body under a single header with a role switcher.
+ */
+export function StudentDashboardContent({ user }: { user: any }) {
+  const [, setLocation] = useLocation();
+
+  const { data: lessons, isLoading } = trpc.lesson.myLessons.useQuery(
+    { limit: 50 },
+    { enabled: !!user }
+  );
+
+  const lessonIds = (lessons || []).map((l: any) => l.id);
+  const { data: unreadCounts } = trpc.messages.getUnreadCounts.useQuery(
+    { lessonIds },
+    { enabled: lessonIds.length > 0, refetchInterval: 30000 }
+  );
+
+  if (isLoading) {
+    return <DashboardSkeleton />;
+  }
+
+  const upcomingLessons = lessons?.filter((l: any) =>
+    isFuture(new Date(l.scheduledAt)) && !["cancelled", "completed", "declined", "refunded"].includes(l.status)
+  ) || [];
+
+  const pastLessons = lessons?.filter((l: any) =>
+    isPast(new Date(l.scheduledAt)) || l.status === "completed" || l.status === "cancelled"
+  ) || [];
+
+  const unreadForLesson = (lessonId: number) =>
+    (unreadCounts as Record<number, number> | undefined)?.[lessonId] || 0;
+
+  return (
+    <div className="container py-8 space-y-6">
+      <PendingReviewsCard />
+      <Tabs defaultValue="upcoming" className="space-y-6">
+        <TabsList>
+          <TabsTrigger value="upcoming">
+            Upcoming ({upcomingLessons.length})
+          </TabsTrigger>
+          <TabsTrigger value="past">
+            Past ({pastLessons.length})
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="upcoming" className="space-y-4">
+          {upcomingLessons.length === 0 ? (
+            <Card>
+              <CardContent className="py-12 text-center">
+                <Calendar className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
+                <h3 className="text-lg font-semibold mb-2">No upcoming lessons</h3>
+                <p className="text-muted-foreground mb-6">
+                  Book a lesson with a coach to get started
+                </p>
+                <Button onClick={() => setLocation("/coaches")}>
+                  Browse Coaches
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            upcomingLessons.map((lesson: any) => (
+              <LessonCard
+                key={lesson.id}
+                lesson={lesson}
+                unreadCount={unreadForLesson(lesson.id)}
+              />
+            ))
+          )}
+        </TabsContent>
+
+        <TabsContent value="past" className="space-y-4">
+          {pastLessons.length === 0 ? (
+            <Card>
+              <CardContent className="py-12 text-center">
+                <Clock className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
+                <h3 className="text-lg font-semibold mb-2">No past lessons</h3>
+                <p className="text-muted-foreground">
+                  Your completed lessons will appear here
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            pastLessons.map((lesson: any) => (
+              <LessonCard
+                key={lesson.id}
+                lesson={lesson}
+                isPast
+                unreadCount={unreadForLesson(lesson.id)}
+              />
+            ))
+          )}
+        </TabsContent>
+      </Tabs>
+    </div>
   );
 }
 

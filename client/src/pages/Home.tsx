@@ -117,10 +117,16 @@ function Navigation({ onOpenAssessment }: { onOpenAssessment: () => void }) {
             Browse Coaches
           </a>
           <a
-            href="/for-coaches"
+            href={
+              !loading && ((user as any)?.userType === "coach" || (user as any)?.userType === "both")
+                ? "/dashboard"
+                : "/for-coaches"
+            }
             className="text-[13px] font-normal text-muted-foreground hover:text-foreground transition-colors duration-200"
           >
-            For Coaches
+            {!loading && ((user as any)?.userType === "coach" || (user as any)?.userType === "both")
+              ? "My Dashboard"
+              : "For Coaches"}
           </a>
           <button
             onClick={() => handleNavClick("waitlist")}
@@ -178,10 +184,16 @@ function Navigation({ onOpenAssessment }: { onOpenAssessment: () => void }) {
               Features
             </button>
             <a
-              href="/for-coaches"
+              href={
+                !loading && ((user as any)?.userType === "coach" || (user as any)?.userType === "both")
+                  ? "/dashboard"
+                  : "/for-coaches"
+              }
               className="text-base font-light text-muted-foreground hover:text-foreground transition-colors min-h-[48px] flex items-center"
             >
-              For Coaches
+              {!loading && ((user as any)?.userType === "coach" || (user as any)?.userType === "both")
+                ? "My Dashboard"
+                : "For Coaches"}
             </a>
             <button
               onClick={() => handleNavClick("waitlist")}
