@@ -160,8 +160,8 @@ export function CoachDashboardContent({ user }: { user: any }) {
     onSuccess: (data) => {
       window.location.href = data.url;
     },
-    onError: () => {
-      toast.error("Failed to start onboarding. Please try again.");
+    onError: (err) => {
+      toast.error(err.message || "Failed to start onboarding. Please try again.");
     },
   });
 
