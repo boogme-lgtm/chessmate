@@ -21,6 +21,8 @@ import {
 import { sendNurtureEmails, sendNurtureEmailsManual } from "./nurtureEmailScheduler";
 import { resendWelcomeEmails } from "./resendWelcomeEmails";
 import { storagePut } from "./storage";
+import { sendEmail as sendSimpleEmail, getCoachWelcomeEmail } from "./email";
+import { notifyOwner } from "./_core/notification";
 
 /**
  * Send cancellation confirmation emails to both student and coach.
@@ -763,6 +765,41 @@ export const appRouter = router({
 
         if (Object.keys(coachUpdate).length > 0) {
           await db.updateCoachProfile(ctx.user.id, coachUpdate as any);
+        }
+
+        // Fire-and-forget welcome + owner emails when a coach goes live
+        if (input.onboardingCompleted || input.profileActive) {
+          const profile = await db.getCoachProfileByUserId(ctx.user.id);
+          const coachName = name || ctx.user.name || "Coach";
+          Promise.allSettled([
+            (async () => {
+              try {
+                await sendSimpleEmail({
+                  to: ctx.user.email,
+                  subject: "Welcome to BooGMe, Coach!",
+                  html: getCoachWelcomeEmail(coachName),
+                });
+              } catch (err) {
+                console.error("[Email] Failed to send coach welcome email:", err);
+              }
+            })(),
+            (async () => {
+              try {
+                await notifyOwner({
+                  title: `New Coach Signed Up: ${coachName}`,
+                  content: [
+                    `Name: ${coachName}`,
+                    `Email: ${ctx.user.email}`,
+                    profile?.fideRating ? `FIDE Rating: ${profile.fideRating}` : null,
+                    profile?.hourlyRateCents ? `Hourly Rate: $${(profile.hourlyRateCents / 100).toFixed(0)}/hr` : null,
+                    `Pricing Tier: ${profile?.pricingTier || "free"}`,
+                  ].filter(Boolean).join("\n"),
+                });
+              } catch (err) {
+                console.error("[Email] Failed to notify owner of new coach:", err);
+              }
+            })(),
+          ]);
         }
 
         return { success: true };
