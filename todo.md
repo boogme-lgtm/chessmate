@@ -671,3 +671,9 @@
 - [x] Go Live: promote student→both if they have lesson bookings, otherwise student→coach
 - [x] Lesson booking: promote coach→both on first student booking
 - [x] Manual DB fix: updated Cristian + 3 test coaches from coach→both
+
+## Sprint 13: Dashboard Fixes + Design Alignment (April 21, 2026)
+- [x] Fix: Coach dashboard showing student lessons at the bottom (data leak between views)
+- [x] Fix: Payout Status card should have actionable Stripe Connect onboarding link instead of just "Pending Setup"
+- [x] Design: Align coach dashboard UX with the editorial dark aesthetic of the rest of the site
+- [x] Design: Align student dashboard UX with the editorial dark aesthetic of the rest of the site
