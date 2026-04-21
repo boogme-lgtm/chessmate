@@ -1,6 +1,6 @@
 /**
  * Coach Dashboard - Earnings, Lessons, and Stripe Onboarding
- * Swiss Modern design with burgundy accents
+ * Editorial Cream + Ember Dark design system
  */
 
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -43,7 +43,7 @@ export default function CoachDashboard() {
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="w-8 h-8 animate-spin text-burgundy" />
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </div>
     );
   }
@@ -59,7 +59,7 @@ export default function CoachDashboard() {
               Please log in to access your coach dashboard.
             </p>
             <Button
-              className="bg-burgundy hover:bg-burgundy/90 text-white"
+              className="bg-primary hover:bg-primary/90 text-white"
               onClick={() => window.location.href = "/sign-in"}
             >
               Log In
@@ -81,7 +81,7 @@ export default function CoachDashboard() {
               This page is only available to coaches.
             </p>
             <Link href="/">
-              <Button className="bg-burgundy hover:bg-burgundy/90 text-white">
+              <Button className="bg-primary hover:bg-primary/90 text-white">
                 Go Home
               </Button>
             </Link>
@@ -92,7 +92,7 @@ export default function CoachDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-stone dark:bg-background">
+    <div className="min-h-screen bg-background dark:bg-background">
       {/* Header */}
       <header className="bg-background border-b border-border sticky top-0 z-50">
         <div className="container py-4 flex items-center justify-between">
@@ -196,7 +196,7 @@ export function CoachDashboardContent({ user }: { user: any }) {
       )}
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
-            <Loader2 className="w-8 h-8 animate-spin text-burgundy" />
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
           </div>
         ) : (
           <div className="space-y-8">
@@ -228,11 +228,11 @@ export function CoachDashboardContent({ user }: { user: any }) {
 
             {/* Stripe Onboarding Alert */}
             {earnings?.needsOnboarding && (
-              <Card className="border-burgundy/50 bg-burgundy/5">
+              <Card className="border-primary/30 bg-primary/5">
                 <CardContent className="p-6">
                   <div className="flex items-start gap-4">
-                    <div className="w-12 h-12 rounded-full bg-burgundy/10 flex items-center justify-center flex-shrink-0">
-                      <AlertCircle className="w-6 h-6 text-burgundy" />
+                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                      <AlertCircle className="w-6 h-6 text-primary" />
                     </div>
                     <div className="flex-1">
                       <h3 className="font-semibold text-lg mb-1">
@@ -243,7 +243,7 @@ export function CoachDashboardContent({ user }: { user: any }) {
                         Complete your Stripe setup to receive payouts for your lessons.
                       </p>
                       <Button
-                        className="bg-burgundy hover:bg-burgundy/90 text-white"
+                        className="bg-primary hover:bg-primary/90 text-white"
                         onClick={() => startOnboarding.mutate()}
                         disabled={startOnboarding.isPending}
                       >
@@ -259,14 +259,16 @@ export function CoachDashboardContent({ user }: { user: any }) {
             )}
 
             {/* Earnings Overview */}
-            <div className="grid md:grid-cols-4 gap-4">
+            <div className="space-y-3">
+              <span className="eyebrow">01 — Earnings overview</span>
+              <div className="grid md:grid-cols-4 gap-4">
               <Card>
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm text-muted-foreground">Total Earned</span>
-                    <DollarSign className="w-4 h-4 text-burgundy" />
+                    <DollarSign className="w-4 h-4 text-primary" />
                   </div>
-                  <div className="text-2xl font-bold">
+                  <div className="text-2xl stat-number">
                     {formatCurrency(earnings?.totalEarningsCents || 0)}
                   </div>
                 </CardContent>
@@ -276,9 +278,9 @@ export function CoachDashboardContent({ user }: { user: any }) {
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm text-muted-foreground">Pending</span>
-                    <Clock className="w-4 h-4 text-terracotta" />
+                    <Clock className="w-4 h-4 text-primary" />
                   </div>
-                  <div className="text-2xl font-bold">
+                  <div className="text-2xl stat-number">
                     {formatCurrency(earnings?.pendingEarningsCents || 0)}
                   </div>
                 </CardContent>
@@ -288,29 +290,42 @@ export function CoachDashboardContent({ user }: { user: any }) {
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm text-muted-foreground">Lessons</span>
-                    <Calendar className="w-4 h-4 text-burgundy" />
+                    <Calendar className="w-4 h-4 text-primary" />
                   </div>
-                  <div className="text-2xl font-bold">
+                  <div className="text-2xl stat-number">
                     {lessons?.length || 0}
                   </div>
                 </CardContent>
               </Card>
 
-              <Card>
+              <Card
+                className={!earnings?.stripeOnboarded ? "cursor-pointer hover:border-primary/50 transition-colors" : ""}
+                onClick={() => {
+                  if (!earnings?.stripeOnboarded) {
+                    startOnboarding.mutate();
+                  }
+                }}
+              >
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm text-muted-foreground">Payout Status</span>
                     {earnings?.stripeOnboarded ? (
-                      <CheckCircle2 className="w-4 h-4 text-green-600" />
+                      <CheckCircle2 className="w-4 h-4 text-safe" />
                     ) : (
-                      <AlertCircle className="w-4 h-4 text-amber-500" />
+                      <AlertCircle className="w-4 h-4 text-signal" />
                     )}
                   </div>
                   <div className="text-lg font-semibold">
                     {earnings?.stripeOnboarded ? "Active" : "Pending Setup"}
                   </div>
+                  {!earnings?.stripeOnboarded && (
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Click to set up payouts via Stripe
+                    </p>
+                  )}
                 </CardContent>
               </Card>
+              </div>
             </div>
 
             {/* Progress to Threshold (if not yet reached) */}
@@ -318,7 +333,7 @@ export function CoachDashboardContent({ user }: { user: any }) {
               <Card>
                 <CardHeader>
                   <CardTitle className="text-lg flex items-center gap-2">
-                    <TrendingUp className="w-5 h-5 text-burgundy" />
+                    <TrendingUp className="w-5 h-5 text-primary" />
                     Progress to Payout Threshold
                   </CardTitle>
                 </CardHeader>
@@ -370,16 +385,20 @@ export function CoachDashboardContent({ user }: { user: any }) {
               </Card>
             )}
 
-            {/* Pending Reviews */}
-            {pendingReviews && pendingReviews.length > 0 && (
-              <CoachPendingReviewsCard reviews={pendingReviews} />
-            )}
+            {/* Pending Reviews — coach-role only; cross-role student reviews
+                belong on the student dashboard and are filtered out here. */}
+            {(() => {
+              const coachReviews = (pendingReviews || []).filter((r: any) => r.reviewingAs === "coach");
+              return coachReviews.length > 0 ? <CoachPendingReviewsCard reviews={coachReviews} /> : null;
+            })()}
 
             {/* Recent Lessons */}
-            <Card>
+            <div className="space-y-3">
+              <span className="eyebrow">02 — Lessons</span>
+              <Card>
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
-                  <Calendar className="w-5 h-5 text-burgundy" />
+                  <Calendar className="w-5 h-5 text-primary" />
                   All Lessons
                 </CardTitle>
               </CardHeader>
@@ -460,6 +479,7 @@ export function CoachDashboardContent({ user }: { user: any }) {
                 )}
               </CardContent>
             </Card>
+            </div>
           </div>
         )}
       </main>
@@ -499,7 +519,7 @@ function PendingLessonCard({ lesson, formatCurrency, onActionComplete }: {
           <div className="text-sm text-muted-foreground">
             {lesson.durationMinutes} min • {new Date(lesson.scheduledAt).toLocaleDateString()} at {new Date(lesson.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </div>
-          <div className="text-sm font-semibold text-burgundy mt-1">
+          <div className="text-sm font-semibold text-primary mt-1">
             {formatCurrency(lesson.coachPayoutCents || 0)} (your payout)
           </div>
         </div>
@@ -542,10 +562,10 @@ function CoachLessonRow({ lesson, unreadCount, formatCurrency, getStatusBadge }:
 
   return (
     <>
-      <div className="flex items-center justify-between p-4 rounded-lg bg-stone dark:bg-secondary/30">
+      <div className="flex items-center justify-between p-4 rounded-lg bg-background dark:bg-secondary/30">
         <div className="flex items-center gap-4">
-          <div className="w-10 h-10 rounded-full bg-burgundy/10 flex items-center justify-center">
-            <Users className="w-5 h-5 text-burgundy" />
+          <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+            <Users className="w-5 h-5 text-primary" />
           </div>
           <div>
             <div className="font-medium">
@@ -572,7 +592,7 @@ function CoachLessonRow({ lesson, unreadCount, formatCurrency, getStatusBadge }:
             )}
           </Button>
           <div className="text-right">
-            <div className="font-semibold text-burgundy">
+            <div className="font-semibold text-primary">
               {formatCurrency(lesson.coachPayoutCents || 0)}
             </div>
             {getStatusBadge()}
