@@ -10,6 +10,7 @@ import * as db from "./db";
 import * as stripeService from "./stripe";
 import { ENV } from "./_core/env";
 import { PRICING_TIERS, type PricingTier, calculateLessonBreakdown } from "@shared/pricing";
+import { toCountryCode } from "@shared/countries";
 import {
   sendEmail,
   getWaitlistConfirmationEmail,
@@ -594,30 +595,12 @@ export const appRouter = router({
 
         let accountId = user.stripeConnectAccountId;
 
-        // Map country name to ISO 3166-1 alpha-2 code (Stripe requires 2-char codes)
-        const countryToCode: Record<string, string> = {
-          "united states": "US", "canada": "CA", "united kingdom": "GB", "australia": "AU",
-          "germany": "DE", "france": "FR", "spain": "ES", "italy": "IT", "netherlands": "NL",
-          "brazil": "BR", "india": "IN", "japan": "JP", "mexico": "MX", "argentina": "AR",
-          "romania": "RO", "russia": "RU", "china": "CN", "south korea": "KR",
-          "norway": "NO", "sweden": "SE", "denmark": "DK", "finland": "FI",
-          "poland": "PL", "czech republic": "CZ", "hungary": "HU", "austria": "AT",
-          "switzerland": "CH", "belgium": "BE", "portugal": "PT", "ireland": "IE",
-          "new zealand": "NZ", "singapore": "SG", "israel": "IL", "south africa": "ZA",
-          "turkey": "TR", "greece": "GR", "croatia": "HR", "serbia": "RS",
-          "bulgaria": "BG", "ukraine": "UA", "georgia": "GE", "armenia": "AM",
-          "azerbaijan": "AZ", "iceland": "IS", "philippines": "PH", "colombia": "CO",
-          "chile": "CL", "peru": "PE", "egypt": "EG", "indonesia": "ID",
-        };
-        const rawCountry = (user.country || "").trim();
-        // If already a 2-char code, use as-is; otherwise look up the map; fallback to "US"
-        const countryCode = rawCountry.length === 2 
-          ? rawCountry.toUpperCase() 
-          : (countryToCode[rawCountry.toLowerCase()] || "US");
-
         // Create Connect account if doesn't exist
         if (!accountId) {
-          console.log("[Onboarding] Creating Connect account for:", user.email, "country:", rawCountry, "->", countryCode);
+          // Stripe requires ISO 3166-1 alpha-2 codes. New records store codes;
+          // legacy records may have full country names — toCountryCode handles both.
+          const countryCode = toCountryCode(user.country, "US");
+          console.log("[Onboarding] Creating Connect account for:", user.email, "country:", user.country, "->", countryCode);
           const account = await stripeService.createConnectAccount(
             user.email || "",
             user.id,

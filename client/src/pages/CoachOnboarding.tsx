@@ -21,8 +21,16 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Slider } from "@/components/ui/slider";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "sonner";
 import { PRICING_TIERS, DEFAULT_PRICING_TIER, type PricingTier } from "@shared/pricing";
+import { COUNTRIES } from "@shared/countries";
 import {
   ChevronRight,
   ChevronLeft,
@@ -577,7 +585,18 @@ export default function CoachOnboarding() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <Label className="text-foreground/80 mb-1.5 block">Country</Label>
-                    <Input value={country} onChange={(e) => setCountry(e.target.value)} placeholder="e.g. United States" />
+                    <Select value={country} onValueChange={setCountry}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select country" />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-[300px]">
+                        {COUNTRIES.map((c) => (
+                          <SelectItem key={c.code} value={c.code}>
+                            {c.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div>
                     <Label className="text-foreground/80 mb-1.5 block">Timezone</Label>

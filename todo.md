@@ -677,3 +677,8 @@
 - [x] Fix: Payout Status card should have actionable Stripe Connect onboarding link instead of just "Pending Setup"
 - [x] Design: Align coach dashboard UX with the editorial dark aesthetic of the rest of the site
 - [x] Design: Align student dashboard UX with the editorial dark aesthetic of the rest of the site
+
+## Sprint 14: Country Selector Fix
+- [ ] Replace free-text country input with searchable country dropdown in coach application form
+- [ ] Store ISO 3166-1 alpha-2 country codes instead of full country names
+- [ ] Update any other forms that collect country (profile edit) to use the same selector

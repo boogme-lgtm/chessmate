@@ -32,6 +32,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { getCountryName } from "@shared/countries";
 import { format } from "date-fns";
 
 type ApplicationStatus = "pending" | "under_review" | "approved" | "rejected" | "withdrawn";
@@ -366,7 +367,7 @@ export default function AdminApplications() {
                         <span className="text-muted-foreground">Phone:</span> {applicationDetails.phone || "N/A"}
                       </div>
                       <div>
-                        <span className="text-muted-foreground">Country:</span> {applicationDetails.country}
+                        <span className="text-muted-foreground">Country:</span> {getCountryName(applicationDetails.country)}
                       </div>
                       <div>
                         <span className="text-muted-foreground">City:</span> {applicationDetails.city}
