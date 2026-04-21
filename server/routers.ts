@@ -594,13 +594,34 @@ export const appRouter = router({
 
         let accountId = user.stripeConnectAccountId;
 
+        // Map country name to ISO 3166-1 alpha-2 code (Stripe requires 2-char codes)
+        const countryToCode: Record<string, string> = {
+          "united states": "US", "canada": "CA", "united kingdom": "GB", "australia": "AU",
+          "germany": "DE", "france": "FR", "spain": "ES", "italy": "IT", "netherlands": "NL",
+          "brazil": "BR", "india": "IN", "japan": "JP", "mexico": "MX", "argentina": "AR",
+          "romania": "RO", "russia": "RU", "china": "CN", "south korea": "KR",
+          "norway": "NO", "sweden": "SE", "denmark": "DK", "finland": "FI",
+          "poland": "PL", "czech republic": "CZ", "hungary": "HU", "austria": "AT",
+          "switzerland": "CH", "belgium": "BE", "portugal": "PT", "ireland": "IE",
+          "new zealand": "NZ", "singapore": "SG", "israel": "IL", "south africa": "ZA",
+          "turkey": "TR", "greece": "GR", "croatia": "HR", "serbia": "RS",
+          "bulgaria": "BG", "ukraine": "UA", "georgia": "GE", "armenia": "AM",
+          "azerbaijan": "AZ", "iceland": "IS", "philippines": "PH", "colombia": "CO",
+          "chile": "CL", "peru": "PE", "egypt": "EG", "indonesia": "ID",
+        };
+        const rawCountry = (user.country || "").trim();
+        // If already a 2-char code, use as-is; otherwise look up the map; fallback to "US"
+        const countryCode = rawCountry.length === 2 
+          ? rawCountry.toUpperCase() 
+          : (countryToCode[rawCountry.toLowerCase()] || "US");
+
         // Create Connect account if doesn't exist
         if (!accountId) {
-          console.log("[Onboarding] Creating Connect account for:", user.email, "country:", user.country);
+          console.log("[Onboarding] Creating Connect account for:", user.email, "country:", rawCountry, "->", countryCode);
           const account = await stripeService.createConnectAccount(
             user.email || "",
             user.id,
-            user.country || "US"
+            countryCode
           );
           accountId = account.id;
           console.log("[Onboarding] Connect account created:", accountId);
