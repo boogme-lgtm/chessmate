@@ -22,6 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Slider } from "@/components/ui/slider";
 import { toast } from "sonner";
+import { PRICING_TIERS, DEFAULT_PRICING_TIER, type PricingTier } from "@shared/pricing";
 import {
   ChevronRight,
   ChevronLeft,
@@ -64,6 +65,19 @@ const LANGUAGES = [
   { code: "fr", label: "French" }, { code: "de", label: "German" },
   { code: "ru", label: "Russian" }, { code: "pt", label: "Portuguese" },
   { code: "zh", label: "Chinese" }, { code: "ar", label: "Arabic" },
+  { code: "it", label: "Italian" }, { code: "ja", label: "Japanese" },
+  { code: "ko", label: "Korean" }, { code: "hi", label: "Hindi" },
+  { code: "nl", label: "Dutch" }, { code: "pl", label: "Polish" },
+  { code: "tr", label: "Turkish" }, { code: "ro", label: "Romanian" },
+  { code: "cs", label: "Czech" }, { code: "sv", label: "Swedish" },
+  { code: "no", label: "Norwegian" }, { code: "da", label: "Danish" },
+  { code: "el", label: "Greek" }, { code: "hu", label: "Hungarian" },
+  { code: "sr", label: "Serbian" }, { code: "hr", label: "Croatian" },
+  { code: "bg", label: "Bulgarian" }, { code: "uk", label: "Ukrainian" },
+  { code: "he", label: "Hebrew" }, { code: "fa", label: "Persian" },
+  { code: "id", label: "Indonesian" }, { code: "vi", label: "Vietnamese" },
+  { code: "th", label: "Thai" }, { code: "ms", label: "Malay" },
+  { code: "tl", label: "Tagalog" }, { code: "sw", label: "Swahili" },
 ];
 
 const TITLES = ["none", "CM", "FM", "IM", "GM", "WCM", "WFM", "WIM", "WGM"] as const;
@@ -117,8 +131,10 @@ export default function CoachOnboarding() {
   const [specialties, setSpecialties] = useState<string[]>([]);
   const [teachingStyle, setTeachingStyle] = useState<"visual" | "interactive" | "analytical" | "competitive">("interactive");
   const [languages, setLanguages] = useState<string[]>(["en"]);
+  const [customLanguageInput, setCustomLanguageInput] = useState("");
 
   const [hourlyRate, setHourlyRate] = useState(50); // in dollars
+  const [pricingTier, setPricingTier] = useState<PricingTier>(DEFAULT_PRICING_TIER);
   const [lessonDurations, setLessonDurations] = useState<number[]>([30, 60]);
   const [packageDiscount, setPackageDiscount] = useState(false);
   const [packageDiscountPercent, setPackageDiscountPercent] = useState(10);
@@ -163,6 +179,9 @@ export default function CoachOnboarding() {
         try { setLanguages(JSON.parse(p.languages)); } catch {}
       }
       if (p.hourlyRateCents) setHourlyRate(p.hourlyRateCents / 100);
+      if (p.pricingTier && (p.pricingTier === "free" || p.pricingTier === "pro" || p.pricingTier === "elite")) {
+        setPricingTier(p.pricingTier);
+      }
       if (p.lessonDurations) {
         try { setLessonDurations(JSON.parse(p.lessonDurations)); } catch {}
       }
@@ -245,6 +264,7 @@ export default function CoachOnboarding() {
       } else if (step === 5) {
         Object.assign(payload, {
           hourlyRateCents: Math.round(hourlyRate * 100),
+          pricingTier,
           lessonDurations,
           packageDiscountEnabled: packageDiscount,
           packageDiscountPercent,
@@ -333,6 +353,21 @@ export default function CoachOnboarding() {
   }
   function toggleLanguage(code: string) {
     setLanguages((prev) => prev.includes(code) ? prev.filter((x) => x !== code) : [...prev, code]);
+  }
+  function addCustomLanguage() {
+    const trimmed = customLanguageInput.trim();
+    if (!trimmed) return;
+    // Use the typed label as the code so it round-trips through the JSON
+    // column without needing a code lookup table for languages we don't
+    // know about.
+    if (!languages.includes(trimmed)) {
+      setLanguages((prev) => [...prev, trimmed]);
+    }
+    setCustomLanguageInput("");
+  }
+  function languageLabel(code: string): string {
+    const known = LANGUAGES.find((l) => l.code === code);
+    return known ? known.label : code;
   }
   function toggleDuration(d: number) {
     setLessonDurations((prev) => prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d]);
@@ -669,21 +704,70 @@ export default function CoachOnboarding() {
               </div>
               <div>
                 <Label className="text-foreground/80 mb-2 block">Languages</Label>
-                <div className="flex flex-wrap gap-2">
-                  {LANGUAGES.map(({ code, label }) => (
-                    <button
-                      key={code}
-                      onClick={() => toggleLanguage(code)}
-                      className={`px-3 py-1.5 rounded-full text-sm border transition-all ${
-                        languages.includes(code)
-                          ? "bg-primary/20 border-primary text-primary"
-                          : "bg-muted border-border text-muted-foreground hover:border-primary/40"
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
+                <div className="max-h-48 overflow-y-auto pr-1 -mr-1 mb-3">
+                  <div className="flex flex-wrap gap-2">
+                    {LANGUAGES.map(({ code, label }) => (
+                      <button
+                        key={code}
+                        onClick={() => toggleLanguage(code)}
+                        className={`px-3 py-1.5 rounded-full text-sm border transition-all ${
+                          languages.includes(code)
+                            ? "bg-primary/20 border-primary text-primary"
+                            : "bg-muted border-border text-muted-foreground hover:border-primary/40"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
+                {/* Custom "Other" input — lets coaches add languages not in the list */}
+                <div className="flex items-center gap-2 mb-3">
+                  <Input
+                    value={customLanguageInput}
+                    onChange={(e) => setCustomLanguageInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addCustomLanguage();
+                      }
+                    }}
+                    placeholder="Other language…"
+                    className="flex-1"
+                    maxLength={32}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={addCustomLanguage}
+                    disabled={!customLanguageInput.trim()}
+                    className="btn-editorial-ghost"
+                  >
+                    Add
+                  </Button>
+                </div>
+                {/* Selected languages with chip display + remove */}
+                {languages.length > 0 && (
+                  <div className="flex flex-wrap gap-2 pt-2 border-t border-border">
+                    <span className="text-xs text-muted-foreground self-center mr-1">Selected:</span>
+                    {languages.map((code) => (
+                      <Badge
+                        key={code}
+                        className="bg-primary/10 text-primary border-primary/30 gap-1 pr-1"
+                      >
+                        {languageLabel(code)}
+                        <button
+                          type="button"
+                          onClick={() => toggleLanguage(code)}
+                          className="ml-1 inline-flex items-center justify-center w-4 h-4 rounded-full hover:bg-primary/20"
+                          aria-label={`Remove ${languageLabel(code)}`}
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </Badge>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -711,8 +795,54 @@ export default function CoachOnboarding() {
                   <span>$5</span><span>$100</span><span>$250</span><span>$500</span>
                 </div>
                 <p className="text-xs text-muted-foreground mt-2">
-                  BooGMe takes a 15% platform fee. You receive <span className="text-safe">${(hourlyRate * 0.85).toFixed(0)}/hr</span>.
+                  Students also pay Stripe's 2.9% + $0.30 processing fee on top of your rate, so your take-home is exactly the share below.
                 </p>
+              </div>
+
+              {/* Pricing tier selector */}
+              <div>
+                <Label className="text-foreground/80 mb-2 block">Pricing Tier</Label>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {(Object.keys(PRICING_TIERS) as PricingTier[]).map((tierKey) => {
+                    const tier = PRICING_TIERS[tierKey];
+                    const isSelected = pricingTier === tierKey;
+                    const monthly = tier.monthlyFeeCents === 0
+                      ? "Free"
+                      : `$${(tier.monthlyFeeCents / 100).toFixed(0)}/mo`;
+                    const takeHome = (hourlyRate * (1 - tier.platformFeePercent / 100)).toFixed(0);
+                    const isPaid = tier.monthlyFeeCents > 0;
+                    return (
+                      <button
+                        key={tierKey}
+                        type="button"
+                        onClick={() => setPricingTier(tierKey)}
+                        className={`p-4 rounded-xl text-left border transition-all ${
+                          isSelected
+                            ? "bg-primary/10 border-primary text-foreground"
+                            : "bg-muted border-border text-muted-foreground hover:border-primary/40"
+                        }`}
+                      >
+                        <div className="flex items-baseline justify-between mb-1">
+                          <p className="font-medium text-sm text-foreground">{tier.label}</p>
+                          <span className="text-xs text-muted-foreground">{monthly}</span>
+                        </div>
+                        <p className="text-2xl font-thin tracking-tighter text-foreground">
+                          {tier.platformFeePercent}%
+                        </p>
+                        <p className="text-xs text-muted-foreground mb-2">platform fee per lesson</p>
+                        <p className="text-xs">
+                          You receive{" "}
+                          <span className="text-safe font-medium">${takeHome}/hr</span>
+                        </p>
+                        {isPaid && (
+                          <p className="text-[10px] text-muted-foreground mt-2 leading-snug">
+                            Subscription billing coming soon — Free tier active for all coaches during beta.
+                          </p>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
               <div>
                 <Label className="text-foreground/80 mb-2 block">Lesson Durations Offered</Label>
@@ -896,6 +1026,7 @@ export default function CoachOnboarding() {
                   { label: "Name", value: name || user?.name },
                   { label: "Title", value: title !== "none" ? title : "No title" },
                   { label: "Rate", value: `$${hourlyRate}/hr` },
+                  { label: "Plan", value: `${PRICING_TIERS[pricingTier].label} (${PRICING_TIERS[pricingTier].platformFeePercent}% fee)` },
                   { label: "Specialties", value: specialties.length > 0 ? `${specialties.length} selected` : "None" },
                   { label: "Schedule", value: `${Object.values(schedule).filter((d) => d.enabled).length} days/week` },
                 ].map(({ label, value }) => (
@@ -919,7 +1050,7 @@ export default function CoachOnboarding() {
                   <a href="/terms" target="_blank" className="text-primary hover:underline">Coach Guidelines</a>
                   {" "}and{" "}
                   <a href="/terms" target="_blank" className="text-primary hover:underline">Terms of Service</a>.
-                  I understand that BooGMe takes a 15% platform fee on all lessons.
+                  I understand that BooGMe takes a {PRICING_TIERS[pricingTier].platformFeePercent}% platform fee on all lessons ({PRICING_TIERS[pricingTier].label} plan).
                 </Label>
               </div>
 

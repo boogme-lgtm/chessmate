@@ -9,6 +9,7 @@ import { TRPCError } from "@trpc/server";
 import * as db from "./db";
 import * as stripeService from "./stripe";
 import { ENV } from "./_core/env";
+import { PRICING_TIERS, type PricingTier, calculateLessonBreakdown } from "@shared/pricing";
 import {
   sendEmail,
   getWaitlistConfirmationEmail,
@@ -697,6 +698,7 @@ export const appRouter = router({
         experienceYears: z.number().min(0).max(50).optional(),
         languages: z.array(z.string()).optional(),
         hourlyRateCents: z.number().min(500).max(100000).optional(),
+        pricingTier: z.enum(["free", "pro", "elite"]).optional(),
         availabilitySchedule: z.record(z.string(), z.object({
           enabled: z.boolean(),
           slots: z.array(z.object({ start: z.string(), end: z.string() })),
@@ -751,6 +753,13 @@ export const appRouter = router({
         if (input.onboardingCompleted) coachUpdate.onboardingCompletedAt = new Date();
         if (input.profileActive) coachUpdate.profileActivatedAt = new Date();
         if (input.guidelinesAgreed) coachUpdate.guidelinesAgreedAt = new Date();
+        // Keep legacy commissionRate in sync with the new pricingTier so old
+        // booking code paths that read commissionRate stay consistent.
+        // TODO: implement tier subscription billing for Pro/Elite — until
+        // then all coaches effectively run on Free tier pricing in production.
+        if (input.pricingTier) {
+          coachUpdate.commissionRate = PRICING_TIERS[input.pricingTier as PricingTier].platformFeePercent;
+        }
 
         if (Object.keys(coachUpdate).length > 0) {
           await db.updateCoachProfile(ctx.user.id, coachUpdate as any);
@@ -879,12 +888,15 @@ export const appRouter = router({
           throw new TRPCError({ code: "NOT_FOUND", message: "Coach not found" });
         }
 
-        // Calculate pricing
+        // Calculate pricing using coach's tier (Free=12%, Pro=8%, Elite=5%).
         const hourlyRate = coachProfile.hourlyRateCents || 5000;
         const amountCents = Math.round((hourlyRate * input.durationMinutes) / 60);
-        const commissionRate = coachProfile.commissionRate || 15;
-        const commissionCents = Math.round(amountCents * (commissionRate / 100));
-        const coachPayoutCents = amountCents - commissionCents;
+        const breakdown = calculateLessonBreakdown({
+          lessonPriceCents: amountCents,
+          tier: coachProfile.pricingTier,
+        });
+        const commissionCents = breakdown.platformFeeCents;
+        const coachPayoutCents = breakdown.coachPayoutCents;
 
         // Create lesson (db.createLesson auto-sets confirmationDeadline to now+24h)
         const lesson = await db.createLesson({
@@ -1408,9 +1420,12 @@ export const appRouter = router({
         const hourlyRate = coachProfile.hourlyRateCents || 5000;
         const totalAmountCents = Math.round((hourlyRate * input.durationMinutes) / 60);
         const perParticipantCents = Math.ceil(totalAmountCents / input.maxParticipants);
-        const commissionRate = coachProfile.commissionRate || 15;
-        const commissionCents = Math.round(totalAmountCents * (commissionRate / 100));
-        const coachPayoutCents = totalAmountCents - commissionCents;
+        const breakdown = calculateLessonBreakdown({
+          lessonPriceCents: totalAmountCents,
+          tier: coachProfile.pricingTier,
+        });
+        const commissionCents = breakdown.platformFeeCents;
+        const coachPayoutCents = breakdown.coachPayoutCents;
 
         const crypto = await import("crypto");
         const inviteToken = crypto.randomBytes(24).toString("hex");
@@ -1653,14 +1668,18 @@ export const appRouter = router({
         // Use VITE_FRONTEND_URL which works in both dev and production
         const baseUrl = process.env.VITE_FRONTEND_URL || "http://localhost:3000";
 
+        // Look up coach's pricing tier so checkout uses tier-based fee.
+        const coachProfile = await db.getCoachProfileByUserId(lesson.coachId);
+
         const session = await stripeService.createLessonCheckoutSession({
-          amountCents: lesson.amountCents,
+          lessonPriceCents: lesson.amountCents,
           currency: lesson.currency || "USD",
           lessonId: lesson.id,
           studentId: ctx.user.id,
           studentEmail: student?.email || "",
           coachName: coach.name || "Coach",
           coachConnectAccountId: coach.stripeConnectAccountId,
+          coachPricingTier: coachProfile?.pricingTier,
           successUrl: `${baseUrl}/lessons/${lesson.id}?payment=success`,
           cancelUrl: `${baseUrl}/lessons/${lesson.id}?payment=cancelled`,
         });

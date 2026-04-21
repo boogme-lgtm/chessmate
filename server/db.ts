@@ -165,6 +165,22 @@ export async function updateCoachProfile(userId: number, data: Partial<InsertCoa
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
+  // Upsert — create the coach profile row if it doesn't yet exist. This is
+  // critical for the onboarding wizard: brand-new users (userType="student")
+  // have no coach profile until they complete step 7. Without the upsert,
+  // step 2-6 saves silently no-op and step 7 server validation throws
+  // "Please set your hourly rate" even though the user filled it in.
+  const existing = await db
+    .select()
+    .from(coachProfiles)
+    .where(eq(coachProfiles.userId, userId))
+    .limit(1);
+
+  if (existing.length === 0) {
+    await db.insert(coachProfiles).values({ userId, ...data });
+    return;
+  }
+
   await db.update(coachProfiles)
     .set({ ...data, updatedAt: new Date() })
     .where(eq(coachProfiles.userId, userId));
