@@ -657,3 +657,12 @@
 - [x] Email notification on coach Go Live: welcome email to coach via Resend
 - [x] Email notification on coach Go Live: owner notification via notifyOwner helper
 - [x] Fire-and-forget email sends (Promise.allSettled, never blocks Go Live)
+
+## Sprint 11: Unified Dashboard + Context-Aware Navigation (April 21, 2026)
+- [x] Create unified Dashboard.tsx at /dashboard with role switcher (Student/Coach toggle for "both" users)
+- [x] Extract StudentDashboardContent and CoachDashboardContent as reusable components
+- [x] Redirect /coach/dashboard → /dashboard
+- [x] Collapse UserMenu "Coach Dashboard" + "My Bookings" into single "Dashboard" link
+- [x] Rename DashboardLayout sidebar "My Lessons" → "Dashboard"
+- [x] Make /for-coaches page redirect logged-in coaches to /dashboard
+- [x] Homepage nav: "For Coaches" → "My Dashboard" for logged-in coaches (desktop + mobile)
