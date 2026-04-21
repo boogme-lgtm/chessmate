@@ -28,10 +28,11 @@ import {
   X,
   Menu,
 } from "lucide-react";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
+import { useAuth } from "@/_core/hooks/useAuth";
 
 const fadeIn = {
   hidden: { opacity: 0, y: 10 },
@@ -808,6 +809,17 @@ function CoachWaitlistSection() {
 
 // Main Coaches Page
 export default function Coaches() {
+  const { user, loading } = useAuth();
+  const [, setLocation] = useLocation();
+  const isCoach =
+    (user as any)?.userType === "coach" || (user as any)?.userType === "both";
+
+  useEffect(() => {
+    if (!loading && isCoach) {
+      setLocation("/dashboard");
+    }
+  }, [loading, isCoach, setLocation]);
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <Navigation />
