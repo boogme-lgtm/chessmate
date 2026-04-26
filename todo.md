@@ -682,3 +682,33 @@
 - [x] Replace free-text country input with searchable country dropdown in coach application form
 - [x] Store ISO 3166-1 alpha-2 country codes instead of full country names
 - [x] Update any other forms that collect country (profile edit) to use the same selector
+
+## Sprint 15: Phase 2 Completion (April 26, 2026)
+
+### Task 1: Settings Page
+- [x] Create Settings page at /settings with profile editing (name, bio, country, timezone)
+- [x] Password change with current password verification (hidden for Google OAuth users)
+- [x] Notification preference toggles (booking, reminders, reviews, marketing) saved as JSON on user record
+- [x] Danger zone with soft-delete account + password confirmation dialog
+- [x] Add Settings link to DashboardLayout sidebar navigation
+- [x] Add notificationPreferences and deletedAt columns to users table
+
+### Task 2: Dashboard Design Refinement
+- [x] Role switcher → pill-shaped segmented control with bg-ink-deep / bg-ember active state
+- [x] Stat cards → text-3xl font-bold font-mono tabular-nums with hover states and semantic colors
+- [x] Payout status card → animated dot indicators (green pulse for active, amber for pending)
+- [x] Lesson rows → ember left accent border (border-l-2 border-ember)
+- [x] Empty states → larger padding, muted icons, better copy + CTAs
+
+### Task 3: Coach Referral System
+- [x] Create referral_codes and referrals database tables in schema
+- [x] Add tRPC procedures: referral.generateCode, getMyCode, validateCode, recordSignup
+- [x] Coach dashboard "Invite Students" card with copy/share buttons and referral stats
+- [x] /ref/:code route → stores code in localStorage, redirects to homepage with toast
+- [x] ReferralLanding page component
+
+### Verification
+- [x] 26/26 tests passing
+- [x] tsc --noEmit clean (0 errors)
+- [x] pnpm build clean
+- [x] Database migration applied (referral tables, notification prefs, deletedAt)
