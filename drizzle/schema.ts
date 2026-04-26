@@ -32,6 +32,12 @@ export const users = mysqlTable("users", {
   country: varchar("country", { length: 64 }),
   timezone: varchar("timezone", { length: 64 }),
   
+  // Notification preferences (JSON — bookingConfirmations, lessonReminders, newReviews, marketing)
+  notificationPreferences: text("notificationPreferences"),
+
+  // Soft-delete
+  deletedAt: timestamp("deletedAt"),
+
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
@@ -736,3 +742,35 @@ export const contentPurchases = mysqlTable("content_purchases", {
 
 export type ContentPurchase = typeof contentPurchases.$inferSelect;
 export type InsertContentPurchase = typeof contentPurchases.$inferInsert;
+
+/**
+ * Referral codes — coaches generate unique codes to share with potential students.
+ */
+export const referralCodes = mysqlTable("referral_codes", {
+  id: int("id").autoincrement().primaryKey(),
+  coachId: int("coachId").notNull(),
+  code: varchar("code", { length: 12 }).notNull().unique(),
+  isActive: boolean("isActive").default(true).notNull(),
+  totalUses: int("totalUses").default(0).notNull(),
+  maxUses: int("maxUses"),
+  expiresAt: timestamp("expiresAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type ReferralCode = typeof referralCodes.$inferSelect;
+export type InsertReferralCode = typeof referralCodes.$inferInsert;
+
+/**
+ * Referrals — tracks students who signed up via a referral link and reward status.
+ */
+export const referrals = mysqlTable("referrals", {
+  id: int("id").autoincrement().primaryKey(),
+  referralCodeId: int("referralCodeId").notNull(),
+  referredUserId: int("referredUserId").notNull(),
+  status: mysqlEnum("status", ["signed_up", "lesson_completed", "reward_issued"]).default("signed_up").notNull(),
+  rewardIssuedAt: timestamp("rewardIssuedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type Referral = typeof referrals.$inferSelect;
+export type InsertReferral = typeof referrals.$inferInsert;

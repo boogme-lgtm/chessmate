@@ -100,14 +100,14 @@ function RoleSwitcher({
   onChange: (view: DashboardView) => void;
 }) {
   return (
-    <div className="flex items-center gap-1 bg-secondary rounded-lg p-1">
+    <div className="flex items-center gap-0.5 bg-ink-deep rounded-full p-1">
       <button
         onClick={() => onChange("student")}
         className={cn(
-          "px-4 py-1.5 rounded-md text-sm font-medium transition-colors",
+          "px-5 py-1.5 rounded-full text-sm font-medium transition-all",
           active === "student"
-            ? "bg-primary text-primary-foreground"
-            : "text-muted-foreground hover:text-foreground"
+            ? "bg-ember text-white shadow-sm"
+            : "text-bone-muted hover:text-foreground"
         )}
       >
         Student
@@ -115,10 +115,10 @@ function RoleSwitcher({
       <button
         onClick={() => onChange("coach")}
         className={cn(
-          "px-4 py-1.5 rounded-md text-sm font-medium transition-colors",
+          "px-5 py-1.5 rounded-full text-sm font-medium transition-all",
           active === "coach"
-            ? "bg-primary text-primary-foreground"
-            : "text-muted-foreground hover:text-foreground"
+            ? "bg-ember text-white shadow-sm"
+            : "text-bone-muted hover:text-foreground"
         )}
       >
         Coach

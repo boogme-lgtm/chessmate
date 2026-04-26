@@ -138,12 +138,12 @@ export function StudentDashboardContent({ user }: { user: any }) {
 
         <TabsContent value="upcoming" className="space-y-4">
           {upcomingLessons.length === 0 ? (
-            <Card>
-              <CardContent className="py-12 text-center">
-                <Calendar className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
-                <h3 className="text-lg font-semibold mb-2">No upcoming lessons</h3>
-                <p className="text-muted-foreground mb-6">
-                  Book a lesson with a coach to get started
+            <Card className="border-border/40">
+              <CardContent className="py-16 text-center">
+                <Calendar className="h-12 w-12 mx-auto mb-4 text-muted-foreground/30" />
+                <h3 className="text-lg font-medium mb-1">No upcoming lessons</h3>
+                <p className="text-sm text-muted-foreground mb-6 max-w-sm mx-auto">
+                  Browse our coaches and book your first chess lesson to get started
                 </p>
                 <Button onClick={() => setLocation("/coaches")}>
                   Browse Coaches
@@ -163,11 +163,11 @@ export function StudentDashboardContent({ user }: { user: any }) {
 
         <TabsContent value="past" className="space-y-4">
           {pastLessons.length === 0 ? (
-            <Card>
-              <CardContent className="py-12 text-center">
-                <Clock className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
-                <h3 className="text-lg font-semibold mb-2">No past lessons</h3>
-                <p className="text-muted-foreground">
+            <Card className="border-border/40">
+              <CardContent className="py-16 text-center">
+                <Clock className="h-12 w-12 mx-auto mb-4 text-muted-foreground/30" />
+                <h3 className="text-lg font-medium mb-1">No past lessons</h3>
+                <p className="text-sm text-muted-foreground">
                   Your completed lessons will appear here
                 </p>
               </CardContent>
@@ -499,7 +499,7 @@ function LessonCard({ lesson, isPast = false, unreadCount = 0 }: LessonCardProps
 
   return (
     <>
-      <Card className="hover:border-primary/50 transition-colors">
+      <Card className="hover:border-primary/50 transition-colors border-l-2 border-l-ember">
         <CardContent className="p-6">
           <div className="flex items-start justify-between">
             <div className="flex-1">
@@ -591,7 +591,7 @@ function LessonCard({ lesson, isPast = false, unreadCount = 0 }: LessonCardProps
             </div>
 
             <div className="text-right ml-4">
-              <div className="text-2xl font-semibold">
+              <div className="text-2xl font-bold font-mono tabular-nums">
                 ${(lesson.amountCents / 100).toFixed(2)}
               </div>
               {!isPast && (

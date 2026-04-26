@@ -36,6 +36,7 @@ import { useState } from "react";
 import MessageThread from "@/components/MessageThread";
 import ReviewDialog from "@/components/ReviewDialog";
 import { format } from "date-fns";
+import { Copy, Share2 } from "lucide-react";
 
 export default function CoachDashboard() {
   const { user, loading: authLoading, isAuthenticated } = useAuth();
@@ -261,45 +262,45 @@ export function CoachDashboardContent({ user }: { user: any }) {
             {/* Earnings Overview */}
             <div className="space-y-3">
               <span className="eyebrow">01 — Earnings overview</span>
-              <div className="grid md:grid-cols-4 gap-4">
-              <Card>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <Card className="border-border/40 hover:bg-ink-raised/80 transition-colors">
                 <CardContent className="p-6">
-                  <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center justify-between mb-3">
                     <span className="text-sm text-muted-foreground">Total Earned</span>
                     <DollarSign className="w-4 h-4 text-primary" />
                   </div>
-                  <div className="text-2xl stat-number">
+                  <div className="text-3xl font-bold font-mono tabular-nums text-primary">
                     {formatCurrency(earnings?.totalEarningsCents || 0)}
                   </div>
                 </CardContent>
               </Card>
 
-              <Card>
+              <Card className="border-border/40 hover:bg-ink-raised/80 transition-colors">
                 <CardContent className="p-6">
-                  <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center justify-between mb-3">
                     <span className="text-sm text-muted-foreground">Pending</span>
-                    <Clock className="w-4 h-4 text-primary" />
+                    <Clock className="w-4 h-4 text-amber-400" />
                   </div>
-                  <div className="text-2xl stat-number">
+                  <div className="text-3xl font-bold font-mono tabular-nums">
                     {formatCurrency(earnings?.pendingEarningsCents || 0)}
                   </div>
                 </CardContent>
               </Card>
 
-              <Card>
+              <Card className="border-border/40 hover:bg-ink-raised/80 transition-colors">
                 <CardContent className="p-6">
-                  <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center justify-between mb-3">
                     <span className="text-sm text-muted-foreground">Lessons</span>
-                    <Calendar className="w-4 h-4 text-primary" />
+                    <Calendar className="w-4 h-4 text-match" />
                   </div>
-                  <div className="text-2xl stat-number">
+                  <div className="text-3xl font-bold font-mono tabular-nums">
                     {lessons?.length || 0}
                   </div>
                 </CardContent>
               </Card>
 
               <Card
-                className={!earnings?.stripeOnboarded ? "cursor-pointer hover:border-primary/50 transition-colors" : ""}
+                className={`border-border/40 transition-colors ${!earnings?.stripeOnboarded ? "cursor-pointer hover:border-primary/50" : "hover:bg-ink-raised/80"}`}
                 onClick={() => {
                   if (!earnings?.stripeOnboarded) {
                     startOnboarding.mutate();
@@ -307,16 +308,26 @@ export function CoachDashboardContent({ user }: { user: any }) {
                 }}
               >
                 <CardContent className="p-6">
-                  <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center justify-between mb-3">
                     <span className="text-sm text-muted-foreground">Payout Status</span>
                     {earnings?.stripeOnboarded ? (
-                      <CheckCircle2 className="w-4 h-4 text-safe" />
+                      <span className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                      </span>
                     ) : (
-                      <AlertCircle className="w-4 h-4 text-signal" />
+                      <span className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-amber-400" />
+                        <AlertCircle className="w-4 h-4 text-amber-400" />
+                      </span>
                     )}
                   </div>
                   <div className="text-lg font-semibold">
-                    {earnings?.stripeOnboarded ? "Active" : "Pending Setup"}
+                    {earnings?.stripeOnboarded ? (
+                      <span className="text-emerald-400">Active</span>
+                    ) : (
+                      <span className="text-amber-400">Pending Setup</span>
+                    )}
                   </div>
                   {!earnings?.stripeOnboarded && (
                     <p className="text-xs text-muted-foreground mt-2">
@@ -472,13 +483,22 @@ export function CoachDashboardContent({ user }: { user: any }) {
                     })}
                   </div>
                 ) : (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <Calendar className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                    <p>No lessons yet. Start teaching to see your earnings here!</p>
+                  <div className="text-center py-12 text-muted-foreground">
+                    <Calendar className="w-12 h-12 mx-auto mb-4 opacity-30" />
+                    <h3 className="text-lg font-medium text-foreground mb-1">No lessons yet</h3>
+                    <p className="text-sm max-w-sm mx-auto">
+                      Share your profile link with students to start booking lessons and earning.
+                    </p>
                   </div>
                 )}
               </CardContent>
             </Card>
+            </div>
+
+            {/* Invite Students */}
+            <div className="space-y-3">
+              <span className="eyebrow">03 — Grow your practice</span>
+              <ReferralCard />
             </div>
           </div>
         )}
@@ -562,7 +582,7 @@ function CoachLessonRow({ lesson, unreadCount, formatCurrency, getStatusBadge }:
 
   return (
     <>
-      <div className="flex items-center justify-between p-4 rounded-lg bg-background dark:bg-secondary/30">
+      <div className="flex items-center justify-between p-4 rounded-lg bg-background dark:bg-secondary/30 border-l-2 border-ember">
         <div className="flex items-center gap-4">
           <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
             <Users className="w-5 h-5 text-primary" />
@@ -682,5 +702,80 @@ function CoachPendingReviewsCard({ reviews }: { reviews: any[] }) {
         />
       )}
     </>
+  );
+}
+
+function ReferralCard() {
+  const { data, isLoading } = trpc.referral.getMyCode.useQuery();
+  const generateCode = trpc.referral.generateCode.useMutation({
+    onSuccess: () => toast.success("Referral code created!"),
+    onError: (err) => toast.error(err.message),
+  });
+
+  const referralUrl = data?.code ? `${window.location.origin}/ref/${data.code}` : null;
+
+  const copyLink = () => {
+    if (referralUrl) {
+      navigator.clipboard.writeText(referralUrl);
+      toast.success("Link copied to clipboard");
+    }
+  };
+
+  const shareLink = async () => {
+    if (referralUrl && navigator.share) {
+      try {
+        await navigator.share({ title: "Learn chess with me on BooGMe", url: referralUrl });
+      } catch { /* user dismissed */ }
+    } else {
+      copyLink();
+    }
+  };
+
+  return (
+    <Card className="border-border/40">
+      <CardContent className="p-6">
+        <div className="flex items-start gap-4">
+          <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+            <Share2 className="w-5 h-5 text-primary" />
+          </div>
+          <div className="flex-1">
+            <h3 className="font-semibold text-lg mb-1">Invite Students</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              Share your referral link — referred students get 10% off their first lesson.
+            </p>
+
+            {data?.code ? (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 bg-secondary/50 px-3 py-2 rounded-md text-sm font-mono truncate">
+                    {referralUrl}
+                  </code>
+                  <Button size="sm" variant="outline" onClick={copyLink} className="gap-1.5 shrink-0">
+                    <Copy className="w-3.5 h-3.5" /> Copy
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={shareLink} className="gap-1.5 shrink-0">
+                    <Share2 className="w-3.5 h-3.5" /> Share
+                  </Button>
+                </div>
+                <div className="flex gap-6 text-sm text-muted-foreground">
+                  <span>{data.stats.totalReferrals} referred</span>
+                  <span>{data.stats.completedLessons} lessons</span>
+                  <span>${(data.stats.creditsEarned / 100).toFixed(0)} earned</span>
+                </div>
+              </div>
+            ) : (
+              <Button
+                onClick={() => generateCode.mutate()}
+                disabled={generateCode.isPending || isLoading}
+                className="gap-2"
+              >
+                {generateCode.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+                Generate Referral Link
+              </Button>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
