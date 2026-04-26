@@ -28,6 +28,8 @@ import ResetPassword from "./pages/ResetPassword";
 import DevDashboard from "./pages/DevDashboard";
 import CoachOnboarding from "./pages/CoachOnboarding";
 import Dashboard from "./pages/Dashboard";
+import Settings from "./pages/Settings";
+import ReferralLanding from "./pages/ReferralLanding";
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
@@ -50,6 +52,8 @@ function Router() {
       </Route>
       <Route path={"/coach/:id"} component={CoachDetail} />
       <Route path={"/dashboard"} component={Dashboard} />
+      <Route path={"/settings"} component={Settings} />
+      <Route path={"/ref/:code"} component={ReferralLanding} />
       <Route path={"/lessons/:id"} component={LessonPaymentSuccess} />
       <Route path={"/register"} component={Register} />
       <Route path={"/sign-in"} component={SignIn} />

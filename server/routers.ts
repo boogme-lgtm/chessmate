@@ -102,6 +102,128 @@ export const appRouter = router({
   
   auth: authRouter,
 
+  // ============ USER SETTINGS ============
+  user: router({
+    getProfile: protectedProcedure.query(async ({ ctx }) => {
+      const user = await db.getUserById(ctx.user.id);
+      if (!user) throw new TRPCError({ code: "NOT_FOUND" });
+      const prefs = user.notificationPreferences
+        ? JSON.parse(user.notificationPreferences)
+        : { bookingConfirmations: true, lessonReminders: true, newReviews: true, marketing: false };
+      return {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        avatarUrl: user.avatarUrl,
+        bio: user.bio,
+        country: user.country,
+        timezone: user.timezone,
+        loginMethod: user.loginMethod,
+        lastSignedIn: user.lastSignedIn,
+        createdAt: user.createdAt,
+        notificationPreferences: prefs,
+      };
+    }),
+
+    updateProfile: protectedProcedure
+      .input(z.object({
+        name: z.string().min(1).max(100).optional(),
+        bio: z.string().max(500).optional(),
+        country: z.string().max(64).optional(),
+        timezone: z.string().max(64).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        await db.updateUserProfile(ctx.user.id, input);
+        return { success: true };
+      }),
+
+    changePassword: protectedProcedure
+      .input(z.object({
+        currentPassword: z.string().min(1),
+        newPassword: z.string().min(8).max(128),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { hashPassword, comparePassword } = await import("./auth");
+        const user = await db.getUserById(ctx.user.id);
+        if (!user || !user.password) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Password login not configured for this account" });
+        }
+        const valid = await comparePassword(input.currentPassword, user.password);
+        if (!valid) {
+          throw new TRPCError({ code: "UNAUTHORIZED", message: "Current password is incorrect" });
+        }
+        const hashed = await hashPassword(input.newPassword);
+        await db.updateUserPassword(ctx.user.id, hashed);
+        return { success: true };
+      }),
+
+    updateNotificationPreferences: protectedProcedure
+      .input(z.object({
+        bookingConfirmations: z.boolean(),
+        lessonReminders: z.boolean(),
+        newReviews: z.boolean(),
+        marketing: z.boolean(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        await db.updateNotificationPreferences(ctx.user.id, JSON.stringify(input));
+        return { success: true };
+      }),
+
+    deleteAccount: protectedProcedure
+      .input(z.object({
+        password: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const user = await db.getUserById(ctx.user.id);
+        if (!user) throw new TRPCError({ code: "NOT_FOUND" });
+        if (user.password && input.password) {
+          const { comparePassword } = await import("./auth");
+          const valid = await comparePassword(input.password, user.password);
+          if (!valid) {
+            throw new TRPCError({ code: "UNAUTHORIZED", message: "Incorrect password" });
+          }
+        }
+        await db.softDeleteUser(ctx.user.id);
+        return { success: true };
+      }),
+  }),
+
+  // ============ REFERRAL SYSTEM ============
+  referral: router({
+    getMyCode: protectedProcedure.query(async ({ ctx }) => {
+      const code = await db.getReferralCodeByCoach(ctx.user.id);
+      const stats = await db.getReferralStats(ctx.user.id);
+      return { code: code?.code || null, stats };
+    }),
+
+    generateCode: protectedProcedure.mutation(async ({ ctx }) => {
+      const existing = await db.getReferralCodeByCoach(ctx.user.id);
+      if (existing) return { code: existing.code };
+
+      const crypto = await import("crypto");
+      const code = crypto.randomBytes(4).toString("hex").toUpperCase();
+      await db.createReferralCode({ coachId: ctx.user.id, code });
+      return { code };
+    }),
+
+    recordSignup: publicProcedure
+      .input(z.object({ code: z.string().min(1), userId: z.number() }))
+      .mutation(async ({ input }) => {
+        const ref = await db.getReferralCodeByCode(input.code);
+        if (!ref) return { success: false };
+        await db.createReferral({ referralCodeId: ref.id, referredUserId: input.userId });
+        await db.incrementReferralCodeUses(ref.id);
+        return { success: true };
+      }),
+
+    validateCode: publicProcedure
+      .input(z.object({ code: z.string().min(1) }))
+      .query(async ({ input }) => {
+        const ref = await db.getReferralCodeByCode(input.code);
+        return { valid: !!ref };
+      }),
+  }),
+
   // ============ LICHESS PUZZLES ============
   puzzle: router({
     /**

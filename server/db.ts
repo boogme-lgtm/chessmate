@@ -22,6 +22,10 @@ import {
   InsertCoachMatch,
   InsertCoachApplication,
   InsertMessage,
+  referralCodes,
+  referrals,
+  InsertReferralCode,
+  InsertReferral,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -1245,4 +1249,85 @@ export async function getUnreadMessageCountsForUser(
     counts.set(Number(row.lessonId), Number(row.unread));
   }
   return counts;
+}
+
+// ============ USER SETTINGS OPERATIONS ============
+
+export async function updateUserPassword(userId: number, hashedPassword: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(users).set({ password: hashedPassword }).where(eq(users.id, userId));
+}
+
+export async function updateNotificationPreferences(userId: number, prefs: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(users).set({ notificationPreferences: prefs }).where(eq(users.id, userId));
+}
+
+export async function softDeleteUser(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(users).set({ deletedAt: new Date() }).where(eq(users.id, userId));
+}
+
+// ============ REFERRAL OPERATIONS ============
+
+export async function createReferralCode(data: InsertReferralCode) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(referralCodes).values(data);
+  return { id: Number(result[0].insertId), ...data };
+}
+
+export async function getReferralCodeByCoach(coachId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(referralCodes)
+    .where(and(eq(referralCodes.coachId, coachId), eq(referralCodes.isActive, true)))
+    .limit(1);
+  return rows[0] || null;
+}
+
+export async function getReferralCodeByCode(code: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(referralCodes)
+    .where(and(eq(referralCodes.code, code), eq(referralCodes.isActive, true)))
+    .limit(1);
+  return rows[0] || null;
+}
+
+export async function createReferral(data: InsertReferral) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(referrals).values(data);
+}
+
+export async function getReferralStats(coachId: number) {
+  const db = await getDb();
+  if (!db) return { totalReferrals: 0, completedLessons: 0, creditsEarned: 0 };
+
+  const code = await getReferralCodeByCoach(coachId);
+  if (!code) return { totalReferrals: 0, completedLessons: 0, creditsEarned: 0 };
+
+  const [stats] = await db.select({
+    totalReferrals: sql<number>`COUNT(*)`,
+    completedLessons: sql<number>`SUM(CASE WHEN ${referrals.status} IN ('lesson_completed','reward_issued') THEN 1 ELSE 0 END)`,
+    creditsEarned: sql<number>`SUM(CASE WHEN ${referrals.status} = 'reward_issued' THEN 500 ELSE 0 END)`,
+  }).from(referrals).where(eq(referrals.referralCodeId, code.id));
+
+  return {
+    totalReferrals: stats?.totalReferrals || 0,
+    completedLessons: stats?.completedLessons || 0,
+    creditsEarned: stats?.creditsEarned || 0,
+  };
+}
+
+export async function incrementReferralCodeUses(codeId: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(referralCodes)
+    .set({ totalUses: sql`${referralCodes.totalUses} + 1` })
+    .where(eq(referralCodes.id, codeId));
 }
