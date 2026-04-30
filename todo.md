@@ -712,3 +712,19 @@
 - [x] tsc --noEmit clean (0 errors)
 - [x] pnpm build clean
 - [x] Database migration applied (referral tables, notification prefs, deletedAt)
+
+## Sprint 16: Homepage v2 Redesign (YC Framework)
+- [x] Extract BgMark into standalone component
+- [x] Create QuizResultMockup component (replaces HeroScene3D)
+- [x] Rewrite HeroV2 with shimmer animation + new copy
+- [x] Add SocialProofBar (founding-coach beta)
+- [x] Add ProblemStatement (3-column)
+- [x] Update Features 03 + 04 (messaging + PPV content)
+- [x] Add TestimonialBlockV2 (founding principle)
+- [x] Add CoachDashboardPreview (dark section)
+- [x] Add FoundersBlock (Cristian Chirila, dark section)
+- [x] Add PricingTable (3-tier)
+- [x] Add ClosingCTA (full-bleed)
+- [x] Apply dark section background fix (Footer, dark sections)
+- [x] Remove deprecated sections (PaymentProtection, ForCoaches)
+- [x] Verify build + tests pass
