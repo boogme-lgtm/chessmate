@@ -108,7 +108,7 @@ function Navigation({ onOpenAssessment }: { onOpenAssessment: () => void }) {
             Pricing
           </button>
           <a
-            href="/coaches"
+            href="/for-coaches"
             className="nav-link text-[13px] text-muted-foreground hover:text-foreground transition-colors"
           >
             For coaches
@@ -152,7 +152,7 @@ function Navigation({ onOpenAssessment }: { onOpenAssessment: () => void }) {
             <button onClick={() => handleNavClick("pricing")} className="block text-sm text-muted-foreground">
               Pricing
             </button>
-            <a href="/coaches" className="block text-sm text-muted-foreground">
+            <a href="/for-coaches" className="block text-sm text-muted-foreground">
               For coaches
             </a>
             {user ? (

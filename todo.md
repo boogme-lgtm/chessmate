@@ -736,3 +736,7 @@
 - [x] Add Onboarding quiz section (20 questions / 8 minutes / One perfect match + live quiz mockup)
 - [x] Replace coach filter UI with 3-card match results (match scores, coach details, Book a Trial Lesson CTAs)
 - [x] Upgrade CoachDashboardPreview with full browser-chrome mockup (sidebar, stats, upcoming lessons)
+
+## Sprint 18: Navigation & Auth UX Fixes
+- [x] Fix "For Coaches" nav button — changed from /coaches to /for-coaches (coach recruitment landing)
+- [x] Fix /coach/onboarding auth redirect loop — replaced hard redirect with inline auth gate (sign in / create account / back to home)
