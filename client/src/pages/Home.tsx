@@ -1,5 +1,5 @@
-/*
- * DESIGN: Editorial Cream + Ember Dark — Homepage v2
+/**
+ * DESIGN: Editorial Cream + Ember Dark — Homepage v2 (Design Board Aligned)
  * YC homepage framework. Honest pre-launch positioning.
  * Two-sided value: coaches earn beyond the hour; students get personalized material.
  * No fabricated metrics, no fake testimonials.
@@ -17,13 +17,15 @@ import {
   Mail,
   MessageSquare,
   Play,
+  Calendar,
+  DollarSign,
+  Star,
+  BarChart3,
 } from "lucide-react";
 import React, { useState } from "react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { CoachMatchingAssessment } from "@/components/CoachMatchingAssessment";
-import { CoachProfileCard, type CoachProfile } from "@/components/CoachProfileCard";
-import { CoachFilters, type FilterState } from "@/components/CoachFilters";
 import { WelcomePopup } from "@/components/WelcomePopup";
 import { UserMenu } from "@/components/UserMenu";
 import Logo from "@/components/Logo";
@@ -78,116 +80,95 @@ function Navigation({ onOpenAssessment }: { onOpenAssessment: () => void }) {
 
   return (
     <motion.nav
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.6, delay: 0.1 }}
-      className="fixed top-0 left-0 right-0 z-50 transition-all duration-300"
-      style={{
-        background: isScrolled ? "var(--background)" : "transparent",
-        backdropFilter: isScrolled ? "blur(12px)" : "none",
-        borderBottom: isScrolled ? "1px solid var(--line)" : "1px solid transparent",
-      }}
+      initial={{ y: -20, opacity: 0 }}
+      animate={{ y: 0, opacity: 1 }}
+      transition={{ duration: 0.5, ease: [0.2, 0.7, 0.2, 1] }}
+      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
+        isScrolled
+          ? "bg-background/90 backdrop-blur-md border-b border-border shadow-sm"
+          : "bg-transparent"
+      }`}
     >
-      <div className="container flex items-center justify-between h-[60px]">
-        <div className="flex items-center gap-4">
-          <Logo height={32} />
-        </div>
-        <div className="hidden md:flex items-center gap-10">
-          <button
-            onClick={handleOpenAssessment}
-            className="text-[13px] font-normal text-muted-foreground hover:text-foreground transition-colors duration-200"
-          >
-            Take AI Assessment
-          </button>
+      <div className="container flex items-center justify-between h-16">
+        <a href="/" className="flex items-center gap-2">
+          <Logo height={28} />
+        </a>
+        {/* Desktop nav */}
+        <div className="hidden md:flex items-center gap-8">
           <button
             onClick={() => handleNavClick("features")}
-            className="text-[13px] font-normal text-muted-foreground hover:text-foreground transition-colors duration-200"
+            className="nav-link text-[13px] text-muted-foreground hover:text-foreground transition-colors"
           >
-            Features
+            How it works
+          </button>
+          <button
+            onClick={() => handleNavClick("pricing")}
+            className="nav-link text-[13px] text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Pricing
           </button>
           <a
             href="/coaches"
-            className="text-[13px] font-normal text-muted-foreground hover:text-foreground transition-colors duration-200"
+            className="nav-link text-[13px] text-muted-foreground hover:text-foreground transition-colors"
           >
-            Browse Coaches
+            For coaches
           </a>
-          <a
-            href={
-              !loading && ((user as any)?.userType === "coach" || (user as any)?.userType === "both")
-                ? "/dashboard"
-                : "/for-coaches"
-            }
-            className="text-[13px] font-normal text-muted-foreground hover:text-foreground transition-colors duration-200"
-          >
-            {!loading && ((user as any)?.userType === "coach" || (user as any)?.userType === "both")
-              ? "My Dashboard"
-              : "For Coaches"}
-          </a>
-        </div>
-        {/* User Menu or Sign In */}
-        <div className="hidden md:block">
-          {!loading && (
-            user ? (
-              <UserMenu />
-            ) : (
-              <a href="/sign-in">
-                <button className="btn-editorial-ghost px-4 py-1.5 text-[13px]">
-                  Sign In
-                </button>
+          {loading ? null : user ? (
+            <UserMenu />
+          ) : (
+            <>
+              <a
+                href={getLoginUrl()}
+                className="text-[13px] text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Sign in
               </a>
-            )
+              <button onClick={handleOpenAssessment} className="btn-editorial-primary text-[13px] py-2 px-4">
+                Find your coach
+              </button>
+            </>
           )}
         </div>
+        {/* Mobile hamburger */}
         <button
-          className="md:hidden text-foreground"
+          className="md:hidden p-2 text-foreground"
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
+          aria-label="Toggle menu"
         >
           {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
         </button>
       </div>
-      {/* Mobile Menu */}
+      {/* Mobile menu */}
       {mobileMenuOpen && (
         <motion.div
-          initial={{ opacity: 0, height: 0 }}
-          animate={{ opacity: 1, height: "auto" }}
-          exit={{ opacity: 0, height: 0 }}
-          transition={{ duration: 0.25, ease: "easeOut" }}
-          className="md:hidden border-b border-border"
-          style={{ background: "var(--background)" }}
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="md:hidden bg-background border-b border-border"
         >
-          <div className="container py-6 flex flex-col gap-4">
-            <button
-              onClick={handleOpenAssessment}
-              className="text-base font-light text-muted-foreground hover:text-foreground transition-colors min-h-[48px] flex items-center text-left"
-            >
-              Take AI Assessment
+          <div className="container py-4 space-y-3">
+            <button onClick={() => handleNavClick("features")} className="block text-sm text-muted-foreground">
+              How it works
             </button>
-            <a
-              href="/coaches"
-              className="text-base font-light text-muted-foreground hover:text-foreground transition-colors min-h-[48px] flex items-center"
-            >
-              Browse Coaches
+            <button onClick={() => handleNavClick("pricing")} className="block text-sm text-muted-foreground">
+              Pricing
+            </button>
+            <a href="/coaches" className="block text-sm text-muted-foreground">
+              For coaches
             </a>
-            <a
-              href="/for-coaches"
-              className="text-base font-light text-muted-foreground hover:text-foreground transition-colors min-h-[48px] flex items-center"
-            >
-              For Coaches
-            </a>
-            <div className="pt-4 border-t border-border">
-              {!loading && (
-                user ? (
-                  <UserMenu />
-                ) : (
-                  <a href="/sign-in" className="block">
-                    <button className="btn-editorial-ghost w-full py-3 text-sm">
-                      Sign In
-                    </button>
-                  </a>
-                )
-              )}
-            </div>
+            {user ? (
+              <a href="/dashboard" className="block text-sm text-foreground font-medium">
+                Dashboard
+              </a>
+            ) : (
+              <>
+                <a href={getLoginUrl()} className="block text-sm text-muted-foreground">
+                  Sign in
+                </a>
+                <button onClick={handleOpenAssessment} className="btn-editorial-primary text-sm w-full mt-2">
+                  Find your coach
+                </button>
+              </>
+            )}
           </div>
         </motion.div>
       )}
@@ -196,7 +177,7 @@ function Navigation({ onOpenAssessment }: { onOpenAssessment: () => void }) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   HERO V2
+   HERO V2 (with QuizResultMockup + 3D mouse shadow)
    ═══════════════════════════════════════════════════════════════════ */
 function HeroV2({ onOpenAssessment }: { onOpenAssessment: () => void }) {
   return (
@@ -266,7 +247,7 @@ function HeroV2({ onOpenAssessment }: { onOpenAssessment: () => void }) {
               ))}
             </motion.div>
           </div>
-          {/* Right column — Quiz Result Mockup */}
+          {/* Right column — Quiz Result Mockup with 3D mouse tracking */}
           <motion.div variants={fadeIn}>
             <QuizResultMockup />
           </motion.div>
@@ -281,44 +262,28 @@ function HeroV2({ onOpenAssessment }: { onOpenAssessment: () => void }) {
    ═══════════════════════════════════════════════════════════════════ */
 function SocialProofBar({ onOpenAssessment }: { onOpenAssessment: () => void }) {
   return (
-    <section className="border-y border-border py-5" style={{ background: "var(--surface)" }}>
-      <style>{`
-        @keyframes pulse-ring {
-          0% { box-shadow: 0 0 0 0 rgba(139,69,19,0.4); }
-          70% { box-shadow: 0 0 0 8px transparent; }
-          100% { box-shadow: 0 0 0 0 transparent; }
-        }
-        .pulse-dot { animation: pulse-ring 2s infinite; }
-      `}</style>
-      <div className="container">
-        <div className="flex flex-col md:flex-row md:items-center gap-4 md:gap-6">
-          {/* Left side */}
-          <div className="flex items-start md:items-center gap-3 flex-1">
-            <div className="w-2.5 h-2.5 rounded-full bg-primary pulse-dot shrink-0 mt-1 md:mt-0" />
-            <div className="space-y-1">
-              <span className="mono-label text-primary tracking-[0.16em]">NOW IN FOUNDING-COACH BETA</span>
-              <p className="text-sm text-muted-foreground">
-                We&rsquo;re hand-selecting our first 50 coaches. Founding coaches keep 100% of their fees for the first six months — and help shape the platform.
-              </p>
-            </div>
-          </div>
-          {/* Right side — CTAs */}
-          <div className="flex items-center gap-3 shrink-0">
-            <a href="/coach/onboarding" className="btn-editorial-ghost text-sm px-4 py-2 inline-flex items-center gap-1">
-              Apply as a coach <ChevronRight className="w-3.5 h-3.5" />
-            </a>
-            <button onClick={onOpenAssessment} className="btn-editorial-ghost text-sm px-4 py-2">
-              Join the student waitlist
-            </button>
-          </div>
+    <section className="bg-[var(--color-cream-deep)] dark:bg-[var(--color-ink-raised)] border-b border-border">
+      <div className="container py-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <span className="inline-block w-2 h-2 rounded-full bg-primary animate-pulse" />
+          <span className="mono-label">
+            Founding-coach beta — First 20 coaches pay 0% platform fee for 3 months
+          </span>
         </div>
+        <button
+          onClick={onOpenAssessment}
+          className="text-[13px] font-medium text-primary hover:underline"
+        >
+          Apply now →
+        </button>
       </div>
     </section>
   );
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   PROBLEM STATEMENT
+   PROBLEM STATEMENT — 2-column editorial (Design Board ss#1)
+   Large headline left, numbered problems right with dividers
    ═══════════════════════════════════════════════════════════════════ */
 function ProblemStatement() {
   const problems = [
@@ -340,33 +305,52 @@ function ProblemStatement() {
   ];
 
   return (
-    <section className="section bg-[var(--color-cream-deep)] dark:bg-[var(--color-ink-raised)]">
+    <section
+      className="py-20 md:py-28"
+      style={{ background: "var(--color-ink)", color: "#F5F1E4" }}
+    >
       <div className="container">
         <motion.div
           initial="hidden"
           whileInView="visible"
           viewport={{ once: true, margin: "-100px" }}
           variants={staggerContainer}
-          className="space-y-12"
+          className="grid grid-cols-1 lg:grid-cols-[1fr_1.2fr] gap-12 lg:gap-20 items-start"
         >
-          <motion.div variants={fadeIn}>
-            <span className="eyebrow">01 — The problem with chess coaching today</span>
+          {/* Left — big headline */}
+          <motion.div variants={fadeIn} className="space-y-6 lg:sticky lg:top-32">
+            <span className="mono-label text-[11px] font-medium uppercase tracking-[0.12em]" style={{ color: "#E8633A" }}>
+              02 — The problem
+            </span>
+            <h2 className="text-4xl md:text-[56px] font-light leading-[1.05] tracking-tight" style={{ color: "#F5F1E4" }}>
+              Chess coaching is broken in three ways.
+            </h2>
           </motion.div>
-          <div className="grid grid-cols-1 md:grid-cols-3 border-t border-border">
+
+          {/* Right — numbered problems */}
+          <motion.div variants={fadeIn} className="space-y-0">
             {problems.map((p, i) => (
-              <motion.div
+              <div
                 key={p.num}
-                variants={fadeIn}
-                className={`p-8 md:p-10 space-y-4 ${i > 0 ? "md:border-l border-t md:border-t-0 border-border" : ""}`}
+                className={`py-8 ${i > 0 ? "border-t" : ""}`}
+                style={{ borderColor: "rgba(245,241,228,0.12)" }}
               >
-                <span className="mono-label text-primary">{p.num}</span>
-                <h3 className="font-serif text-[28px] font-light leading-tight tracking-tight text-foreground">
-                  {p.headline}
-                </h3>
-                <p className="text-[15px] text-muted-foreground leading-relaxed">{p.body}</p>
-              </motion.div>
+                <div className="flex gap-5">
+                  <span className="font-mono text-sm font-medium shrink-0 pt-1" style={{ color: "#E8633A" }}>
+                    {p.num}
+                  </span>
+                  <div className="space-y-3">
+                    <h3 className="text-xl md:text-2xl font-medium leading-tight" style={{ color: "#F5F1E4" }}>
+                      {p.headline}
+                    </h3>
+                    <p className="text-[15px] leading-relaxed" style={{ color: "#A89F8A" }}>
+                      {p.body}
+                    </p>
+                  </div>
+                </div>
+              </div>
             ))}
-          </div>
+          </motion.div>
         </motion.div>
       </div>
     </section>
@@ -418,7 +402,7 @@ function FeaturesSection() {
             className="grid md:grid-cols-[1fr_380px] gap-8 md:gap-12 items-end"
           >
             <div className="space-y-5">
-              <span className="eyebrow">02 — How it works</span>
+              <span className="eyebrow">03 — How it works</span>
               <h2 className="text-balance">
                 The infrastructure
                 <br />
@@ -459,7 +443,642 @@ function FeaturesSection() {
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   WAITLIST SECTION (unchanged)
+   ONBOARDING QUIZ SECTION (Design Board ss#3)
+   "20 questions. 8 minutes. One perfect match." + live quiz mockup
+   ═══════════════════════════════════════════════════════════════════ */
+function OnboardingQuizSection({ onOpenAssessment }: { onOpenAssessment: () => void }) {
+  const [selectedAnswer, setSelectedAnswer] = useState(1); // "Look for patterns" selected
+
+  const quizQuestion = "When you're stuck in a position, what do you do?";
+  const answers = [
+    "Calculate concrete lines",
+    "Look for patterns",
+    "Think about long-term plans",
+    "Play on intuition",
+    "Freeze, honestly",
+  ];
+
+  return (
+    <section
+      className="py-20 md:py-28"
+      style={{ background: "var(--color-ink)", color: "#F5F1E4" }}
+    >
+      <div className="container">
+        <motion.div
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, margin: "-100px" }}
+          variants={staggerContainer}
+          className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-20 items-center"
+        >
+          {/* Left — headline + description */}
+          <motion.div variants={fadeIn} className="space-y-8">
+            <span className="mono-label text-[11px] font-medium uppercase tracking-[0.12em]" style={{ color: "#E8633A" }}>
+              03 — Onboarding
+            </span>
+            <h2 className="text-4xl md:text-[56px] font-light leading-[1.05] tracking-tight" style={{ color: "#F5F1E4" }}>
+              20 questions.<br />
+              8 minutes.<br />
+              One perfect match.
+            </h2>
+            <p className="font-serif text-[17px] leading-relaxed max-w-md" style={{ color: "#A89F8A" }}>
+              We learn your rating, style, goals, learning preferences, weaknesses, schedule, and budget
+              — then recommend three coaches who fit the way you think.
+            </p>
+            {/* Tags */}
+            <div className="flex flex-wrap gap-2 pt-2">
+              {["Style", "Learning Mode", "Goals", "Weaknesses", "Schedule", "Openings"].map((tag) => (
+                <span
+                  key={tag}
+                  className="px-3 py-1.5 text-xs font-mono uppercase tracking-wider border"
+                  style={{ borderColor: "rgba(245,241,228,0.2)", color: "#F5F1E4" }}
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+            <button
+              onClick={onOpenAssessment}
+              className="inline-flex items-center gap-2 px-6 py-3 text-sm font-medium transition-colors"
+              style={{ background: "#E8633A", color: "#F5F1E4" }}
+            >
+              Start the quiz →
+            </button>
+          </motion.div>
+
+          {/* Right — Quiz mockup card */}
+          <motion.div variants={fadeIn}>
+            <div
+              className="border rounded-lg overflow-hidden"
+              style={{ background: "var(--color-ink-raised)", borderColor: "rgba(245,241,228,0.1)" }}
+            >
+              {/* Quiz header */}
+              <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: "rgba(245,241,228,0.1)" }}>
+                <BgMark size={20} />
+                <span className="font-mono text-xs uppercase tracking-wider" style={{ color: "#A89F8A" }}>
+                  Question 03 / 20
+                </span>
+              </div>
+              {/* Progress bar */}
+              <div className="px-6 pt-4">
+                <div className="h-0.5 rounded-full" style={{ background: "rgba(245,241,228,0.1)" }}>
+                  <div className="h-full rounded-full" style={{ width: "15%", background: "#E8633A" }} />
+                </div>
+              </div>
+              {/* Question */}
+              <div className="px-6 py-6 space-y-5">
+                <h3 className="text-xl md:text-2xl font-light" style={{ color: "#F5F1E4" }}>
+                  {quizQuestion}
+                </h3>
+                {/* Answer options */}
+                <div className="space-y-3">
+                  {answers.map((answer, i) => (
+                    <button
+                      key={answer}
+                      onClick={() => setSelectedAnswer(i)}
+                      className="w-full text-left px-5 py-3.5 border text-sm transition-all"
+                      style={{
+                        borderColor: i === selectedAnswer ? "#F5F1E4" : "rgba(245,241,228,0.15)",
+                        background: i === selectedAnswer ? "rgba(245,241,228,0.08)" : "transparent",
+                        color: "#F5F1E4",
+                      }}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span>{answer}</span>
+                        {i === selectedAnswer && <Check className="w-4 h-4" style={{ color: "#F5F1E4" }} />}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {/* Footer nav */}
+              <div className="flex items-center justify-between px-6 py-4 border-t" style={{ borderColor: "rgba(245,241,228,0.1)" }}>
+                <button className="text-sm flex items-center gap-1" style={{ color: "#A89F8A" }}>
+                  ← Back
+                </button>
+                <button
+                  className="px-5 py-2 text-sm font-medium flex items-center gap-1"
+                  style={{ background: "#E8633A", color: "#F5F1E4" }}
+                >
+                  Continue →
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </motion.div>
+      </div>
+    </section>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   COACH MATCH RESULTS (Design Board ss#5)
+   3 static cards with match scores, ratings, prices, Book CTAs
+   ═══════════════════════════════════════════════════════════════════ */
+function CoachMatchResults() {
+  const matchedCoaches = [
+    {
+      initials: "NV",
+      name: "GM Nadia Volkov",
+      rating: "2582 FIDE",
+      specialty: "Endgame specialist",
+      matchScore: 94,
+      tags: ["Endgames", "Positional"],
+      levelTag: "1600–2200",
+      reviewRating: 4.9,
+      reviewCount: 128,
+      price: 65,
+      nextSlot: "Today 7pm",
+      featured: true,
+    },
+    {
+      initials: "TR",
+      name: "IM Tomás Rivera",
+      rating: "2445 FIDE",
+      specialty: "Dynamic play",
+      matchScore: 91,
+      tags: ["Attacking", "Openings"],
+      levelTag: "1200–1800",
+      reviewRating: 4.8,
+      reviewCount: 87,
+      price: 48,
+      nextSlot: "Today 7pm",
+      featured: false,
+    },
+    {
+      initials: "HO",
+      name: "FM Helena Okafor",
+      rating: "2310 FIDE",
+      specialty: "Junior coaching",
+      matchScore: 88,
+      tags: ["Kids", "Fundamentals"],
+      levelTag: "Unrated–1200",
+      reviewRating: 5.0,
+      reviewCount: 54,
+      price: 38,
+      nextSlot: "Today 7pm",
+      featured: false,
+    },
+  ];
+
+  return (
+    <section
+      className="py-20 md:py-28"
+      style={{ background: "var(--color-ink)", color: "#F5F1E4" }}
+    >
+      <div className="container">
+        <motion.div
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, margin: "-100px" }}
+          variants={staggerContainer}
+          className="space-y-14"
+        >
+          {/* Header */}
+          <motion.div variants={fadeIn} className="space-y-5">
+            <span className="mono-label text-[11px] font-medium uppercase tracking-[0.12em]" style={{ color: "#E8633A" }}>
+              04 — Your matches
+            </span>
+            <h2 className="text-4xl md:text-[56px] font-light leading-[1.05] tracking-tight" style={{ color: "#F5F1E4" }}>
+              Three coaches.<br />
+              Ranked by fit, not ad spend.
+            </h2>
+          </motion.div>
+
+          {/* 3 Coach Cards */}
+          <motion.div variants={fadeIn} className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {matchedCoaches.map((coach) => (
+              <div
+                key={coach.initials}
+                className={`border p-6 space-y-5 ${coach.featured ? "bg-[#F5F1E4]" : ""}`}
+                style={{
+                  borderColor: coach.featured ? "#F5F1E4" : "rgba(245,241,228,0.15)",
+                }}
+              >
+                {/* Match score header */}
+                <div className="flex items-center justify-between">
+                  <span
+                    className="font-mono text-xs uppercase tracking-wider"
+                    style={{ color: coach.featured ? "#1A1F26" : "#A89F8A" }}
+                  >
+                    Match score
+                  </span>
+                  <span
+                    className="text-3xl font-mono font-bold"
+                    style={{ color: coach.featured ? "#1A1F26" : "#E8633A" }}
+                  >
+                    {coach.matchScore}%
+                  </span>
+                </div>
+
+                {/* Coach info */}
+                <div className="flex items-center gap-3">
+                  <div
+                    className="w-12 h-12 rounded-full flex items-center justify-center text-sm font-mono font-bold"
+                    style={{
+                      background: coach.featured ? "rgba(232,99,58,0.1)" : "rgba(245,241,228,0.08)",
+                      color: coach.featured ? "#E8633A" : "#A89F8A",
+                    }}
+                  >
+                    {coach.initials}
+                  </div>
+                  <div>
+                    <div
+                      className="font-medium text-base"
+                      style={{ color: coach.featured ? "#1A1F26" : "#F5F1E4" }}
+                    >
+                      {coach.name}
+                    </div>
+                    <div
+                      className="text-xs"
+                      style={{ color: coach.featured ? "#6B6358" : "#A89F8A" }}
+                    >
+                      {coach.rating} · {coach.specialty}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Tags */}
+                <div className="flex flex-wrap gap-2">
+                  {[...coach.tags, coach.levelTag].map((tag) => (
+                    <span
+                      key={tag}
+                      className="px-2.5 py-1 text-[11px] font-mono uppercase tracking-wider border"
+                      style={{
+                        borderColor: coach.featured ? "rgba(26,31,38,0.2)" : "rgba(245,241,228,0.15)",
+                        color: coach.featured ? "#1A1F26" : "#F5F1E4",
+                      }}
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+
+                {/* Stats row */}
+                <div className="grid grid-cols-3 gap-4 pt-2">
+                  <div>
+                    <div
+                      className="text-[10px] font-mono uppercase tracking-wider"
+                      style={{ color: coach.featured ? "#6B6358" : "#A89F8A" }}
+                    >
+                      Rating
+                    </div>
+                    <div
+                      className="text-sm font-medium mt-0.5"
+                      style={{ color: coach.featured ? "#1A1F26" : "#F5F1E4" }}
+                    >
+                      ★ {coach.reviewRating}
+                    </div>
+                    <div
+                      className="text-[11px]"
+                      style={{ color: coach.featured ? "#6B6358" : "#A89F8A" }}
+                    >
+                      ({coach.reviewCount})
+                    </div>
+                  </div>
+                  <div>
+                    <div
+                      className="text-[10px] font-mono uppercase tracking-wider"
+                      style={{ color: coach.featured ? "#6B6358" : "#A89F8A" }}
+                    >
+                      Per lesson
+                    </div>
+                    <div
+                      className="text-sm font-medium mt-0.5"
+                      style={{ color: coach.featured ? "#1A1F26" : "#F5F1E4" }}
+                    >
+                      ${coach.price}
+                    </div>
+                  </div>
+                  <div>
+                    <div
+                      className="text-[10px] font-mono uppercase tracking-wider"
+                      style={{ color: coach.featured ? "#6B6358" : "#A89F8A" }}
+                    >
+                      Next slot
+                    </div>
+                    <div
+                      className="text-sm font-medium mt-0.5"
+                      style={{ color: coach.featured ? "#1A1F26" : "#F5F1E4" }}
+                    >
+                      {coach.nextSlot}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Book CTA */}
+                <button
+                  className="w-full py-3 text-sm font-medium flex items-center justify-center gap-2 transition-opacity hover:opacity-90"
+                  style={{ background: "#E8633A", color: "#F5F1E4" }}
+                  onClick={() => toast.info("Join the waitlist to book lessons with our founding coaches!")}
+                >
+                  Book a trial lesson →
+                </button>
+
+                {/* Escrow note */}
+                {!coach.featured && (
+                  <p className="text-center text-[11px]" style={{ color: "#A89F8A" }}>
+                    You won&rsquo;t be charged until the lesson ends
+                  </p>
+                )}
+              </div>
+            ))}
+          </motion.div>
+        </motion.div>
+      </div>
+    </section>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   COACH DASHBOARD PREVIEW (Design Board ss#6)
+   Full browser-chrome mockup with sidebar, stats, upcoming lessons
+   ═══════════════════════════════════════════════════════════════════ */
+function CoachDashboardPreview() {
+  const menuItems = ["Overview", "Schedule", "Students", "Lessons", "Content", "Payouts", "Profile"];
+  const upcomingLessons = [
+    { time: "5:00 PM", student: "Marcus Reid", type: "1:1 · Endgame", duration: "60min" },
+    { time: "6:30 PM", student: "Group: Rook endings", type: "4 students", duration: "45min" },
+    { time: "8:00 PM", student: "Ava Lindqvist", type: "1:1 · Opening prep", duration: "60min" },
+  ];
+
+  return (
+    <section
+      className="py-20 md:py-28"
+      style={{ background: "var(--color-ink)", color: "#F5F1E4", borderBottom: "1px solid #222" }}
+    >
+      <div className="container">
+        <motion.div
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, margin: "-100px" }}
+          variants={staggerContainer}
+          className="grid grid-cols-1 lg:grid-cols-[1fr_1.4fr] gap-12 lg:gap-16 items-start"
+        >
+          {/* Left — copy */}
+          <motion.div variants={fadeIn} className="space-y-8 lg:sticky lg:top-32">
+            <span className="mono-label text-[11px] font-medium uppercase tracking-[0.12em]" style={{ color: "#E8633A" }}>
+              05 — For coaches
+            </span>
+            <h2 className="text-4xl md:text-[48px] font-light leading-[1.1]" style={{ color: "#F5F1E4" }}>
+              Run your whole coaching business from one place.
+            </h2>
+            <p className="text-base leading-relaxed" style={{ color: "#A89F8A" }}>
+              Scheduling, lesson video, payouts, group sessions, pay-per-view tutorials, and made-to-order
+              content — priced by you, protected by escrow, delivered through your own storefront.
+            </p>
+            {/* Feature bullets */}
+            <div className="space-y-3 pt-4">
+              {[
+                { icon: Calendar, text: "Integrated scheduling & availability" },
+                { icon: DollarSign, text: "Built-in payouts via Stripe Connect" },
+                { icon: Play, text: "PPV content storefront" },
+                { icon: BarChart3, text: "Student analytics & progress notes" },
+              ].map(({ icon: Icon, text }) => (
+                <div key={text} className="flex items-center gap-3 text-sm" style={{ color: "#F5F1E4" }}>
+                  <Icon className="w-4 h-4 shrink-0" style={{ color: "#E8633A" }} />
+                  {text}
+                </div>
+              ))}
+            </div>
+            <a
+              href="/coach/onboarding"
+              className="inline-flex items-center gap-2 px-6 py-3 text-sm font-medium transition-colors"
+              style={{ background: "#E8633A", color: "#F5F1E4" }}
+            >
+              Apply as a founding coach →
+            </a>
+          </motion.div>
+
+          {/* Right — Browser chrome mockup */}
+          <motion.div variants={fadeIn}>
+            <div
+              className="border rounded-lg overflow-hidden"
+              style={{ borderColor: "rgba(245,241,228,0.1)", background: "#0F1419" }}
+            >
+              {/* Browser chrome bar */}
+              <div className="flex items-center gap-3 px-4 py-3 border-b" style={{ borderColor: "rgba(245,241,228,0.08)" }}>
+                <div className="flex gap-1.5">
+                  <div className="w-3 h-3 rounded-full" style={{ background: "#3B3B3B" }} />
+                  <div className="w-3 h-3 rounded-full" style={{ background: "#3B3B3B" }} />
+                  <div className="w-3 h-3 rounded-full" style={{ background: "#3B3B3B" }} />
+                </div>
+                <div
+                  className="flex-1 text-center text-xs font-mono"
+                  style={{ color: "#A89F8A" }}
+                >
+                  boogme.com/dashboard
+                </div>
+              </div>
+
+              {/* Dashboard content */}
+              <div className="grid grid-cols-[180px_1fr]" style={{ minHeight: "380px" }}>
+                {/* Sidebar */}
+                <div className="border-r py-5 px-4 space-y-5" style={{ borderColor: "rgba(245,241,228,0.06)" }}>
+                  <div className="flex items-center gap-2">
+                    <BgMark size={16} />
+                    <span className="text-xs font-bold tracking-wide" style={{ color: "#F5F1E4" }}>BOOGME</span>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-[10px] font-mono uppercase tracking-wider mb-2" style={{ color: "#A89F8A" }}>
+                      Menu
+                    </div>
+                    {menuItems.map((item, i) => (
+                      <div
+                        key={item}
+                        className={`text-xs py-1.5 px-2 rounded-sm ${i === 0 ? "font-medium" : ""}`}
+                        style={{
+                          color: i === 0 ? "#F5F1E4" : "#A89F8A",
+                          borderLeft: i === 0 ? "2px solid #E8633A" : "2px solid transparent",
+                        }}
+                      >
+                        {item}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Main content area */}
+                <div className="p-5 space-y-5">
+                  {/* Greeting */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-[10px] font-mono uppercase tracking-wider" style={{ color: "#A89F8A" }}>
+                        April 2026
+                      </div>
+                      <div className="text-lg font-light" style={{ color: "#F5F1E4" }}>
+                        Good afternoon, Nadia.
+                      </div>
+                    </div>
+                    <div
+                      className="px-3 py-1.5 text-xs font-medium rounded-sm"
+                      style={{ background: "#E8633A", color: "#F5F1E4" }}
+                    >
+                      + New
+                    </div>
+                  </div>
+
+                  {/* Stats row */}
+                  <div className="grid grid-cols-3 gap-3">
+                    {[
+                      { label: "This month", value: "$3,840", sub: "+22%" },
+                      { label: "Lessons taught", value: "48", sub: "12 this week" },
+                      { label: "Avg rating", value: "4.96", sub: "128 reviews" },
+                    ].map((stat) => (
+                      <div
+                        key={stat.label}
+                        className="border p-3 space-y-1"
+                        style={{ borderColor: "rgba(245,241,228,0.08)" }}
+                      >
+                        <div className="text-[9px] font-mono uppercase tracking-wider" style={{ color: "#A89F8A" }}>
+                          {stat.label}
+                        </div>
+                        <div className="text-xl font-mono font-bold" style={{ color: "#F5F1E4" }}>
+                          {stat.value}
+                        </div>
+                        <div className="text-[10px]" style={{ color: "#E8633A" }}>
+                          {stat.sub}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Upcoming lessons */}
+                  <div className="space-y-2">
+                    <div className="text-[10px] font-mono uppercase tracking-wider" style={{ color: "#A89F8A" }}>
+                      Upcoming
+                    </div>
+                    {upcomingLessons.map((lesson) => (
+                      <div
+                        key={lesson.time}
+                        className="flex items-center justify-between py-2 border-b"
+                        style={{ borderColor: "rgba(245,241,228,0.06)" }}
+                      >
+                        <div className="flex items-center gap-4">
+                          <span className="text-xs font-mono" style={{ color: "#E8633A" }}>
+                            {lesson.time}
+                          </span>
+                          <span className="text-sm" style={{ color: "#F5F1E4" }}>
+                            {lesson.student}
+                          </span>
+                        </div>
+                        <span className="text-[11px]" style={{ color: "#A89F8A" }}>
+                          {lesson.type} · {lesson.duration}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        </motion.div>
+      </div>
+    </section>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   TESTIMONIAL BLOCK V2 (founding principle)
+   ═══════════════════════════════════════════════════════════════════ */
+function TestimonialBlockV2() {
+  return (
+    <section className="bg-background py-24 md:py-32">
+      <div className="container">
+        <motion.div
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, margin: "-100px" }}
+          variants={staggerContainer}
+          className="max-w-[980px] mx-auto text-center space-y-10"
+        >
+          <motion.div variants={fadeIn}>
+            <span className="eyebrow">06 — What we believe</span>
+          </motion.div>
+          <motion.div variants={fadeIn}>
+            <p className="font-serif italic text-[28px] md:text-[36px] text-foreground leading-[1.3]">
+              &ldquo;Coaching shouldn&rsquo;t end when the lesson does. The hour you spend
+              together is worth more when the conversation continues — and when
+              the content the coach makes is built for the student in front of them.&rdquo;
+            </p>
+          </motion.div>
+          <motion.div variants={fadeIn} className="flex items-center justify-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+              <BgMark size={20} />
+            </div>
+            <div className="text-left">
+              <div className="text-sm font-medium text-foreground">The BooGMe team</div>
+              <div className="mono-label text-muted-foreground">FOUNDING PRINCIPLE</div>
+            </div>
+          </motion.div>
+        </motion.div>
+      </div>
+    </section>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   FOUNDERS BLOCK (dark section)
+   ═══════════════════════════════════════════════════════════════════ */
+function FoundersBlock() {
+  return (
+    <section
+      className="py-20 md:py-28"
+      style={{ background: "var(--color-ink)", color: "#F5F1E4", borderBottom: "1px solid #222" }}
+    >
+      <div className="container">
+        <motion.div
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, margin: "-100px" }}
+          variants={staggerContainer}
+          className="grid grid-cols-1 md:grid-cols-[2fr_3fr] gap-12 md:gap-20 items-start"
+        >
+          {/* Left column — founder portrait */}
+          <motion.div variants={fadeIn} className="space-y-3">
+            <div
+              className="aspect-[1/1.15] border rounded-sm flex items-center justify-center"
+              style={{ background: "#151B22", borderColor: "#22303C" }}
+            >
+              <span className="font-mono text-[64px] font-bold" style={{ color: "#E8633A" }}>
+                CC
+              </span>
+            </div>
+            <div>
+              <div className="text-sm font-medium" style={{ color: "#F5F1E4" }}>Cristian Chirila</div>
+              <div className="mono-label" style={{ color: "#A89F8A" }}>Founder · GM · Coach of World #3 Fabiano Caruana</div>
+            </div>
+          </motion.div>
+
+          {/* Right column — founding story */}
+          <motion.div variants={fadeIn} className="space-y-8">
+            <span className="mono-label text-[11px] font-medium uppercase tracking-[0.12em]" style={{ color: "#E8633A" }}>
+              07 — Built by a player who&rsquo;s seen it all
+            </span>
+            <h2 className="text-3xl md:text-[48px] font-light leading-[1.1]" style={{ color: "#F5F1E4" }}>
+              I&rsquo;ve coached at the highest level.<br />
+              I built this for everyone below it.
+            </h2>
+            <p className="text-base leading-relaxed max-w-prose" style={{ color: "#A89F8A" }}>
+              I&rsquo;m Cristian Chirila — Grandmaster, second to World #3 Fabiano Caruana,
+              and head coach of the Mizzou Chess Program. I&rsquo;ve spent a decade watching
+              talented players get burned by bad coaching experiences: no-shows, mismatched
+              styles, money gone with nothing to show. BooGMe is the platform I wish had
+              existed when I started — one that protects students, respects coaches, and
+              makes the lesson hour the beginning of the relationship, not the end of it.
+            </p>
+            <a href="#" className="text-sm hover:underline" style={{ color: "#E8633A" }}>
+              Read the founding story →
+            </a>
+          </motion.div>
+        </motion.div>
+      </div>
+    </section>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   WAITLIST SECTION (moved later in flow)
    ═══════════════════════════════════════════════════════════════════ */
 function WaitlistSection() {
   const [email, setEmail] = useState("");
@@ -509,7 +1128,7 @@ function WaitlistSection() {
             className="bg-background border border-border p-8 md:p-10 space-y-7"
           >
             <div className="space-y-4">
-              <span className="eyebrow">03 — Get started</span>
+              <span className="eyebrow">08 — Get started</span>
               <h2>Join the founding class.</h2>
               <p className="lede text-base">
                 We&rsquo;re launching soon. Be first to access elite chess coaching with payment
@@ -575,332 +1194,6 @@ function WaitlistSection() {
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   COACH MARKETPLACE SECTION (formerly MeetOurCoachesSection)
-   ═══════════════════════════════════════════════════════════════════ */
-function CoachMarketplaceSection() {
-  const [filters, setFilters] = useState<FilterState>({
-    priceRange: [0, 200],
-    minRating: null,
-    specializations: [],
-    preferredTimeSlots: [],
-    timezoneOffset: null,
-  });
-
-  const coaches: CoachProfile[] = [];
-
-  const allSpecializations = Array.from(
-    new Set(coaches.flatMap((c) => c.specializations))
-  );
-
-  const filteredCoaches = coaches.filter((coach) => {
-    if (coach.hourlyRate < filters.priceRange[0] || coach.hourlyRate > filters.priceRange[1]) {
-      return false;
-    }
-    if (filters.minRating && coach.reviewRating && coach.reviewRating < filters.minRating) {
-      return false;
-    }
-    if (filters.specializations.length > 0) {
-      const hasMatchingSpec = filters.specializations.some((spec) =>
-        coach.specializations.includes(spec)
-      );
-      if (!hasMatchingSpec) return false;
-    }
-    if (filters.preferredTimeSlots.length > 0) {
-      const hasMatchingTimeSlot = filters.preferredTimeSlots.some((slot) =>
-        coach.detailedAvailability.timeSlots.includes(slot)
-      );
-      if (!hasMatchingTimeSlot) return false;
-    }
-    return true;
-  });
-
-  const handleBookClick = () => {
-    const element = document.getElementById("waitlist");
-    if (element) {
-      element.scrollIntoView({ behavior: "smooth" });
-    }
-    toast.info("Join the waitlist to book lessons with our founding coaches!");
-  };
-
-  return (
-    <section className="section">
-      <div className="container">
-        <motion.div
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, margin: "-100px" }}
-          variants={staggerContainer}
-          className="space-y-16"
-        >
-          <motion.div variants={fadeIn} className="space-y-5 max-w-3xl">
-            <span className="eyebrow">03 — Your matches</span>
-            <h2 className="text-balance">
-              Three coaches.
-              <br />
-              Ranked by fit, not ad spend.
-            </h2>
-            <p className="lede">
-              We&rsquo;re building a curated network of elite chess coaches. Join the waitlist to be
-              notified when our founding coaches launch.
-            </p>
-          </motion.div>
-          {/* Filters */}
-          <motion.div variants={fadeIn}>
-            <CoachFilters
-              filters={filters}
-              onFiltersChange={setFilters}
-              availableSpecializations={allSpecializations}
-            />
-          </motion.div>
-          {/* Coach Grid or Empty State */}
-          {coaches.length === 0 ? (
-            <motion.div
-              variants={fadeIn}
-              className="border border-border p-10 md:p-14 space-y-6"
-            >
-              <div className="space-y-4 max-w-2xl">
-                <span className="eyebrow">In review</span>
-                <p className="text-2xl font-light text-foreground">
-                  Our founding coaches are coming soon.
-                </p>
-                <p className="text-sm text-muted-foreground leading-relaxed">
-                  We&rsquo;re currently vetting applications from elite chess coaches. Join the
-                  waitlist below to be notified when they launch.
-                </p>
-              </div>
-              <button
-                onClick={() => {
-                  const element = document.getElementById("waitlist");
-                  if (element) element.scrollIntoView({ behavior: "smooth" });
-                }}
-                className="btn-editorial-primary inline-flex items-center gap-2"
-              >
-                Join the waitlist
-                <ChevronRight className="h-4 w-4" />
-              </button>
-            </motion.div>
-          ) : filteredCoaches.length > 0 ? (
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {filteredCoaches.map((coach) => (
-                <CoachProfileCard key={coach.id} coach={coach} onBookClick={handleBookClick} />
-              ))}
-            </div>
-          ) : (
-            <motion.div variants={fadeIn} className="text-center py-16 space-y-4">
-              <p className="text-xl font-light text-muted-foreground">
-                No coaches match your current filters.
-              </p>
-              <Button
-                variant="outline"
-                onClick={() =>
-                  setFilters({
-                    priceRange: [0, 200],
-                    minRating: null,
-                    specializations: [],
-                    preferredTimeSlots: [],
-                    timezoneOffset: null,
-                  })
-                }
-                className="font-light"
-              >
-                Reset Filters
-              </Button>
-            </motion.div>
-          )}
-        </motion.div>
-      </div>
-    </section>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════════════
-   TESTIMONIAL BLOCK V2 (founding principle)
-   ═══════════════════════════════════════════════════════════════════ */
-function TestimonialBlockV2() {
-  return (
-    <section className="bg-background py-24 md:py-32">
-      <div className="container">
-        <motion.div
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, margin: "-100px" }}
-          variants={staggerContainer}
-          className="max-w-[980px] mx-auto text-center space-y-10"
-        >
-          <motion.div variants={fadeIn}>
-            <span className="eyebrow">04 — What we believe</span>
-          </motion.div>
-          <motion.div variants={fadeIn}>
-            <p className="font-serif italic text-[28px] md:text-[36px] text-foreground leading-[1.3]">
-              &ldquo;Coaching shouldn&rsquo;t end when the lesson does. The hour you spend
-              together is worth more when the conversation continues — and when
-              the content the coach makes is built for the student in front of them.&rdquo;
-            </p>
-          </motion.div>
-          <motion.div variants={fadeIn} className="flex items-center justify-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-              <BgMark size={20} />
-            </div>
-            <div className="text-left">
-              <div className="text-sm font-medium text-foreground">The BooGMe team</div>
-              <div className="mono-label text-muted-foreground">FOUNDING PRINCIPLE</div>
-            </div>
-          </motion.div>
-        </motion.div>
-      </div>
-    </section>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════════════
-   COACH DASHBOARD PREVIEW (dark section)
-   ═══════════════════════════════════════════════════════════════════ */
-function CoachDashboardPreview() {
-  const features = [
-    "Stripe-powered instant payouts",
-    "Lesson scheduling with calendar sync",
-    "PPV content storefront",
-    "Student progress notes",
-    "In-lesson messaging",
-    "Referral program with earnings",
-  ];
-
-  return (
-    <section
-      className="py-20 md:py-28"
-      style={{ background: "var(--color-ink)", color: "#F5F1E4", borderBottom: "1px solid #222" }}
-    >
-      <div className="container">
-        <motion.div
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, margin: "-100px" }}
-          variants={staggerContainer}
-          className="space-y-12"
-        >
-          <motion.div variants={fadeIn} className="space-y-6 max-w-3xl">
-            <span className="mono-label text-[11px] font-medium uppercase tracking-[0.12em]" style={{ color: "#E8633A" }}>
-              05 — Built for coaches who take their business seriously
-            </span>
-            <h2 className="text-4xl md:text-[48px] font-light leading-[1.1]" style={{ color: "#F5F1E4" }}>
-              Your coaching business, in one place.
-            </h2>
-            <p className="font-serif text-[19px] leading-relaxed" style={{ color: "#A89F8A" }}>
-              Manage bookings, track earnings, message students, and sell your content — all from a single dashboard.
-            </p>
-          </motion.div>
-
-          {/* Stats row */}
-          <motion.div
-            variants={fadeIn}
-            className="grid grid-cols-1 sm:grid-cols-3 gap-px border-t"
-            style={{ borderColor: "#22303C" }}
-          >
-            {[
-              { value: "$2,400", label: "Monthly earnings" },
-              { value: "18", label: "Active students" },
-              { value: "4.9\u2605", label: "Average rating" },
-            ].map((stat) => (
-              <div key={stat.label} className="py-8 px-2">
-                <div className="text-3xl font-mono font-light" style={{ color: "#F5F1E4" }}>{stat.value}</div>
-                <div className="mono-label mt-2" style={{ color: "#A89F8A" }}>{stat.label}</div>
-              </div>
-            ))}
-          </motion.div>
-
-          {/* Feature list */}
-          <motion.div variants={fadeIn} className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-12">
-            {features.map((feature) => (
-              <div key={feature} className="flex items-center gap-3 text-sm" style={{ color: "#F5F1E4" }}>
-                <Check className="w-4 h-4 shrink-0" style={{ color: "#E8633A" }} />
-                {feature}
-              </div>
-            ))}
-          </motion.div>
-
-          {/* CTA */}
-          <motion.div variants={fadeIn} className="pt-4">
-            <a
-              href="/coach/onboarding"
-              className="inline-flex items-center gap-2 px-6 py-3 border rounded-sm text-sm transition-colors"
-              style={{ borderColor: "rgba(245,241,228,0.2)", color: "#F5F1E4" }}
-              onMouseEnter={(e) => (e.currentTarget.style.borderColor = "rgba(245,241,228,0.4)")}
-              onMouseLeave={(e) => (e.currentTarget.style.borderColor = "rgba(245,241,228,0.2)")}
-            >
-              Apply as a founding coach
-              <ChevronRight className="w-4 h-4" />
-            </a>
-          </motion.div>
-        </motion.div>
-      </div>
-    </section>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════════════
-   FOUNDERS BLOCK (dark section)
-   ═══════════════════════════════════════════════════════════════════ */
-function FoundersBlock() {
-  return (
-    <section
-      className="py-20 md:py-28"
-      style={{ background: "var(--color-ink)", color: "#F5F1E4", borderBottom: "1px solid #222" }}
-    >
-      <div className="container">
-        <motion.div
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, margin: "-100px" }}
-          variants={staggerContainer}
-          className="grid grid-cols-1 md:grid-cols-[2fr_3fr] gap-12 md:gap-20 items-start"
-        >
-          {/* Left column — founder portrait */}
-          <motion.div variants={fadeIn} className="space-y-3">
-            <div
-              className="aspect-[1/1.15] border rounded-sm flex items-center justify-center"
-              style={{ background: "#151B22", borderColor: "#22303C" }}
-            >
-              <span className="font-mono text-[64px] font-bold" style={{ color: "#E8633A" }}>
-                CC
-              </span>
-            </div>
-            <div>
-              <div className="text-sm font-medium" style={{ color: "#F5F1E4" }}>Cristian Chirila</div>
-              <div className="mono-label" style={{ color: "#A89F8A" }}>Founder · GM · Coach of World #3 Fabiano Caruana</div>
-            </div>
-            <div className="mono-label text-xs" style={{ color: "rgba(168,159,138,0.5)" }}>
-              ← Placeholder — real photo before launch
-            </div>
-          </motion.div>
-
-          {/* Right column — founding story */}
-          <motion.div variants={fadeIn} className="space-y-8">
-            <span className="mono-label text-[11px] font-medium uppercase tracking-[0.12em]" style={{ color: "#E8633A" }}>
-              05 — Built by a player who&rsquo;s seen it all
-            </span>
-            <h2 className="text-3xl md:text-[48px] font-light leading-[1.1]" style={{ color: "#F5F1E4" }}>
-              I&rsquo;ve coached at the highest level.<br />
-              I built this for everyone below it.
-            </h2>
-            <p className="text-base leading-relaxed max-w-prose" style={{ color: "#A89F8A" }}>
-              I&rsquo;m Cristian Chirila — Grandmaster, second to World #3 Fabiano Caruana,
-              and head coach of the Mizzou Chess Program. I&rsquo;ve spent a decade watching
-              talented players get burned by bad coaching experiences: no-shows, mismatched
-              styles, money gone with nothing to show. BooGMe is the platform I wish had
-              existed when I started — one that protects students, respects coaches, and
-              makes the lesson hour the beginning of the relationship, not the end of it.
-            </p>
-            <a href="#" className="text-sm hover:underline" style={{ color: "#E8633A" }}>
-              Read the founding story →
-            </a>
-          </motion.div>
-        </motion.div>
-      </div>
-    </section>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════════════
    PRICING TABLE
    ═══════════════════════════════════════════════════════════════════ */
 function PricingTable() {
@@ -951,7 +1244,7 @@ function PricingTable() {
   ];
 
   return (
-    <section className="section bg-background">
+    <section id="pricing" className="section bg-background">
       <div className="container">
         <motion.div
           initial="hidden"
@@ -961,7 +1254,7 @@ function PricingTable() {
           className="space-y-16"
         >
           <motion.div variants={fadeIn} className="space-y-5">
-            <span className="eyebrow">06 — Simple, transparent pricing</span>
+            <span className="eyebrow">09 — Simple, transparent pricing</span>
             <h2>Start free. Grow with us.</h2>
           </motion.div>
 
@@ -1021,7 +1314,7 @@ function ClosingCTA({ onOpenAssessment }: { onOpenAssessment: () => void }) {
           className="space-y-8"
         >
           <motion.div variants={fadeIn}>
-            <span className="eyebrow">07 — Get matched</span>
+            <span className="eyebrow">10 — Get matched</span>
           </motion.div>
           <motion.div variants={fadeIn}>
             <h2 className="text-5xl md:text-[64px] font-light tracking-tight text-foreground">
@@ -1138,11 +1431,12 @@ export default function Home() {
       <SocialProofBar onOpenAssessment={() => setAssessmentOpen(true)} />
       <ProblemStatement />
       <FeaturesSection />
-      <WaitlistSection />
-      <CoachMarketplaceSection />
-      <TestimonialBlockV2 />
+      <OnboardingQuizSection onOpenAssessment={() => setAssessmentOpen(true)} />
+      <CoachMatchResults />
       <CoachDashboardPreview />
+      <TestimonialBlockV2 />
       <FoundersBlock />
+      <WaitlistSection />
       <PricingTable />
       <ClosingCTA onOpenAssessment={() => setAssessmentOpen(true)} />
       <Footer />

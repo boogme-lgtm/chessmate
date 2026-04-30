@@ -1,7 +1,8 @@
 /**
  * QuizResultMockup — Tilted glass panel showing mock quiz results.
- * Replaces HeroScene3D. CSS-only perspective transform, no WebGL.
+ * Replaces HeroScene3D. Mouse-tracking perspective transform with dynamic shadow.
  */
+import { useState, useRef, useCallback } from "react";
 
 const mockCoaches = [
   { initials: "AK", name: "Alex K.", title: "IM · Endgame specialist", match: 98, rate: 55, color: "var(--color-ember)" },
@@ -10,20 +11,46 @@ const mockCoaches = [
 ];
 
 export default function QuizResultMockup() {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [transform, setTransform] = useState("rotateY(-8deg) rotateX(2deg)");
+  const [shadow, setShadow] = useState("32px 32px 64px rgba(0,0,0,0.4)");
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width - 0.5; // -0.5 to 0.5
+    const y = (e.clientY - rect.top) / rect.height - 0.5;
+    
+    const rotateY = -8 + x * 12; // -14 to -2
+    const rotateX = 2 + y * -8; // -2 to 6
+    setTransform(`rotateY(${rotateY}deg) rotateX(${rotateX}deg)`);
+    
+    // Shadow moves opposite to mouse
+    const shadowX = 32 - x * 40;
+    const shadowY = 32 - y * 40;
+    setShadow(`${shadowX}px ${shadowY}px 64px rgba(0,0,0,0.45), 0 0 120px rgba(232,99,58,0.08)`);
+  }, []);
+
+  const handleMouseLeave = useCallback(() => {
+    setTransform("rotateY(-8deg) rotateX(2deg)");
+    setShadow("32px 32px 64px rgba(0,0,0,0.4)");
+  }, []);
+
   return (
     <div
+      ref={containerRef}
       className="hidden lg:block"
-      style={{
-        perspective: "1400px",
-      }}
+      style={{ perspective: "1400px" }}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
     >
       <div
-        className="w-[420px] rounded-xl border border-border overflow-hidden"
+        className="w-[420px] rounded-xl border border-border overflow-hidden transition-all duration-200 ease-out"
         style={{
-          transform: "rotateY(-8deg) rotateX(2deg)",
+          transform,
           background: "var(--glass-bg)",
           backdropFilter: "blur(12px)",
-          boxShadow: "0 32px 64px rgba(0,0,0,0.4)",
+          boxShadow: shadow,
         }}
       >
         {/* Header */}

@@ -728,3 +728,11 @@
 - [x] Apply dark section background fix (Footer, dark sections)
 - [x] Remove deprecated sections (PaymentProtection, ForCoaches)
 - [x] Verify build + tests pass
+
+## Sprint 17: Homepage Design Fixes (Claude Design Board Alignment)
+- [x] Restore hero 3D mouse-tracker shadow effect on QuizResultMockup
+- [x] Improve ProblemStatement section to match design board (more visual weight, editorial feel)
+- [x] Fix section order: remove misplaced early CTA, ensure natural flow
+- [x] Add Onboarding quiz section (20 questions / 8 minutes / One perfect match + live quiz mockup)
+- [x] Replace coach filter UI with 3-card match results (match scores, coach details, Book a Trial Lesson CTAs)
+- [x] Upgrade CoachDashboardPreview with full browser-chrome mockup (sidebar, stats, upcoming lessons)
