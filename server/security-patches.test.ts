@@ -2455,3 +2455,160 @@ describe("S31-4: Recovery for stuck __pending_refund__", () => {
     expect(db.releaseAdminRefundClaim).toHaveBeenCalledWith(202);
   });
 });
+
+// ============================================================
+// Sprint 32: cancel_pending recovery edge cases
+// ============================================================
+describe("S32: cancel_pending recovery edge cases", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.mock("./db");
+    vi.mock("./stripe");
+    vi.mock("./stripeConnect");
+  });
+
+  it("S32-1: cancel_pending with refundAmountCents=0 recovers to cancelled without calling Stripe", async () => {
+    const db = await import("./db");
+    const stripeService = await import("./stripe");
+
+    let executeCallCount = 0;
+    const mockExecute = vi.fn().mockImplementation(() => {
+      executeCallCount++;
+      if (executeCallCount === 1) {
+        // First scan: return a cancel_pending row with refundAmountCents=0
+        return Promise.resolve([[
+          {
+            id: 301,
+            status: "cancel_pending",
+            stripePaymentIntentId: "pi_cancel_zero",
+            amountCents: 5000,
+            refundAmountCents: 0,
+            stripeTransferId: null,
+            coachId: 10,
+            cancelledAt: new Date(Date.now() - 11 * 60 * 1000),
+            coachDeclinedAt: null,
+          }
+        ]]);
+      }
+      if (executeCallCount === 2) return Promise.resolve([[]]); // __pending_refund__: empty
+      if (executeCallCount === 3) return Promise.resolve([[]]); // __pending_payout__: empty
+      return Promise.resolve([[]]); // UPDATE result
+    });
+
+    vi.mocked(db.getDb).mockResolvedValue({ execute: mockExecute } as any);
+    vi.mocked(stripeService.createRefund).mockResolvedValue({ id: "re_should_not_be_called" } as any);
+
+    const { recoverStuckPendingStates } = await import("./reminderScheduler");
+    await recoverStuckPendingStates();
+
+    // Stripe should NOT be called for a zero-refund cancellation
+    expect(stripeService.createRefund).not.toHaveBeenCalled();
+
+    // The UPDATE should finalize to cancelled with 'no refund due' marker
+    // Use JSON.stringify to inspect the drizzle SQL template object
+    const allSqlStrings = mockExecute.mock.calls.map((call: any[]) => JSON.stringify(call[0] ?? ""));
+    const hasNoRefundDue = allSqlStrings.some((s: string) => s.includes("no refund due"));
+    expect(hasNoRefundDue).toBe(true);
+  });
+
+  it("S32-2: cancel_pending with partial refund and Stripe failure recovers to cancelled/refund_failed, not payment_collected", async () => {
+    const db = await import("./db");
+    const stripeService = await import("./stripe");
+
+    let executeCallCount = 0;
+    const mockExecute = vi.fn().mockImplementation(() => {
+      executeCallCount++;
+      if (executeCallCount === 1) {
+        // First scan: return a cancel_pending row with partial refund
+        return Promise.resolve([[
+          {
+            id: 302,
+            status: "cancel_pending",
+            stripePaymentIntentId: "pi_cancel_partial",
+            amountCents: 10000,
+            refundAmountCents: 5000, // 50% refund
+            stripeTransferId: null,
+            coachId: 10,
+            cancelledAt: new Date(Date.now() - 11 * 60 * 1000),
+            coachDeclinedAt: null,
+          }
+        ]]);
+      }
+      if (executeCallCount === 2) return Promise.resolve([[]]); // __pending_refund__: empty
+      if (executeCallCount === 3) return Promise.resolve([[]]); // __pending_payout__: empty
+      return Promise.resolve([[]]); // UPDATE result
+    });
+
+    vi.mocked(db.getDb).mockResolvedValue({ execute: mockExecute } as any);
+    // Stripe fails (not charge_already_refunded — a real network error)
+    vi.mocked(stripeService.createRefund).mockRejectedValue(new Error("Stripe network error"));
+
+    const { recoverStuckPendingStates } = await import("./reminderScheduler");
+    await recoverStuckPendingStates();
+
+    // Stripe was called with the correct idempotency key
+    expect(stripeService.createRefund).toHaveBeenCalledWith(
+      "pi_cancel_partial",
+      5000,
+      "requested_by_customer",
+      "lesson_cancel_refund_302"
+    );
+
+    // The UPDATE must finalize to 'cancelled' with refund_failed flag — NOT payment_collected
+    // Use JSON.stringify to inspect the drizzle SQL template object
+    const allSqlStrings = mockExecute.mock.calls.map((call: any[]) => JSON.stringify(call[0] ?? ""));
+    const hasPaymentCollectedRevert = allSqlStrings.some((s: string) => s.includes("payment_collected"));
+    const hasCancelledWithRefundFailed = allSqlStrings.some((s: string) => s.includes("refund_failed"));
+    expect(hasPaymentCollectedRevert).toBe(false);
+    expect(hasCancelledWithRefundFailed).toBe(true);
+  });
+
+  it("S32-3: decline_pending with Stripe failure still returns to payment_collected (unchanged behavior)", async () => {
+    const db = await import("./db");
+    const stripeService = await import("./stripe");
+
+    let executeCallCount = 0;
+    const mockExecute = vi.fn().mockImplementation(() => {
+      executeCallCount++;
+      if (executeCallCount === 1) {
+        // First scan: return a decline_pending row
+        return Promise.resolve([[
+          {
+            id: 303,
+            status: "decline_pending",
+            stripePaymentIntentId: "pi_decline_fail",
+            amountCents: 8000,
+            refundAmountCents: null,
+            stripeTransferId: null,
+            coachId: 10,
+            cancelledAt: null,
+            coachDeclinedAt: new Date(Date.now() - 11 * 60 * 1000),
+          }
+        ]]);
+      }
+      if (executeCallCount === 2) return Promise.resolve([[]]); // __pending_refund__: empty
+      if (executeCallCount === 3) return Promise.resolve([[]]); // __pending_payout__: empty
+      return Promise.resolve([[]]); // UPDATE result
+    });
+
+    vi.mocked(db.getDb).mockResolvedValue({ execute: mockExecute } as any);
+    vi.mocked(stripeService.createRefund).mockRejectedValue(new Error("Stripe network error"));
+
+    const { recoverStuckPendingStates } = await import("./reminderScheduler");
+    await recoverStuckPendingStates();
+
+    // Stripe was called with full refund + correct idempotency key
+    expect(stripeService.createRefund).toHaveBeenCalledWith(
+      "pi_decline_fail",
+      undefined,
+      "requested_by_customer",
+      "lesson_decline_refund_303"
+    );
+
+    // The UPDATE must revert to payment_collected for decline_pending failure
+    // Use JSON.stringify to inspect the drizzle SQL template object
+    const allSqlStrings = mockExecute.mock.calls.map((call: any[]) => JSON.stringify(call[0] ?? ""));
+    const hasPaymentCollectedRevert = allSqlStrings.some((s: string) => s.includes("payment_collected"));
+    expect(hasPaymentCollectedRevert).toBe(true);
+  });
+});

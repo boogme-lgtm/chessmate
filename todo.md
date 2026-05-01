@@ -829,3 +829,9 @@
 - [x] S31-3: releasePayout rejects __pending_refund__ with CONFLICT; only real transfer IDs return alreadyReleased=true
 - [x] S31-4: Recovery for stuck __pending_refund__ — claimLessonRefundSlot stores refundAmountCents before Stripe; recovery retries with stored amount + idempotency key; finalizes on success; releases slot on retryable failure
 - [x] S31-5: Behavioral tests for all 4 scenarios — 146 tests passing, tsc --noEmit exits 0
+
+## Sprint 32 — Cancel_pending Recovery Edge (Completed)
+- [x] S32-1: cancel_pending with refundAmountCents=0 recovers to cancelled without calling Stripe
+- [x] S32-2: cancel_pending with Stripe failure finalizes to cancelled+refund_failed (not payment_collected)
+- [x] S32-3: decline_pending failure behavior unchanged — returns to payment_collected for admin retry
+- [x] S32 tests: 149 tests passing, tsc --noEmit exits 0

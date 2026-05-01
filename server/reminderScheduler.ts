@@ -525,14 +525,31 @@ export async function recoverStuckPendingStates(): Promise<void> {
           continue;
         }
 
-        // S30-2: Use the correct refund amount for each pending type:
-        //   - decline_pending: full refund (coach declined, student gets everything back)
-        //   - cancel_pending: use stored refundAmountCents (time-based policy already computed)
-        // Deterministic idempotency keys ensure Stripe deduplicates if already processed.
+        // S30-2 / S32: Use the correct refund amount and terminal state for each pending type:
+        //   - decline_pending: full refund; on Stripe failure → return to payment_collected (coach hasn't formally declined)
+        //   - cancel_pending: stored refundAmountCents; on Stripe failure → finalize to cancelled+refund_failed
+        //     (student already cancelled — do NOT revert to payment_collected)
+        //   - cancel_pending with refundAmountCents=0: skip Stripe, finalize directly to cancelled
         const isDecline = row.status === 'decline_pending';
+        const storedRefundAmount: number = row.refundAmountCents ?? 0;
+
+        // S32: For cancel_pending with zero refund, skip Stripe entirely
+        if (!isDecline && storedRefundAmount === 0) {
+          await dbInstance.execute(sql`
+            UPDATE lessons
+            SET status = 'cancelled',
+                refundAmountCents = 0,
+                refundProcessedAt = NOW(),
+                cancellationReason = CONCAT(COALESCE(cancellationReason, ''), ' [RECOVERED: no refund due]')
+            WHERE id = ${row.id} AND status = ${row.status}
+          `);
+          console.log(`[Recovery] Lesson ${row.id} (cancel_pending) recovered to cancelled — no refund due`);
+          continue;
+        }
+
         const refundAmountCents = isDecline
           ? undefined  // full refund for decline
-          : (row.refundAmountCents ?? undefined); // stored amount for cancellation
+          : storedRefundAmount; // stored amount for cancellation
         const idempotencyKey = isDecline
           ? `lesson_decline_refund_${row.id}`
           : `lesson_cancel_refund_${row.id}`;
@@ -555,7 +572,7 @@ export async function recoverStuckPendingStates(): Promise<void> {
           }
         }
 
-        const actualRefundAmountCents = isDecline ? row.amountCents : (row.refundAmountCents ?? 0);
+        const actualRefundAmountCents = isDecline ? row.amountCents : storedRefundAmount;
 
         if (refundSucceeded) {
           const terminalStatus = isDecline ? 'declined' : 'cancelled';
@@ -568,8 +585,9 @@ export async function recoverStuckPendingStates(): Promise<void> {
             WHERE id = ${row.id} AND status = ${row.status}
           `);
           console.log(`[Recovery] Lesson ${row.id} (${row.status}) recovered to ${terminalStatus} with refund`);
-        } else {
-          // Refund still failing — release back to payment_collected for admin
+        } else if (isDecline) {
+          // decline_pending failure: return to payment_collected — coach hasn't formally declined yet,
+          // admin can retry or manually process
           await dbInstance.execute(sql`
             UPDATE lessons
             SET status = 'payment_collected',
@@ -578,7 +596,20 @@ export async function recoverStuckPendingStates(): Promise<void> {
                 cancellationReason = CONCAT(COALESCE(cancellationReason, ''), ' [RECOVERY_FAILED: manual admin action required]')
             WHERE id = ${row.id} AND status = ${row.status}
           `);
-          console.error(`[Recovery] Lesson ${row.id} (${row.status}) recovery failed — returned to payment_collected for admin`);
+          console.error(`[Recovery] Lesson ${row.id} (decline_pending) recovery failed — returned to payment_collected for admin`);
+        } else {
+          // S32: cancel_pending failure: finalize to cancelled + flag refund_failed
+          // Do NOT revert to payment_collected — the student already cancelled.
+          // Equivalent to releaseCancellationWithRefundFailed().
+          await dbInstance.execute(sql`
+            UPDATE lessons
+            SET status = 'cancelled',
+                refundAmountCents = ${storedRefundAmount},
+                cancellationReason = CONCAT(COALESCE(cancellationReason, ''), ' [RECOVERY_FAILED: refund requires admin retry]'),
+                stripeTransferId = 'refund_failed'
+            WHERE id = ${row.id} AND status = ${row.status}
+          `);
+          console.error(`[Recovery] Lesson ${row.id} (cancel_pending) recovery failed — finalized to cancelled with refund_failed flag`);
         }
       } catch (err) {
         console.error(`[Recovery] Error recovering lesson ${row.id}:`, err);
