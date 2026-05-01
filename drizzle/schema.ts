@@ -188,7 +188,9 @@ export const lessons = mysqlTable("lessons", {
     "payment_collected",    // Student paid, coach notified, awaiting coach acceptance
     "pending_confirmation", // LEGACY: old flow awaiting coach confirmation before payment
     "confirmed",            // Coach accepted, lesson scheduled
-    "declined",             // Coach declined, refund initiated
+    "decline_pending",      // Coach declined — Stripe refund in-flight (atomic CAS claimed)
+    "declined",             // Coach declined, refund completed
+    "cancel_pending",       // Student cancelled — Stripe refund in-flight (atomic CAS claimed)
     "paid",                 // LEGACY: old flow payment held
     "in_progress",          // LEGACY: lesson happening
     "completed",            // Lesson done, 24-hour issue window active

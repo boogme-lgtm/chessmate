@@ -1152,17 +1152,22 @@ export const appRouter = router({
           throw new TRPCError({ code: "FORBIDDEN", message: "Not your lesson" });
         }
         // Payment-first model: coach can only accept PAID booking requests.
-        // Status must be payment_collected (student already paid).
         if (lesson.status !== "payment_collected") {
           throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Lesson cannot be confirmed in its current state" });
         }
 
-        await db.updateLessonStatus(input.lessonId, "confirmed", {
-          coachConfirmedAt: new Date(),
-        });
+        // S29-1: Atomic CAS — claim the lesson from payment_collected → confirmed in one UPDATE.
+        // If a concurrent decline request won the race first, this returns false and we reject.
+        // Emails are only sent AFTER the CAS succeeds.
+        const claimed = await db.claimLessonCoachDecision(input.lessonId, "confirmed");
+        if (!claimed) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "This lesson was already acted on by a concurrent request. Please refresh and try again.",
+          });
+        }
 
-        // Notify the student that the coach accepted — lesson is confirmed.
-        // Student already paid, so email says "confirmed" not "complete payment".
+        // CAS won — send confirmation email now (after state transition is committed)
         (async () => {
           try {
             const [student, coach] = await Promise.all([
@@ -1218,31 +1223,35 @@ export const appRouter = router({
           throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Lesson cannot be declined in its current state" });
         }
 
+        // S29-1: Atomic CAS — claim the lesson from payment_collected → decline_pending.
+        // This prevents a concurrent confirmAsCoach from also acting on the same lesson.
+        // If the accept request won the race first, this returns false and we reject.
+        const claimed = await db.claimLessonCoachDecision(input.lessonId, "decline_pending");
+        if (!claimed) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "This lesson was already acted on by a concurrent request. Please refresh and try again.",
+          });
+        }
+
         // Full refund — coach decline is always 100% regardless of timing
         const refundAmountCents = lesson.amountCents;
 
-        // Idempotent guard: if already declined, return current state
-        // (handles retry after partial failure)
-        // (We already checked status === payment_collected above, so this is unreachable
-        // for a clean retry, but kept as documentation of intent.)
-
-        // Attempt full Stripe refund BEFORE marking as declined.
-        // If refund fails, we must NOT silently succeed — the student's money
-        // is still held and they expect it back.
+        // No payment intent — data integrity issue; finalize decline without refund
         if (!lesson.stripePaymentIntentId) {
-          // No payment intent — data integrity issue; decline without refund
-          // and flag for admin investigation.
-          await db.updateLessonStatus(input.lessonId, "declined", {
-            coachDeclinedAt: new Date(),
-            cancellationReason: `${input.reason || 'Declined by coach'} (WARNING: no stripePaymentIntentId — manual refund required)`,
-            refundAmountCents: 0,
-          });
+          await db.finalizeCoachDecline(
+            input.lessonId,
+            0,
+            `${input.reason || 'Declined by coach'} (WARNING: no stripePaymentIntentId — manual refund required)`
+          );
           throw new TRPCError({
             code: "INTERNAL_SERVER_ERROR",
             message: "Lesson declined but no payment intent found — contact support to process your refund manually",
           });
         }
 
+        // Attempt full Stripe refund.
+        // If it fails, release the CAS claim back to payment_collected so admin can retry.
         let refundSucceeded = false;
         try {
           await stripeService.createRefund(
@@ -1256,28 +1265,22 @@ export const appRouter = router({
         }
 
         if (!refundSucceeded) {
-          // Refund creation failed — do NOT mark as declined.
-          // Leave in payment_collected so admin can retry.
-          // Flag it in the DB so it's visible in admin views.
-          await db.flagLessonRefundFailed(
-            input.lessonId,
-            `Coach declined — Stripe refund creation failed, admin retry required`
-          );
+          // Release the CAS claim — lesson returns to payment_collected for admin retry.
+          await db.releaseCoachDeclineClaim(input.lessonId);
           throw new TRPCError({
             code: "INTERNAL_SERVER_ERROR",
             message: "Decline recorded but refund could not be processed. Our team will retry your refund automatically.",
           });
         }
 
-        // Refund succeeded — now mark as declined
-        await db.updateLessonStatus(input.lessonId, "declined", {
-          coachDeclinedAt: new Date(),
-          cancellationReason: input.reason || "Declined by coach",
-          refundAmountCents: refundAmountCents,
-          refundProcessedAt: new Date(),
-        });
+        // Refund succeeded — finalize to declined (decline_pending → declined)
+        await db.finalizeCoachDecline(
+          input.lessonId,
+          refundAmountCents,
+          input.reason || "Declined by coach"
+        );
 
-        // Best-effort email notifications (only sent after successful refund)
+        // Best-effort email notifications (only sent after successful refund + state finalized)
         await sendCancellationEmails(
           input.lessonId,
           'coach',
@@ -1303,18 +1306,59 @@ export const appRouter = router({
           throw new TRPCError({ code: "FORBIDDEN", message: "Not your lesson" });
         }
 
-        const result = await db.cancelLesson(input.lessonId, 'student', input.reason);
+        // S29-4: Atomic CAS — claim the lesson into cancel_pending before calling Stripe.
+        // This prevents concurrent cancellation attempts and ensures the refund policy
+        // is calculated and locked atomically with the status transition.
+        const claimed = await db.claimLessonCancellation(input.lessonId, 'student', input.reason);
+        if (!claimed) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "This lesson cannot be cancelled in its current state. It may have already been cancelled or completed.",
+          });
+        }
+
+        const { refundAmountCents, refundPercentage } = claimed;
+
+        // Attempt Stripe refund if one is due
+        let refundSucceeded = false;
+        if (refundAmountCents > 0 && lesson.stripePaymentIntentId) {
+          try {
+            await stripeService.createRefund(
+              lesson.stripePaymentIntentId,
+              refundAmountCents,
+              "requested_by_customer"
+            );
+            refundSucceeded = true;
+          } catch (stripeErr) {
+            console.error(`[cancel] Stripe refund failed for lesson ${input.lessonId}:`, stripeErr);
+          }
+
+          if (!refundSucceeded) {
+            // Stripe failed — finalize to cancelled but flag the refund failure.
+            // The lesson is still cancelled (student cannot re-book), but admin must retry the refund.
+            await db.releaseCancellationWithRefundFailed(input.lessonId);
+            throw new TRPCError({
+              code: "INTERNAL_SERVER_ERROR",
+              message: "Your lesson has been cancelled but the refund could not be processed. Our team will retry your refund automatically.",
+            });
+          }
+        }
+
+        // Finalize to cancelled (refund succeeded, or no refund was due)
+        await db.finalizeCancellation(input.lessonId, refundSucceeded || refundAmountCents === 0);
+
+        // Only send refund-success emails after confirmed Stripe success (or no-refund case)
         await sendCancellationEmails(
           input.lessonId,
           'student',
           input.reason,
-          result.refundAmountCents,
-          result.refundPercentage,
+          refundAmountCents,
+          refundPercentage,
         );
         return {
           success: true,
-          refundAmountCents: result.refundAmountCents,
-          refundPercentage: result.refundPercentage,
+          refundAmountCents,
+          refundPercentage,
         };
       }),
 
@@ -2670,7 +2714,7 @@ export const appRouter = router({
           if (ctx.user.role !== "admin") {
             throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
           }
-          return next({ ctx });
+          return next({ ctx });  
         })
         .mutation(async ({ input }) => {
           const lesson = await db.getLessonById(input.lessonId);
@@ -2682,6 +2726,25 @@ export const appRouter = router({
           }
           if (!lesson.stripePaymentIntentId) {
             throw new TRPCError({ code: "PRECONDITION_FAILED", message: "No payment recorded for this lesson" });
+          }
+
+          // S29-3: Shared settlement guard — prevent refund+payout double-settlement.
+          // If a payout is in-flight (__pending_payout__) or already completed (real transfer ID),
+          // we cannot also refund — that would be a double-settlement.
+          // A transfer reversal flow is not yet implemented, so we reject unconditionally.
+          if (lesson.stripeTransferId) {
+            if (lesson.stripeTransferId === '__pending_payout__') {
+              throw new TRPCError({
+                code: "CONFLICT",
+                message: "A payout transfer is currently in progress for this lesson. Wait for it to complete before issuing a refund.",
+              });
+            }
+            // A real transfer ID is set — payout already completed.
+            // Refunding after a transfer requires a transfer reversal, which is not implemented.
+            throw new TRPCError({
+              code: "PRECONDITION_FAILED",
+              message: `Payout already released (transfer ${lesson.stripeTransferId}). Refunding after a completed payout requires a manual transfer reversal in the Stripe dashboard.`,
+            });
           }
 
           // Refund the student

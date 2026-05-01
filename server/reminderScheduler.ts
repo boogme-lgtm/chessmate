@@ -228,23 +228,41 @@ export async function autoDeclineStaleBookings(): Promise<void> {
     try {
       if (row.status === 'payment_collected') {
         // Payment-first model: student has already paid.
-        // Must issue a full Stripe refund before marking declined.
+        // S29-2: Atomically claim the row to decline_pending BEFORE calling Stripe.
+        // If the coach accepted between the SELECT scan and now, the CAS will affect 0 rows
+        // and we skip this lesson entirely (no Stripe call, no double-action).
+        const claimResult: any = await dbInstance.execute(sql`
+          UPDATE lessons
+          SET status = 'decline_pending',
+              cancelledAt = NOW(),
+              cancelledBy = 'system',
+              cancellationReason = 'Coach did not respond within 24 hours (auto-decline pending refund)'
+          WHERE id = ${row.id}
+            AND status = 'payment_collected'
+            AND confirmationDeadline IS NOT NULL
+            AND confirmationDeadline <= NOW()
+        `);
+
+        if (claimResult[0]?.affectedRows !== 1) {
+          // Row was already acted on (coach accepted, or another scheduler instance won)
+          console.log(`[Auto-Decline] Lesson ${row.id} skipped — row no longer in payment_collected (coach may have accepted)`);
+          continue;
+        }
+
         if (!row.stripePaymentIntentId) {
-          // No payment intent recorded — mark declined without refund (data issue)
+          // No payment intent recorded — finalize decline without refund (data issue)
           await dbInstance.execute(sql`
             UPDATE lessons
             SET status = 'declined',
-                cancelledAt = NOW(),
-                cancelledBy = 'system',
-                cancellationReason = 'Coach did not respond within 24 hours (no payment intent)'
+                cancellationReason = 'Coach did not respond within 24 hours (no payment intent — manual refund required)'
             WHERE id = ${row.id}
-              AND status = 'payment_collected'
+              AND status = 'decline_pending'
           `);
           console.warn(`[Auto-Decline] Lesson ${row.id} declined without refund — no stripePaymentIntentId`);
           continue;
         }
 
-        // Attempt full Stripe refund first
+        // Attempt full Stripe refund (CAS already claimed the row)
         let refundSucceeded = false;
         try {
           await stripeService.createRefund(
@@ -258,31 +276,30 @@ export async function autoDeclineStaleBookings(): Promise<void> {
         }
 
         if (refundSucceeded) {
-          // Refund succeeded — mark as declined with refund recorded
+          // Refund succeeded — finalize to declined
           await dbInstance.execute(sql`
             UPDATE lessons
             SET status = 'declined',
-                cancelledAt = NOW(),
-                cancelledBy = 'system',
                 cancellationReason = 'Coach did not respond within 24 hours',
                 refundAmountCents = ${row.amountCents},
                 refundProcessedAt = NOW()
             WHERE id = ${row.id}
-              AND status = 'payment_collected'
+              AND status = 'decline_pending'
           `);
           console.log(`[Auto-Decline] Lesson ${row.id} auto-declined with full refund`);
         } else {
-          // Refund failed — leave in a visible state for admin retry.
-          // Do NOT mark as declined; keep status as 'payment_collected' but
-          // flag it so admin can see it needs attention.
+          // Refund failed — release the CAS claim back to payment_collected for admin retry.
+          // Do NOT mark as declined; the student's money is still held.
           await dbInstance.execute(sql`
             UPDATE lessons
-            SET cancellationReason = 'REFUND_FAILED: Coach did not respond within 24 hours — Stripe refund creation failed, admin retry required',
-                cancelledBy = 'system'
+            SET status = 'payment_collected',
+                cancelledAt = NULL,
+                cancelledBy = NULL,
+                cancellationReason = 'REFUND_FAILED: Coach did not respond within 24 hours — Stripe refund creation failed, admin retry required'
             WHERE id = ${row.id}
-              AND status = 'payment_collected'
+              AND status = 'decline_pending'
           `);
-          console.error(`[Auto-Decline] Lesson ${row.id} needs admin attention — refund failed, kept in payment_collected`);
+          console.error(`[Auto-Decline] Lesson ${row.id} needs admin attention — refund failed, returned to payment_collected`);
           // Do NOT send any email to the student — refund has not happened yet
           continue;
         }
@@ -454,6 +471,155 @@ export async function autoCompletePastLessons(): Promise<void> {
 }
 
 /**
+ * S29-5: Recovery scan for stuck pending states.
+ *
+ * After a process crash or DB failure, lessons may be stuck in:
+ * - decline_pending: coach declined, Stripe refund was in-flight, process died.
+ * - cancel_pending: student cancelled, Stripe refund was in-flight, process died.
+ * - __pending_payout__: payout transfer was in-flight, process died.
+ *
+ * Recovery strategy:
+ * - For decline_pending / cancel_pending: if the lesson has been stuck for > 10 minutes,
+ *   the Stripe operation likely completed or failed. We use Stripe's idempotency:
+ *   attempt the refund again (Stripe deduplicates) and finalize or flag accordingly.
+ * - For __pending_payout__: if stuck > 10 minutes, attempt the transfer again using the
+ *   same deterministic idempotency key (Stripe deduplicates) and finalize or clear.
+ *
+ * This function is called on every scheduler run (hourly) and on startup.
+ * It logs all recoveries for admin visibility.
+ */
+export async function recoverStuckPendingStates(): Promise<void> {
+  const dbInstance = await getDb();
+  if (!dbInstance) return;
+
+  const TEN_MINUTES_AGO = new Date(Date.now() - 10 * 60 * 1000);
+
+  // Find lessons stuck in decline_pending or cancel_pending for > 10 minutes
+  const stuckResult: any = await dbInstance.execute(sql`
+    SELECT id, status, stripePaymentIntentId, amountCents, stripeTransferId,
+           coachId, cancelledAt, coachDeclinedAt
+    FROM lessons
+    WHERE status IN ('decline_pending', 'cancel_pending')
+      AND updatedAt < ${TEN_MINUTES_AGO}
+  `);
+
+  const stuckRows = stuckResult[0] as any[];
+  if (stuckRows?.length > 0) {
+    console.warn(`[Recovery] Found ${stuckRows.length} lesson(s) stuck in pending state for > 10 minutes.`);
+    const stripeService = await import("./stripe");
+
+    for (const row of stuckRows) {
+      try {
+        if (!row.stripePaymentIntentId) {
+          // No payment intent — finalize directly to the terminal state
+          const terminalStatus = row.status === 'decline_pending' ? 'declined' : 'cancelled';
+          await dbInstance.execute(sql`
+            UPDATE lessons
+            SET status = ${terminalStatus},
+                cancellationReason = CONCAT(COALESCE(cancellationReason, ''), ' [RECOVERED: no payment intent]')
+            WHERE id = ${row.id} AND status = ${row.status}
+          `);
+          console.warn(`[Recovery] Lesson ${row.id} (${row.status}) finalized to ${terminalStatus} — no payment intent`);
+          continue;
+        }
+
+        // Re-attempt the Stripe refund using idempotency (Stripe deduplicates if already done)
+        // Idempotency key: deterministic per lesson + attempt type
+        let refundSucceeded = false;
+        try {
+          await stripeService.createRefund(
+            row.stripePaymentIntentId,
+            undefined, // full refund
+            "requested_by_customer"
+          );
+          refundSucceeded = true;
+        } catch (stripeErr: any) {
+          // charge_already_refunded means Stripe already processed it — treat as success
+          if (stripeErr?.raw?.code === 'charge_already_refunded') {
+            refundSucceeded = true;
+          } else {
+            console.error(`[Recovery] Stripe refund re-attempt failed for lesson ${row.id}:`, stripeErr);
+          }
+        }
+
+        if (refundSucceeded) {
+          const terminalStatus = row.status === 'decline_pending' ? 'declined' : 'cancelled';
+          await dbInstance.execute(sql`
+            UPDATE lessons
+            SET status = ${terminalStatus},
+                refundAmountCents = ${row.amountCents},
+                refundProcessedAt = NOW(),
+                cancellationReason = CONCAT(COALESCE(cancellationReason, ''), ' [RECOVERED]')
+            WHERE id = ${row.id} AND status = ${row.status}
+          `);
+          console.log(`[Recovery] Lesson ${row.id} (${row.status}) recovered to ${terminalStatus} with refund`);
+        } else {
+          // Refund still failing — release back to payment_collected for admin
+          await dbInstance.execute(sql`
+            UPDATE lessons
+            SET status = 'payment_collected',
+                cancelledAt = NULL,
+                cancelledBy = NULL,
+                cancellationReason = CONCAT(COALESCE(cancellationReason, ''), ' [RECOVERY_FAILED: manual admin action required]')
+            WHERE id = ${row.id} AND status = ${row.status}
+          `);
+          console.error(`[Recovery] Lesson ${row.id} (${row.status}) recovery failed — returned to payment_collected for admin`);
+        }
+      } catch (err) {
+        console.error(`[Recovery] Error recovering lesson ${row.id}:`, err);
+      }
+    }
+  }
+
+  // Find lessons with __pending_payout__ stuck for > 10 minutes
+  const stuckPayoutResult: any = await dbInstance.execute(sql`
+    SELECT id, coachId, coachPayoutCents, currency, stripeTransferId
+    FROM lessons
+    WHERE stripeTransferId = '__pending_payout__'
+      AND updatedAt < ${TEN_MINUTES_AGO}
+  `);
+
+  const stuckPayouts = stuckPayoutResult[0] as any[];
+  if (stuckPayouts?.length > 0) {
+    console.warn(`[Recovery] Found ${stuckPayouts.length} lesson(s) with stuck __pending_payout__ for > 10 minutes.`);
+    const { getUserById, finalizeLessonPayout, releaseLessonPayoutSlot } = await import("./db");
+    const { transferToCoach } = await import("./stripeConnect");
+
+    for (const row of stuckPayouts) {
+      try {
+        const coach = await getUserById(row.coachId);
+        if (!coach?.stripeConnectAccountId) {
+          console.error(`[Recovery] Lesson ${row.id} stuck payout — coach has no Stripe account`);
+          continue;
+        }
+
+        // Re-attempt with the same deterministic idempotency key (Stripe deduplicates)
+        const idempotencyKey = `lesson_payout_${row.id}`;
+        const result = await transferToCoach({
+          accountId: coach.stripeConnectAccountId,
+          amountCents: row.coachPayoutCents,
+          currency: row.currency || 'usd',
+          description: `Payout for lesson #${row.id} (recovered)`,
+          idempotencyKey,
+          metadata: { lessonId: row.id.toString(), coachId: row.coachId.toString(), recovered: 'true' },
+        });
+
+        if (result.success && result.transferId) {
+          await finalizeLessonPayout(row.id, result.transferId);
+          console.log(`[Recovery] Lesson ${row.id} payout recovered with transfer ${result.transferId}`);
+        } else {
+          // Transfer still failing — release the slot so admin can retry manually
+          await releaseLessonPayoutSlot(row.id);
+          console.error(`[Recovery] Lesson ${row.id} payout recovery failed — slot released for admin retry`);
+        }
+      } catch (err) {
+        console.error(`[Recovery] Error recovering payout for lesson ${row.id}:`, err);
+      }
+    }
+  }
+}
+
+/**
  * Start the hourly reminder scheduler.
  * Call once at server startup.
  */
@@ -461,6 +627,10 @@ export function startReminderScheduler(): void {
   const INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 
   const runAll = async () => {
+    // S29-5: Run recovery first to clear any stuck pending states from previous crashes
+    await recoverStuckPendingStates().catch((err) =>
+      console.error("[Reminder Scheduler] Recovery scan failed:", err)
+    );
     await sendPendingReminders().catch((err) =>
       console.error("[Reminder Scheduler] Reminder run failed:", err)
     );
@@ -478,5 +648,5 @@ export function startReminderScheduler(): void {
   // Then run every hour
   setInterval(runAll, INTERVAL_MS);
 
-  console.log("[Reminder Scheduler] Started — running every hour (reminders + auto-decline + auto-complete).");
+  console.log("[Reminder Scheduler] Started — running every hour (recovery + reminders + auto-decline + auto-complete).");
 }

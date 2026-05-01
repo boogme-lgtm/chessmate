@@ -808,3 +808,11 @@
 - [x] S28-4: autoDeclineStaleBookings — process payment_collected (not just pending_confirmation), full Stripe refund, no silent failure
 - [x] S28-5: autoCompletePastLessons — always set issueWindowEndsAt = now + 24h on completion (both confirmed and legacy paid)
 - [x] S28-6: Behavioral tests for all 5 scenarios above (101 tests passing, 0 failures)
+## Sprint 29 — Atomic Settlement Hardening (Completed)
+- [x] S29-1: Atomic coach accept/decline CAS — claimLessonCoachDecision(lessonId, to='confirmed'|'decline_pending'), no email until state transition won
+- [x] S29-2: Race-safe autoDeclineStaleBookings — atomically claim row to decline_pending BEFORE calling Stripe; skip if CAS returns 0 affectedRows
+- [x] S29-3: Shared settlement guard — refundStudent rejects if stripeTransferId = '__pending_payout__' (CONFLICT) or real transfer ID (PRECONDITION_FAILED)
+- [x] S29-4: Hardened student cancellation — claimLessonCancellation CAS, throw on Stripe failure, releaseCancellationWithRefundFailed, no false success
+- [x] S29-5: Recovery scan for stuck pending states — recoverStuckPendingStates() in scheduler handles decline_pending and __pending_payout__ after crash
+- [x] S29-6: Behavioral tests for all 5 scenarios — 118 tests passing, tsc clean (exit 0)
+- [ ] S29-AUDIT: pnpm audit high vulns — path-to-regexp (express@4 transitive, ReDoS), lodash (recharts/streamdown transitive, code injection via _.template) — no fix available without major upgrades; document as known risk

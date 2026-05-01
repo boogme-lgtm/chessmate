@@ -1542,3 +1542,165 @@ export async function releaseLessonPayoutSlot(lessonId: number) {
       AND stripeTransferId = '__pending_payout__'
   `);
 }
+
+/**
+ * S29-1: Atomic CAS for coach accept/decline.
+ *
+ * Transitions the lesson from `payment_collected` to either `confirmed` (accept)
+ * or `decline_pending` (decline) in a single UPDATE ... WHERE status = 'payment_collected'.
+ *
+ * Returns true if this call won the race (row was in payment_collected and is now claimed).
+ * Returns false if another request already transitioned the row (concurrent accept or decline).
+ *
+ * For accept: the caller may proceed immediately — no Stripe call needed.
+ * For decline: the caller must attempt the Stripe refund, then call finalizeCoachDecline()
+ *   on success or releaseCoachDeclineClaim() on failure.
+ */
+export async function claimLessonCoachDecision(
+  lessonId: number,
+  toStatus: 'confirmed' | 'decline_pending'
+): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+
+  const result: any = await db.execute(sql`
+    UPDATE lessons
+    SET status = ${toStatus},
+        coachConfirmedAt = CASE WHEN ${toStatus} = 'confirmed' THEN NOW() ELSE coachConfirmedAt END,
+        coachDeclinedAt  = CASE WHEN ${toStatus} = 'decline_pending' THEN NOW() ELSE coachDeclinedAt END
+    WHERE id = ${lessonId}
+      AND status = 'payment_collected'
+  `);
+
+  return result[0]?.affectedRows === 1;
+}
+
+/**
+ * Finalize coach decline after Stripe refund succeeds.
+ * Transitions from decline_pending → declined.
+ */
+export async function finalizeCoachDecline(
+  lessonId: number,
+  refundAmountCents: number,
+  reason: string
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+
+  await db.execute(sql`
+    UPDATE lessons
+    SET status = 'declined',
+        refundAmountCents = ${refundAmountCents},
+        refundProcessedAt = NOW(),
+        cancellationReason = ${reason}
+    WHERE id = ${lessonId}
+      AND status = 'decline_pending'
+  `);
+}
+
+/**
+ * Release the coach decline claim if Stripe refund fails.
+ * Transitions from decline_pending → payment_collected so admin can retry.
+ */
+export async function releaseCoachDeclineClaim(lessonId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+
+  await db.execute(sql`
+    UPDATE lessons
+    SET status = 'payment_collected',
+        coachDeclinedAt = NULL,
+        cancellationReason = 'REFUND_FAILED: Coach decline refund failed — admin retry required'
+    WHERE id = ${lessonId}
+      AND status = 'decline_pending'
+  `);
+}
+
+/**
+ * S29-4: Atomic CAS for student cancellation.
+ *
+ * Transitions the lesson from a cancellable status to `cancel_pending` in a single
+ * UPDATE ... WHERE status NOT IN (terminal states).
+ *
+ * Returns the lesson's refund calculation fields if the claim succeeded, or null if
+ * the lesson was already in a terminal state (concurrent cancel or completion).
+ */
+export async function claimLessonCancellation(
+  lessonId: number,
+  cancelledBy: 'student' | 'coach' | 'system',
+  cancellationReason: string | undefined
+): Promise<{ refundAmountCents: number; refundPercentage: number } | null> {
+  const lesson = await getLessonById(lessonId);
+  if (!lesson) return null;
+
+  // Calculate refund based on time until lesson
+  const now = new Date();
+  const lessonTime = new Date(lesson.scheduledAt);
+  const hoursUntilLesson = (lessonTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+
+  let refundPercentage = 0;
+  if (hoursUntilLesson > 48) {
+    refundPercentage = 100;
+  } else if (hoursUntilLesson >= 24) {
+    refundPercentage = 50;
+  }
+
+  const refundAmountCents = Math.round((lesson.amountCents * refundPercentage) / 100);
+
+  const db = await getDb();
+  if (!db) return null;
+
+  // Atomic CAS: claim the cancellation slot
+  const result: any = await db.execute(sql`
+    UPDATE lessons
+    SET status = 'cancel_pending',
+        cancelledAt = NOW(),
+        cancelledBy = ${cancelledBy},
+        cancellationReason = ${cancellationReason || null},
+        refundAmountCents = ${refundAmountCents}
+    WHERE id = ${lessonId}
+      AND status NOT IN ('cancelled', 'cancel_pending', 'completed', 'released', 'refunded', 'declined', 'decline_pending')
+  `);
+
+  if (result[0]?.affectedRows !== 1) return null;
+
+  return { refundAmountCents, refundPercentage };
+}
+
+/**
+ * Finalize student cancellation after Stripe refund succeeds (or when no refund is due).
+ * Transitions from cancel_pending → cancelled.
+ */
+export async function finalizeCancellation(
+  lessonId: number,
+  refundSucceeded: boolean
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+
+  await db.execute(sql`
+    UPDATE lessons
+    SET status = 'cancelled',
+        refundProcessedAt = CASE WHEN ${refundSucceeded} THEN NOW() ELSE refundProcessedAt END
+    WHERE id = ${lessonId}
+      AND status = 'cancel_pending'
+  `);
+}
+
+/**
+ * Release the cancellation claim if Stripe refund fails.
+ * Transitions from cancel_pending → cancelled but flags the refund failure.
+ * The lesson is still cancelled (student cannot re-book), but the refund needs admin retry.
+ */
+export async function releaseCancellationWithRefundFailed(lessonId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+
+  await db.execute(sql`
+    UPDATE lessons
+    SET status = 'cancelled',
+        cancellationReason = CONCAT(COALESCE(cancellationReason, ''), ' [REFUND_FAILED: Stripe refund creation failed — admin retry required]')
+    WHERE id = ${lessonId}
+      AND status = 'cancel_pending'
+  `);
+}

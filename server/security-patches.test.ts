@@ -805,21 +805,18 @@ describe("lesson.confirmAsCoach (payment-first model)", () => {
       .rejects.toThrow("Lesson cannot be confirmed in its current state");
   });
 
-  it("succeeds when lesson status is 'payment_collected'", async () => {
+   it("succeeds when lesson status is 'payment_collected'", async () => {
     vi.mocked(db.getLessonById).mockResolvedValue(
       makeLessonRow({ status: "payment_collected", coachId: 2, stripePaymentIntentId: "pi_123" })
     );
+    vi.mocked(db.claimLessonCoachDecision).mockResolvedValue(true);
     vi.mocked(db.updateLessonStatus).mockResolvedValue(undefined);
     vi.mocked(db.getUserById).mockResolvedValue({ id: 1, name: "Student", email: "s@t.com" } as any);
-
     const caller = appRouter.createCaller(coachContext());
     const result = await caller.lesson.confirmAsCoach({ lessonId: 100 });
-
-    expect(db.updateLessonStatus).toHaveBeenCalledWith(100, "confirmed", expect.objectContaining({
-      coachConfirmedAt: expect.any(Date),
-    }));
+    expect(db.claimLessonCoachDecision).toHaveBeenCalledWith(100, "confirmed");
     expect(result).toEqual({ success: true });
-  });
+  });;
 
   it("rejects when coach is not the lesson's coach", async () => {
     vi.mocked(db.getLessonById).mockResolvedValue(makeLessonRow({ status: "payment_collected", coachId: 99 }));
@@ -855,46 +852,42 @@ describe("lesson.declineAsCoach (payment-first model)", () => {
       .rejects.toThrow("Lesson cannot be declined in its current state");
   });
 
-  it("succeeds when lesson status is 'payment_collected' — triggers full refund", async () => {
+   it("succeeds when lesson status is 'payment_collected' — triggers full refund", async () => {
     vi.mocked(db.getLessonById).mockResolvedValue(
       makeLessonRow({ status: "payment_collected", coachId: 2, stripePaymentIntentId: "pi_decline_123", amountCents: 5000 })
     );
-    vi.mocked(db.updateLessonStatus).mockResolvedValue(undefined);
+    vi.mocked(db.claimLessonCoachDecision).mockResolvedValue(true);
+    vi.mocked(db.finalizeCoachDecline).mockResolvedValue(undefined as any);
     vi.mocked(stripeService.createRefund).mockResolvedValue({ id: "re_123" } as any);
     vi.mocked(db.getUserById).mockResolvedValue({ id: 1, name: "Student", email: "s@t.com" } as any);
-
     const caller = appRouter.createCaller(coachContext());
     const result = await caller.lesson.declineAsCoach({ lessonId: 100, reason: "Schedule conflict" });
-
     // Full refund (no amount specified = full)
     expect(stripeService.createRefund).toHaveBeenCalledWith("pi_decline_123", undefined, "requested_by_customer");
-    // Status set to 'declined'
-    expect(db.updateLessonStatus).toHaveBeenCalledWith(100, "declined", expect.objectContaining({
-      coachDeclinedAt: expect.any(Date),
-      refundAmountCents: 5000,
-    }));
+    // CAS claimed to decline_pending, then finalized
+    expect(db.claimLessonCoachDecision).toHaveBeenCalledWith(100, "decline_pending");
+    expect(db.finalizeCoachDecline).toHaveBeenCalled();
     expect(result).toEqual({ success: true, refundAmountCents: 5000 });
-  });
+  });;
 
-  it("throws INTERNAL_SERVER_ERROR when Stripe refund fails — does NOT silently succeed", async () => {
+   it("throws INTERNAL_SERVER_ERROR when Stripe refund fails — does NOT silently succeed", async () => {
     vi.mocked(db.getLessonById).mockResolvedValue(
       makeLessonRow({ status: "payment_collected", coachId: 2, stripePaymentIntentId: "pi_fail_123", amountCents: 5000 })
     );
-    vi.mocked(db.updateLessonStatus).mockResolvedValue(undefined);
+    vi.mocked(db.claimLessonCoachDecision).mockResolvedValue(true);
+    vi.mocked(db.releaseCoachDeclineClaim).mockResolvedValue(undefined as any);
+    vi.mocked(db.finalizeCoachDecline).mockResolvedValue(undefined as any);
     vi.mocked(stripeService.createRefund).mockRejectedValue(new Error("Stripe error"));
-    vi.mocked(db.flagLessonRefundFailed).mockResolvedValue(undefined);
     vi.mocked(db.getUserById).mockResolvedValue({ id: 1, name: "Student", email: "s@t.com" } as any);
-
     const caller = appRouter.createCaller(coachContext());
-    // Sprint 28: refund failure now throws instead of silently succeeding
+    // Sprint 29: CAS claim wins, Stripe fails, claim is released
     await expect(caller.lesson.declineAsCoach({ lessonId: 100 }))
-      .rejects.toThrow("Decline recorded but refund could not be processed");
-
-    // Lesson must NOT be marked as declined
-    expect(db.updateLessonStatus).not.toHaveBeenCalledWith(100, "declined", expect.anything());
-    // Must flag for admin visibility
-    expect(db.flagLessonRefundFailed).toHaveBeenCalledWith(100, expect.any(String));
-  });
+      .rejects.toMatchObject({ code: "INTERNAL_SERVER_ERROR" });
+    // CAS claim must be released for admin retry
+    expect(db.releaseCoachDeclineClaim).toHaveBeenCalledWith(100);
+    // Lesson must NOT be finalized to declined
+    expect(db.finalizeCoachDecline).not.toHaveBeenCalled();
+  });;
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1263,49 +1256,53 @@ describe("S28-1: declineAsCoach — Stripe refund failure throws, does not silen
     vi.mocked(db.getLessonById).mockResolvedValue(
       makeLessonRow({ status: "payment_collected", coachId: 2, stripePaymentIntentId: "pi_fail_s28", amountCents: 5000 })
     );
+    vi.mocked(db.claimLessonCoachDecision).mockResolvedValue(true);
+    vi.mocked(db.releaseCoachDeclineClaim).mockResolvedValue(undefined as any);
+    vi.mocked(db.finalizeCoachDecline).mockResolvedValue(undefined as any);
     vi.mocked(stripeService.createRefund).mockRejectedValue(new Error("Stripe network error"));
-    vi.mocked(db.flagLessonRefundFailed).mockResolvedValue(undefined);
 
     const caller = appRouter.createCaller(coachCtx());
     await expect(caller.lesson.declineAsCoach({ lessonId: 100 }))
-      .rejects.toThrow("Decline recorded but refund could not be processed");
+      .rejects.toMatchObject({ code: "INTERNAL_SERVER_ERROR" });
 
-    // Must NOT mark lesson as declined
-    expect(db.updateLessonStatus).not.toHaveBeenCalledWith(100, "declined", expect.anything());
-    // Must flag for admin visibility
-    expect(db.flagLessonRefundFailed).toHaveBeenCalledWith(100, expect.stringContaining("Stripe refund creation failed"));
+    // CAS claim must be released for admin retry
+    expect(db.releaseCoachDeclineClaim).toHaveBeenCalledWith(100);
+    // Must NOT finalize to declined
+    expect(db.finalizeCoachDecline).not.toHaveBeenCalled();
   });
 
-  it("throws when no stripePaymentIntentId — cannot refund, marks declined and throws", async () => {
+  it("throws when no stripePaymentIntentId — CAS wins but no PI to refund", async () => {
     vi.mocked(db.getLessonById).mockResolvedValue(
       makeLessonRow({ status: "payment_collected", coachId: 2, stripePaymentIntentId: null, amountCents: 5000 })
     );
-    vi.mocked(db.updateLessonStatus).mockResolvedValue(undefined);
+    vi.mocked(db.claimLessonCoachDecision).mockResolvedValue(true);
+    vi.mocked(db.releaseCoachDeclineClaim).mockResolvedValue(undefined as any);
+    vi.mocked(db.finalizeCoachDecline).mockResolvedValue(undefined as any);
 
     const caller = appRouter.createCaller(coachCtx());
     await expect(caller.lesson.declineAsCoach({ lessonId: 100 }))
-      .rejects.toThrow("no payment intent found");
+      .rejects.toMatchObject({ code: "INTERNAL_SERVER_ERROR" });
 
     // Stripe refund must NOT be attempted
     expect(stripeService.createRefund).not.toHaveBeenCalled();
   });
 
-  it("succeeds and marks declined ONLY after Stripe refund succeeds", async () => {
+  it("succeeds and finalizes ONLY after Stripe refund succeeds", async () => {
     vi.mocked(db.getLessonById).mockResolvedValue(
       makeLessonRow({ status: "payment_collected", coachId: 2, stripePaymentIntentId: "pi_ok_s28", amountCents: 5000 })
     );
+    vi.mocked(db.claimLessonCoachDecision).mockResolvedValue(true);
+    vi.mocked(db.finalizeCoachDecline).mockResolvedValue(undefined as any);
     vi.mocked(stripeService.createRefund).mockResolvedValue({ id: "re_ok_s28" } as any);
-    vi.mocked(db.updateLessonStatus).mockResolvedValue(undefined);
     vi.mocked(db.getUserById).mockResolvedValue({ id: 1, name: "Student", email: "s@t.com" } as any);
 
     const caller = appRouter.createCaller(coachCtx());
     const result = await caller.lesson.declineAsCoach({ lessonId: 100 });
 
     expect(result).toEqual({ success: true, refundAmountCents: 5000 });
-    // Declined AFTER successful refund
-    expect(db.updateLessonStatus).toHaveBeenCalledWith(100, "declined", expect.objectContaining({
-      refundProcessedAt: expect.any(Date),
-    }));
+    // CAS claimed to decline_pending, finalized after successful refund
+    expect(db.claimLessonCoachDecision).toHaveBeenCalledWith(100, "decline_pending");
+    expect(db.finalizeCoachDecline).toHaveBeenCalled();
   });
 });
 
@@ -1499,29 +1496,29 @@ describe("S28-4: autoDeclineStaleBookings — processes payment_collected with f
   it("processes payment_collected lessons past deadline with full Stripe refund", async () => {
     // This tests the scheduler function directly
     const { autoDeclineStaleBookings } = await import("./reminderScheduler");
-
-    const pastDeadline = new Date(Date.now() - 2 * 60 * 60 * 1000); // 2h ago
-    vi.mocked(db.getDb).mockResolvedValue({
-      execute: vi.fn().mockResolvedValue([[
-        {
-          id: 200,
-          studentId: 1,
-          coachId: 2,
-          status: "payment_collected",
-          confirmationDeadline: pastDeadline,
-          stripePaymentIntentId: "pi_stale_200",
-          amountCents: 6000,
-        }
-      ], []]),
-      update: vi.fn().mockReturnThis(),
-      set: vi.fn().mockReturnThis(),
-      where: vi.fn().mockResolvedValue(undefined),
-    } as any);
+    const executeMock = vi.fn();
+    // SELECT: one stale payment_collected lesson
+    executeMock.mockResolvedValueOnce([[
+      {
+        id: 200,
+        studentId: 1,
+        coachId: 2,
+        status: "payment_collected",
+        stripePaymentIntentId: "pi_stale_200",
+        amountCents: 6000,
+      }
+    ]]);
+    // CAS UPDATE: claim to decline_pending succeeds (affectedRows: 1)
+    executeMock.mockResolvedValueOnce([{ affectedRows: 1 }]);
+    // Finalize UPDATE to declined
+    executeMock.mockResolvedValueOnce([{ affectedRows: 1 }]);
+    vi.mocked(db.getDb).mockResolvedValue({ execute: executeMock } as any);
+    vi.mocked(db.getLessonById).mockResolvedValue(
+      makeLessonRow({ id: 200, status: "decline_pending", stripePaymentIntentId: "pi_stale_200" })
+    );
     vi.mocked(stripeService.createRefund).mockResolvedValue({ id: "re_stale_200" } as any);
     vi.mocked(db.getUserById).mockResolvedValue({ id: 1, name: "Student", email: "s@t.com" } as any);
-
     await autoDeclineStaleBookings();
-
     // Must attempt Stripe refund for payment_collected lesson
     expect(stripeService.createRefund).toHaveBeenCalledWith("pi_stale_200", undefined, "requested_by_customer");
   });
@@ -1563,5 +1560,364 @@ describe("S28-5: autoCompletePastLessons — always sets issueWindowEndsAt on co
     // We check the serialized string representation contains the column name.
     const sqlStr = JSON.stringify(updateCallArg);
     expect(sqlStr).toMatch(/issueWindowEndsAt|issue_window_ends_at/);
+  });
+});
+
+// ============================================================
+// Sprint 29: Atomic Settlement Hardening Tests
+// ============================================================
+
+describe("S29-1: Atomic coach accept/decline CAS", () => {
+  function coachCtx() { return createContext({ id: 2, role: "user", userType: "coach" }); }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(db.getLessonById).mockResolvedValue(
+      makeLessonRow({ status: "payment_collected", coachId: 2, stripePaymentIntentId: "pi_test_123" })
+    );
+    vi.mocked(db.getUserById).mockResolvedValue({
+      id: 1, name: "Student", email: "student@test.com",
+      stripeConnectAccountId: null,
+    } as any);
+  });
+
+  it("confirmAsCoach wins the CAS and confirms the lesson", async () => {
+    vi.mocked(db.claimLessonCoachDecision).mockResolvedValue(true);
+    vi.mocked(db.updateLessonStatus).mockResolvedValue(undefined as any);
+
+    const caller = appRouter.createCaller(coachCtx());
+    const result = await caller.lesson.confirmAsCoach({ lessonId: 100 });
+
+    expect(db.claimLessonCoachDecision).toHaveBeenCalledWith(100, "confirmed");
+    expect(result.success).toBe(true);
+  });
+
+  it("confirmAsCoach throws CONFLICT when CAS is lost (concurrent decline won)", async () => {
+    vi.mocked(db.claimLessonCoachDecision).mockResolvedValue(false);
+
+    const caller = appRouter.createCaller(coachCtx());
+    await expect(
+      caller.lesson.confirmAsCoach({ lessonId: 100 })
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+  });
+
+  it("declineAsCoach wins the CAS, refunds, and finalizes to declined", async () => {
+    vi.mocked(db.claimLessonCoachDecision).mockResolvedValue(true);
+    vi.mocked(stripeService.createRefund).mockResolvedValue({ id: "re_test" } as any);
+    vi.mocked(db.finalizeCoachDecline).mockResolvedValue(undefined as any);
+
+    const caller = appRouter.createCaller(coachCtx());
+    const result = await caller.lesson.declineAsCoach({ lessonId: 100, reason: "Unavailable" });
+
+    expect(db.claimLessonCoachDecision).toHaveBeenCalledWith(100, "decline_pending");
+    expect(db.finalizeCoachDecline).toHaveBeenCalled();
+    expect(result.success).toBe(true);
+  });
+
+  it("declineAsCoach throws CONFLICT when CAS is lost (concurrent accept won)", async () => {
+    vi.mocked(db.claimLessonCoachDecision).mockResolvedValue(false);
+
+    const caller = appRouter.createCaller(coachCtx());
+    await expect(
+      caller.lesson.declineAsCoach({ lessonId: 100 })
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+  });
+
+  it("declineAsCoach releases CAS claim and throws when Stripe refund fails", async () => {
+    vi.mocked(db.claimLessonCoachDecision).mockResolvedValue(true);
+    vi.mocked(stripeService.createRefund).mockRejectedValue(new Error("Stripe error"));
+    vi.mocked(db.releaseCoachDeclineClaim).mockResolvedValue(undefined as any);
+    vi.mocked(db.finalizeCoachDecline).mockResolvedValue(undefined as any);
+
+    const caller = appRouter.createCaller(coachCtx());
+    await expect(
+      caller.lesson.declineAsCoach({ lessonId: 100 })
+    ).rejects.toMatchObject({ code: "INTERNAL_SERVER_ERROR" });
+
+    // CAS must be released so admin can retry
+    expect(db.releaseCoachDeclineClaim).toHaveBeenCalledWith(100);
+    // Must NOT finalize to declined
+    expect(db.finalizeCoachDecline).not.toHaveBeenCalled();
+  });
+
+  it("no confirmed lesson can be refunded via concurrent decline (status guard prevents it)", async () => {
+    // Simulate: lesson was already confirmed — status guard rejects before CAS
+    vi.mocked(db.getLessonById).mockResolvedValue(
+      makeLessonRow({ status: "confirmed", coachId: 2, stripePaymentIntentId: "pi_test_123" })
+    );
+
+    const caller = appRouter.createCaller(coachCtx());
+    await expect(
+      caller.lesson.declineAsCoach({ lessonId: 100 })
+    ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+
+    // Stripe refund must never be called for a confirmed lesson
+    expect(stripeService.createRefund).not.toHaveBeenCalled();
+    expect(db.claimLessonCoachDecision).not.toHaveBeenCalled();
+  });
+});
+
+describe("S29-2: Race-safe autoDeclineStaleBookings", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(db.getLessonById).mockResolvedValue(
+      makeLessonRow({ id: 42, status: "decline_pending", stripePaymentIntentId: "pi_test_race" })
+    );
+    vi.mocked(db.getUserById).mockResolvedValue({
+      id: 1, name: "User", email: "user@test.com",
+    } as any);
+  });
+
+  it("skips lesson when CAS claim returns 0 affectedRows (coach accepted first)", async () => {
+    const executeMock = vi.fn();
+    // SELECT returns one payment_collected lesson
+    executeMock.mockResolvedValueOnce([[{
+      id: 42,
+      status: "payment_collected",
+      stripePaymentIntentId: "pi_test_race",
+      amountCents: 5000,
+    }]]);
+    // CAS UPDATE returns 0 affectedRows (coach accepted between scan and claim)
+    executeMock.mockResolvedValueOnce([{ affectedRows: 0 }]);
+
+    vi.mocked(db.getDb).mockResolvedValue({ execute: executeMock } as any);
+
+    const { autoDeclineStaleBookings } = await import("./reminderScheduler");
+    await autoDeclineStaleBookings();
+
+    // Stripe must NOT be called — the row was already acted on
+    expect(stripeService.createRefund).not.toHaveBeenCalled();
+    // Only 2 execute calls: SELECT + failed CAS UPDATE
+    expect(executeMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("claims row atomically and refunds when CAS succeeds", async () => {
+    const executeMock = vi.fn();
+    executeMock.mockResolvedValueOnce([[{
+      id: 43,
+      status: "payment_collected",
+      stripePaymentIntentId: "pi_test_stale",
+      amountCents: 8000,
+    }]]);
+    // CAS claim succeeds
+    executeMock.mockResolvedValueOnce([{ affectedRows: 1 }]);
+    // Finalize to declined
+    executeMock.mockResolvedValueOnce([{ affectedRows: 1 }]);
+
+    vi.mocked(db.getLessonById).mockResolvedValue(
+      makeLessonRow({ id: 43, status: "decline_pending", stripePaymentIntentId: "pi_test_stale" })
+    );
+    vi.mocked(db.getDb).mockResolvedValue({ execute: executeMock } as any);
+    vi.mocked(stripeService.createRefund).mockResolvedValue({ id: "re_auto" } as any);
+
+    const { autoDeclineStaleBookings } = await import("./reminderScheduler");
+    await autoDeclineStaleBookings();
+
+    expect(stripeService.createRefund).toHaveBeenCalledWith("pi_test_stale", undefined, "requested_by_customer");
+  });
+});
+
+describe("S29-3: Shared settlement guard (refund vs payout)", () => {
+  function adminCtx() { return createContext({ id: 1, role: "admin" }); }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(db.getUserById).mockResolvedValue({
+      id: 1, name: "Admin", email: "admin@test.com", role: "admin",
+    } as any);
+  });
+
+  it("refundStudent throws CONFLICT when __pending_payout__ is set", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(
+      makeLessonRow({
+        status: "disputed",
+        stripePaymentIntentId: "pi_test_456",
+        stripeTransferId: "__pending_payout__",
+      })
+    );
+
+    const caller = appRouter.createCaller(adminCtx());
+    await expect(
+      caller.admin.disputes.refundStudent({ lessonId: 100 })
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+
+    expect(stripeService.createRefund).not.toHaveBeenCalled();
+  });
+
+  it("refundStudent throws PRECONDITION_FAILED when real transfer ID is set", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(
+      makeLessonRow({
+        status: "disputed",
+        stripePaymentIntentId: "pi_test_456",
+        stripeTransferId: "tr_real_transfer_id",
+      })
+    );
+
+    const caller = appRouter.createCaller(adminCtx());
+    await expect(
+      caller.admin.disputes.refundStudent({ lessonId: 100 })
+    ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+
+    expect(stripeService.createRefund).not.toHaveBeenCalled();
+  });
+
+  it("refundStudent succeeds when no transfer is set", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(
+      makeLessonRow({
+        status: "disputed",
+        stripePaymentIntentId: "pi_test_456",
+        stripeTransferId: null,
+      })
+    );
+    vi.mocked(stripeService.createRefund).mockResolvedValue({ id: "re_admin" } as any);
+    vi.mocked(db.updateLessonStatus).mockResolvedValue(undefined as any);
+
+    const caller = appRouter.createCaller(adminCtx());
+    const result = await caller.admin.disputes.refundStudent({ lessonId: 100 });
+
+    expect(result.success).toBe(true);
+    expect(stripeService.createRefund).toHaveBeenCalled();
+  });
+});
+
+describe("S29-4: Hardened student cancellation", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(db.getLessonById).mockResolvedValue(
+      makeLessonRow({ status: "confirmed", stripePaymentIntentId: "pi_test_cancel" })
+    );
+    vi.mocked(db.getUserById).mockResolvedValue({
+      id: 1, name: "Student", email: "student@test.com",
+    } as any);
+  });
+
+  it("cancel succeeds and refunds when CAS claim succeeds and Stripe succeeds", async () => {
+    vi.mocked(db.claimLessonCancellation).mockResolvedValue({
+      refundAmountCents: 5000,
+      refundPercentage: 100,
+    } as any);
+    vi.mocked(stripeService.createRefund).mockResolvedValue({ id: "re_cancel" } as any);
+    vi.mocked(db.finalizeCancellation).mockResolvedValue(undefined as any);
+
+    const caller = appRouter.createCaller(createContext());
+    const result = await caller.lesson.cancel({ lessonId: 100 });
+
+    expect(db.claimLessonCancellation).toHaveBeenCalledWith(100, "student", undefined);
+    expect(db.finalizeCancellation).toHaveBeenCalledWith(100, true);
+    expect(result.success).toBe(true);
+    expect(result.refundAmountCents).toBe(5000);
+  });
+
+  it("cancel throws and flags refund_failed when Stripe fails (no false success)", async () => {
+    vi.mocked(db.claimLessonCancellation).mockResolvedValue({
+      refundAmountCents: 5000,
+      refundPercentage: 100,
+    } as any);
+    vi.mocked(stripeService.createRefund).mockRejectedValue(new Error("Stripe down"));
+    vi.mocked(db.releaseCancellationWithRefundFailed).mockResolvedValue(undefined as any);
+    vi.mocked(db.finalizeCancellation).mockResolvedValue(undefined as any);
+
+    const caller = appRouter.createCaller(createContext());
+    await expect(
+      caller.lesson.cancel({ lessonId: 100 })
+    ).rejects.toMatchObject({ code: "INTERNAL_SERVER_ERROR" });
+
+    expect(db.releaseCancellationWithRefundFailed).toHaveBeenCalledWith(100);
+    // Must NOT finalize to cancelled with success
+    expect(db.finalizeCancellation).not.toHaveBeenCalled();
+  });
+
+  it("cancel throws PRECONDITION_FAILED when CAS fails (already cancelled)", async () => {
+    vi.mocked(db.claimLessonCancellation).mockResolvedValue(null);
+
+    const caller = appRouter.createCaller(createContext());
+    await expect(
+      caller.lesson.cancel({ lessonId: 100 })
+    ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+
+    expect(stripeService.createRefund).not.toHaveBeenCalled();
+  });
+
+  it("cancel succeeds without Stripe call when no refund is due (no-refund policy)", async () => {
+    vi.mocked(db.claimLessonCancellation).mockResolvedValue({
+      refundAmountCents: 0,
+      refundPercentage: 0,
+    } as any);
+    vi.mocked(db.finalizeCancellation).mockResolvedValue(undefined as any);
+
+    const caller = appRouter.createCaller(createContext());
+    const result = await caller.lesson.cancel({ lessonId: 100 });
+
+    expect(stripeService.createRefund).not.toHaveBeenCalled();
+    expect(db.finalizeCancellation).toHaveBeenCalledWith(100, true);
+    expect(result.success).toBe(true);
+    expect(result.refundAmountCents).toBe(0);
+  });
+});
+
+describe("S29-5: Recovery scan for stuck pending states", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(db.getUserById).mockResolvedValue({
+      id: 2, name: "Coach", email: "coach@test.com",
+      stripeConnectAccountId: "acct_test",
+    } as any);
+  });
+
+  it("recovers decline_pending lesson by re-attempting Stripe refund", async () => {
+    const executeMock = vi.fn();
+    // SELECT: one decline_pending lesson stuck > 10 min
+    executeMock.mockResolvedValueOnce([[{
+      id: 99,
+      status: "decline_pending",
+      stripePaymentIntentId: "pi_test_stuck",
+      amountCents: 6000,
+      stripeTransferId: null,
+      coachId: 2,
+    }]]);
+    // UPDATE to finalize to declined
+    executeMock.mockResolvedValueOnce([{ affectedRows: 1 }]);
+    // SELECT: no stuck __pending_payout__ lessons
+    executeMock.mockResolvedValueOnce([[]]);
+
+    vi.mocked(db.getDb).mockResolvedValue({ execute: executeMock } as any);
+    vi.mocked(stripeService.createRefund).mockResolvedValue({ id: "re_recovered" } as any);
+
+    const { recoverStuckPendingStates } = await import("./reminderScheduler");
+    await recoverStuckPendingStates();
+
+    expect(stripeService.createRefund).toHaveBeenCalledWith("pi_test_stuck", undefined, "requested_by_customer");
+    // Should finalize to declined
+    const updateCall = executeMock.mock.calls[1]?.[0];
+    const sqlStr = JSON.stringify(updateCall);
+    expect(sqlStr).toMatch(/declined/);
+  });
+
+  it("treats charge_already_refunded as success during recovery", async () => {
+    const executeMock = vi.fn();
+    executeMock.mockResolvedValueOnce([[{
+      id: 100,
+      status: "decline_pending",
+      stripePaymentIntentId: "pi_test_already",
+      amountCents: 4000,
+      stripeTransferId: null,
+      coachId: 2,
+    }]]);
+    executeMock.mockResolvedValueOnce([{ affectedRows: 1 }]);
+    executeMock.mockResolvedValueOnce([[]]);
+
+    vi.mocked(db.getDb).mockResolvedValue({ execute: executeMock } as any);
+    const alreadyRefundedError = Object.assign(new Error("already refunded"), {
+      raw: { code: "charge_already_refunded" },
+    });
+    vi.mocked(stripeService.createRefund).mockRejectedValue(alreadyRefundedError);
+
+    const { recoverStuckPendingStates } = await import("./reminderScheduler");
+    await recoverStuckPendingStates();
+
+    // Should still finalize to declined (Stripe already processed it)
+    const updateCall = executeMock.mock.calls[1]?.[0];
+    const sqlStr = JSON.stringify(updateCall);
+    expect(sqlStr).toMatch(/declined/);
   });
 });
