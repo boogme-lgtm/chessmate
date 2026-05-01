@@ -159,8 +159,10 @@ export async function createLessonPaymentIntent(params: {
 }
 
 /**
- * Capture a PaymentIntent after lesson completion
- * This releases funds from escrow
+ * DEPRECATED: capturePaymentIntent is no longer used in the new payment model.
+ * Payments are captured automatically at checkout (no manual capture).
+ * Coach payout is handled via separate Transfer after completion + issue window.
+ * Kept for backward compatibility with any in-flight legacy lessons.
  */
 export async function capturePaymentIntent(paymentIntentId: string) {
   const paymentIntent = await stripe.paymentIntents.capture(paymentIntentId);
@@ -168,7 +170,9 @@ export async function capturePaymentIntent(paymentIntentId: string) {
 }
 
 /**
- * Cancel/refund a PaymentIntent (before capture)
+ * Cancel a PaymentIntent (only works if not yet captured).
+ * In the new model, payments are captured immediately, so this is only
+ * useful for edge cases where a PI exists but hasn't been captured yet.
  */
 export async function cancelPaymentIntent(paymentIntentId: string) {
   const paymentIntent = await stripe.paymentIntents.cancel(paymentIntentId);
@@ -176,8 +180,18 @@ export async function cancelPaymentIntent(paymentIntentId: string) {
 }
 
 /**
- * Create a refund for a captured payment
- * Supports partial refunds based on cancellation policy
+ * Create a refund for a captured payment.
+ * 
+ * STRIPE ARCHITECTURE: Separate Charges and Transfers
+ * ────────────────────────────────────────────────────
+ * In the new model, the student's charge lives entirely on the platform.
+ * There is NO transfer_data at checkout time, so:
+ *   - reverse_transfer is NOT used (no transfer to reverse)
+ *   - refund_application_fee is NOT used (no application fee on the charge)
+ * 
+ * If a Transfer to the coach has ALREADY been made (post-completion payout),
+ * that must be reversed separately via stripe.transfers.createReversal().
+ * 
  * @param paymentIntentId - Stripe PaymentIntent ID
  * @param amountCents - Amount to refund in cents (optional, defaults to full refund)
  * @param reason - Reason for refund
@@ -190,10 +204,8 @@ export async function createRefund(
   const refundParams: any = {
     payment_intent: paymentIntentId,
     reason: reason || "requested_by_customer",
-    // Reverse the transfer to the coach as well
-    reverse_transfer: true,
-    // Refund the application fee (platform commission)
-    refund_application_fee: true,
+    // No reverse_transfer — there is no destination charge transfer to reverse.
+    // No refund_application_fee — there is no application fee on the charge.
   };
   
   // Add amount if partial refund
@@ -249,25 +261,28 @@ export async function createLessonCheckoutSession(params: {
   // Check if this is a test/mock coach account (starts with "acct_test_coach_")
   const isTestAccount = coachConnectAccountId.startsWith("acct_test_coach_");
 
-  // Build payment intent data conditionally
+  // STRIPE ARCHITECTURE: Separate Charges and Transfers
+  // ─────────────────────────────────────────────────────
+  // Student is charged upfront (automatic capture). Funds stay on the
+  // platform's Stripe balance. Coach payout is a separate Transfer
+  // created only after lesson completion + 24-hour issue window.
+  // This avoids long manual-capture windows and ensures refunds are
+  // straightforward (just refund the charge, no transfer reversal).
   const paymentIntentData: any = {
-    capture_method: "manual", // Escrow
+    // capture_method defaults to "automatic" — student is charged immediately.
     metadata: {
       lessonId: lessonId.toString(),
       studentId: studentId.toString(),
       platform: "boogme",
       tier: coachPricingTier ?? DEFAULT_PRICING_TIER,
       feePercent: feePercent.toString(),
+      coachConnectAccountId: isTestAccount ? "" : coachConnectAccountId,
     },
   };
 
-  // Only add transfer_data and application_fee for real Stripe Connect accounts
-  if (!isTestAccount) {
-    paymentIntentData.transfer_data = {
-      destination: coachConnectAccountId,
-    };
-    paymentIntentData.application_fee_amount = applicationFeeCents;
-  }
+  // NOTE: No transfer_data or application_fee_amount here.
+  // Funds stay on the platform. Coach payout is handled later via
+  // stripe.transfers.create() in the payout release flow.
 
   const session = await stripe.checkout.sessions.create({
     mode: "payment",

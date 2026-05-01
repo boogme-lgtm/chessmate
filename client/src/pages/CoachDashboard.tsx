@@ -28,7 +28,8 @@ import {
   XCircle,
   Ban,
   MessageCircle,
-  Zap
+  Zap,
+  AlertTriangle
 } from "lucide-react";
 import { Link } from "wouter";
 import { toast } from "sonner";
@@ -373,17 +374,17 @@ export function CoachDashboardContent({ user }: { user: any }) {
             )}
 
             {/* Pending Confirmations */}
-            {lessons && lessons.filter((l: any) => l.status === "pending_confirmation").length > 0 && (
+            {lessons && lessons.filter((l: any) => l.status === "payment_collected").length > 0 && (
               <Card className="border-yellow-600/50 bg-yellow-50/50 dark:bg-yellow-950/20">
                 <CardHeader>
                   <CardTitle className="text-lg flex items-center gap-2">
                     <Timer className="w-5 h-5 text-yellow-600" />
-                    Pending Booking Confirmations ({lessons.filter((l: any) => l.status === "pending_confirmation").length})
+                    Paid Booking Requests ({lessons.filter((l: any) => l.status === "payment_collected").length})
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {lessons.filter((l: any) => l.status === "pending_confirmation").map((lesson: any) => (
+                    {lessons.filter((l: any) => l.status === "payment_collected").map((lesson: any) => (
                       <PendingLessonCard
                         key={lesson.id}
                         lesson={lesson}
@@ -434,11 +435,39 @@ export function CoachDashboardContent({ user }: { user: any }) {
                                 Confirmed
                               </div>
                             );
-                          case "pending_confirmation":
+                          case "pending_payment":
+                            return (
+                              <div className="text-xs px-2 py-0.5 rounded-full inline-flex items-center gap-1 bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400">
+                                <Timer className="w-3 h-3" />
+                                Awaiting Payment
+                              </div>
+                            );
+                          case "payment_collected":
                             return (
                               <div className="text-xs px-2 py-0.5 rounded-full inline-flex items-center gap-1 bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400">
                                 <Timer className="w-3 h-3" />
-                                Pending
+                                Paid — Awaiting Your Confirmation
+                              </div>
+                            );
+                          case "disputed":
+                            return (
+                              <div className="text-xs px-2 py-0.5 rounded-full inline-flex items-center gap-1 bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
+                                <AlertTriangle className="w-3 h-3" />
+                                Disputed
+                              </div>
+                            );
+                          case "refunded":
+                            return (
+                              <div className="text-xs px-2 py-0.5 rounded-full inline-flex items-center gap-1 bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">
+                                <XCircle className="w-3 h-3" />
+                                Refunded
+                              </div>
+                            );
+                          case "released":
+                            return (
+                              <div className="text-xs px-2 py-0.5 rounded-full inline-flex items-center gap-1 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                                <CheckCircle2 className="w-3 h-3" />
+                                Paid Out
                               </div>
                             );
                           case "cancelled":

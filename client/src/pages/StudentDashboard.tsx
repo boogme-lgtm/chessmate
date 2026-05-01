@@ -112,7 +112,7 @@ export function StudentDashboardContent({ user }: { user: any }) {
   }
 
   const upcomingLessons = lessons?.filter((l: any) =>
-    isFuture(new Date(l.scheduledAt)) && !["cancelled", "completed", "declined", "refunded"].includes(l.status)
+    isFuture(new Date(l.scheduledAt)) && !["cancelled", "completed", "declined", "refunded", "released", "disputed"].includes(l.status)
   ) || [];
 
   const pastLessons = lessons?.filter((l: any) =>
@@ -456,10 +456,16 @@ function LessonCard({ lesson, isPast = false, unreadCount = 0 }: LessonCardProps
             <XCircle className="h-3 w-3" /> Cancelled
           </Badge>
         );
-      case "pending_confirmation":
+      case "pending_payment":
+        return (
+          <Badge variant="secondary" className="gap-1 bg-gray-600 text-white">
+            <Timer className="h-3 w-3" /> Awaiting Payment
+          </Badge>
+        );
+      case "payment_collected":
         return (
           <Badge variant="secondary" className="gap-1 bg-yellow-600 text-white">
-            <Timer className="h-3 w-3" /> Awaiting Coach Confirmation
+            <Timer className="h-3 w-3" /> Paid — Awaiting Coach Confirmation
           </Badge>
         );
       case "confirmed":
@@ -468,10 +474,22 @@ function LessonCard({ lesson, isPast = false, unreadCount = 0 }: LessonCardProps
             <CheckCircle2 className="h-3 w-3" /> Confirmed
           </Badge>
         );
-      case "paid":
+      case "disputed":
         return (
-          <Badge variant="default" className="gap-1 bg-blue-600">
-            <CheckCircle2 className="h-3 w-3" /> Payment Held
+          <Badge variant="secondary" className="gap-1 bg-orange-600 text-white">
+            <AlertTriangle className="h-3 w-3" /> Under Review
+          </Badge>
+        );
+      case "refunded":
+        return (
+          <Badge variant="secondary" className="gap-1 bg-purple-600 text-white">
+            <DollarSign className="h-3 w-3" /> Refunded
+          </Badge>
+        );
+      case "released":
+        return (
+          <Badge variant="default" className="gap-1 bg-emerald-600">
+            <CheckCircle2 className="h-3 w-3" /> Complete
           </Badge>
         );
       case "declined":
@@ -495,7 +513,7 @@ function LessonCard({ lesson, isPast = false, unreadCount = 0 }: LessonCardProps
   const canCancel =
     !isPast &&
     hoursUntilLesson > 0 &&
-    ["pending_confirmation", "confirmed", "paid"].includes(lesson.status);
+    ["pending_payment", "payment_collected", "confirmed"].includes(lesson.status);
 
   return (
     <>
@@ -548,8 +566,8 @@ function LessonCard({ lesson, isPast = false, unreadCount = 0 }: LessonCardProps
                   </Button>
                 )}
 
-                {/* Coach has confirmed → student still needs to pay */}
-                {lesson.status === "confirmed" && !isPast && (
+                {/* Student needs to pay (payment-first model) */}
+                {lesson.status === "pending_payment" && !isPast && (
                   <Button
                     size="sm"
                     className="gap-2"
@@ -557,7 +575,7 @@ function LessonCard({ lesson, isPast = false, unreadCount = 0 }: LessonCardProps
                     onClick={() => createCheckout.mutate({ lessonId: lesson.id })}
                   >
                     <DollarSign className="h-4 w-4" />
-                    {createCheckout.isPending ? "Redirecting…" : "Complete Payment"}
+                    {createCheckout.isPending ? "Redirecting…" : "Pay Now"}
                   </Button>
                 )}
 

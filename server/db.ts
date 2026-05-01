@@ -1,4 +1,4 @@
-import { eq, and, desc, sql, gte, lte } from "drizzle-orm";
+import { eq, and, desc, sql, gte, lte, isNotNull, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import {
@@ -467,6 +467,24 @@ export async function updateLessonPaymentIntent(lessonId: number, paymentIntentI
 
   await db.update(lessons)
     .set({ stripePaymentIntentId: paymentIntentId, status: "paid" })
+    .where(eq(lessons.id, lessonId));
+}
+
+/**
+ * Payment-first model: mark lesson as payment_collected.
+ * Sets status, stores the PaymentIntent ID, and resets the confirmation deadline
+ * to 24 hours from now (coach has 24h to accept/decline after payment).
+ */
+export async function updateLessonPaymentCollected(lessonId: number, paymentIntentId: string) {
+  const db = await getDb();
+  if (!db) return;
+
+  await db.update(lessons)
+    .set({
+      stripePaymentIntentId: paymentIntentId,
+      status: "payment_collected",
+      confirmationDeadline: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    })
     .where(eq(lessons.id, lessonId));
 }
 
@@ -1415,4 +1433,36 @@ export async function incrementReferralCodeUses(codeId: number) {
   await db.update(referralCodes)
     .set({ totalUses: sql`${referralCodes.totalUses} + 1` })
     .where(eq(referralCodes.id, codeId));
+}
+
+
+// ============ DISPUTE & PAYOUT HELPERS ============
+
+/**
+ * Get all lessons with a specific status (for admin views).
+ */
+export async function getLessonsByStatus(status: string) {
+  const db = await getDb();
+  if (!db) return [];
+
+  return await db.select().from(lessons).where(eq(lessons.status, status as any));
+}
+
+/**
+ * Get completed lessons where the 24-hour issue window has expired
+ * and no dispute was raised — these are ready for coach payout release.
+ * Only returns lessons that haven't already been paid out (no stripeTransferId).
+ */
+export async function getCompletedLessonsReadyForPayout() {
+  const db = await getDb();
+  if (!db) return [];
+
+  return await db.select().from(lessons).where(
+    and(
+      eq(lessons.status, "completed"),
+      isNotNull(lessons.issueWindowEndsAt),
+      sql`${lessons.issueWindowEndsAt} < NOW()`,
+      isNull(lessons.stripeTransferId),
+    )
+  );
 }

@@ -24,6 +24,7 @@ import { resendWelcomeEmails } from "./resendWelcomeEmails";
 import { storagePut } from "./storage";
 import { sendEmail as sendSimpleEmail, getCoachWelcomeEmail } from "./email";
 import { notifyOwner } from "./_core/notification";
+import { transferToCoach } from "./stripeConnect";
 
 /**
  * Send cancellation confirmation emails to both student and coach.
@@ -1093,7 +1094,9 @@ export const appRouter = router({
         const commissionCents = breakdown.platformFeeCents;
         const coachPayoutCents = breakdown.coachPayoutCents;
 
-        // Create lesson (db.createLesson auto-sets confirmationDeadline to now+24h)
+        // Create lesson as pending_payment — student must pay before coach is notified.
+        // confirmationDeadline is set by db.createLesson (now+24h) but only
+        // starts mattering after payment_collected when the coach sees it.
         const lesson = await db.createLesson({
           studentId: ctx.user.id,
           coachId: input.coachId,
@@ -1104,7 +1107,7 @@ export const appRouter = router({
           amountCents,
           commissionCents,
           coachPayoutCents,
-          status: "pending_confirmation",
+          status: "pending_payment",
         });
 
         // If a coach is booking a lesson as a student for the first time, promote to "both"
@@ -1112,45 +1115,8 @@ export const appRouter = router({
           await db.updateUserType(ctx.user.id, "both");
         }
 
-        // Best-effort "new booking request" email to the coach.
-        (async () => {
-          try {
-            const [coach, student] = await Promise.all([
-              db.getUserById(input.coachId),
-              db.getUserById(ctx.user.id),
-            ]);
-            if (!coach?.email) return;
-            const lessonDate = new Date(input.scheduledAt).toLocaleDateString("en-US", {
-              weekday: "long", year: "numeric", month: "long", day: "numeric",
-            });
-            const lessonTime = new Date(input.scheduledAt).toLocaleTimeString("en-US", {
-              hour: "numeric", minute: "2-digit", hour12: true,
-            });
-            const deadline = new Date(Date.now() + 24 * 60 * 60 * 1000);
-            const confirmByDate = deadline.toLocaleDateString("en-US", {
-              weekday: "long", month: "long", day: "numeric",
-            });
-            const confirmByTime = deadline.toLocaleTimeString("en-US", {
-              hour: "numeric", minute: "2-digit", hour12: true,
-            });
-            await sendEmail({
-              to: coach.email,
-              subject: `New lesson request from ${student?.name || "a student"}`,
-              html: getCoachNewBookingRequestEmail({
-                coachName: coach.name || "Coach",
-                studentName: student?.name || "Student",
-                lessonDate,
-                lessonTime,
-                durationMinutes: input.durationMinutes,
-                coachPayout: `$${(coachPayoutCents / 100).toFixed(2)}`,
-                confirmByDate,
-                confirmByTime,
-              }),
-            });
-          } catch (err) {
-            console.error(`[lesson.book] Failed to send coach new-booking email for lesson ${lesson.id}:`, err);
-          }
-        })();
+        // Coach is NOT notified at booking time. They will be notified
+        // only after the student completes payment (webhook → payment_collected).
 
         // Return complete lesson object to avoid transaction isolation issues
         return { success: true, lessonId: lesson.id, lesson };
@@ -1185,7 +1151,9 @@ export const appRouter = router({
         if (lesson.coachId !== ctx.user.id) {
           throw new TRPCError({ code: "FORBIDDEN", message: "Not your lesson" });
         }
-        if (lesson.status !== "pending_confirmation") {
+        // Payment-first model: coach can only accept PAID booking requests.
+        // Status must be payment_collected (student already paid).
+        if (lesson.status !== "payment_collected") {
           throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Lesson cannot be confirmed in its current state" });
         }
 
@@ -1193,7 +1161,8 @@ export const appRouter = router({
           coachConfirmedAt: new Date(),
         });
 
-        // Notify the student that they can now complete payment.
+        // Notify the student that the coach accepted — lesson is confirmed.
+        // Student already paid, so email says "confirmed" not "complete payment".
         (async () => {
           try {
             const [student, coach] = await Promise.all([
@@ -1209,7 +1178,7 @@ export const appRouter = router({
             });
             await sendEmail({
               to: student.email,
-              subject: `${coach?.name || "Your coach"} accepted your lesson — complete payment`,
+              subject: `${coach?.name || "Your coach"} accepted your lesson — you're all set!`,
               html: getStudentCoachConfirmedEmail({
                 studentName: student.name || "Student",
                 coachName: coach?.name || "Your Coach",
@@ -1228,7 +1197,9 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    // Decline lesson (coach)
+    // Decline lesson (coach) — payment-first model
+    // Coach decline always triggers a FULL refund (100%) regardless of timing,
+    // because the student paid upfront and the coach is choosing not to accept.
     declineAsCoach: coachProcedure
       .input(z.object({
         lessonId: z.number(),
@@ -1242,22 +1213,47 @@ export const appRouter = router({
         if (lesson.coachId !== ctx.user.id) {
           throw new TRPCError({ code: "FORBIDDEN", message: "Not your lesson" });
         }
-        if (lesson.status !== "pending_confirmation") {
+        // Payment-first model: coach can only decline PAID booking requests.
+        if (lesson.status !== "payment_collected") {
           throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Lesson cannot be declined in its current state" });
         }
 
-        const result = await db.cancelLesson(input.lessonId, 'coach', input.reason || 'Declined by coach');
-        // Best-effort cancellation confirmation emails. Awaited so errors are
-        // visible in logs, but wrapped in try/catch inside the helper so they
-        // can't fail the mutation.
+        // Full refund — coach decline is always 100% regardless of timing
+        const refundAmountCents = lesson.amountCents;
+
+        // Mark as declined (not cancelled — this is a coach rejection of a paid request)
+        await db.updateLessonStatus(input.lessonId, "declined", {
+          coachDeclinedAt: new Date(),
+          cancellationReason: input.reason || "Declined by coach",
+          refundAmountCents: refundAmountCents,
+        });
+
+        // Process full Stripe refund
+        if (lesson.stripePaymentIntentId) {
+          try {
+            await stripeService.createRefund(
+              lesson.stripePaymentIntentId,
+              undefined, // full refund
+              "requested_by_customer"
+            );
+            await db.updateLessonStatus(input.lessonId, "declined", {
+              refundProcessedAt: new Date(),
+            });
+          } catch (err) {
+            console.error(`[declineAsCoach] Stripe refund failed for lesson ${input.lessonId}:`, err);
+            // Decline still succeeds — admin can manually process refund
+          }
+        }
+
+        // Best-effort email notifications
         await sendCancellationEmails(
           input.lessonId,
           'coach',
           input.reason || 'Declined by coach',
-          result.refundAmountCents,
-          result.refundPercentage,
+          refundAmountCents,
+          100, // always 100% refund on coach decline
         );
-        return { success: true, refundAmountCents: result.refundAmountCents };
+        return { success: true, refundAmountCents };
       }),
 
     // Cancel lesson (student)
@@ -1290,7 +1286,10 @@ export const appRouter = router({
         };
       }),
 
-    // Confirm completion (student) - releases payment
+    // Confirm completion (student) — payment-first model
+    // Payment was already captured at checkout. This starts the 24-hour
+    // issue window. Coach payout is NOT released here — it happens after
+    // the issue window expires without a dispute.
     confirmCompletion: protectedProcedure
       .input(z.object({
         lessonId: z.number(),
@@ -1305,28 +1304,26 @@ export const appRouter = router({
         if (lesson.studentId !== ctx.user.id) {
           throw new TRPCError({ code: "FORBIDDEN", message: "Not your lesson" });
         }
-        // P0-2: Only paid lessons can be completed. Confirmed (unpaid) lessons
-        // must go through checkout first.
-        if (lesson.status !== "paid") {
-          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Lesson must be paid before it can be completed" });
+        // Payment-first model: only confirmed lessons (coach accepted + student paid)
+        // can be marked as completed.
+        if (lesson.status !== "confirmed") {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Lesson must be confirmed before it can be completed" });
         }
-        // P0-2: Require a valid payment intent — cannot release funds without one
+        // Require a valid payment intent — cannot release funds without one
         if (!lesson.stripePaymentIntentId) {
           throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Payment not recorded for this lesson" });
         }
 
-        // Capture payment (release from escrow)
-        await stripeService.capturePaymentIntent(lesson.stripePaymentIntentId);
+        // NO capturePaymentIntent — payment was already captured at checkout.
+        // Start the 24-hour issue window instead.
+        const issueWindowEnds = new Date();
+        issueWindowEnds.setHours(issueWindowEnds.getHours() + 24);
 
-        // Update lesson status
-        const refundWindowEnds = new Date();
-        refundWindowEnds.setHours(refundWindowEnds.getHours() + 48);
-
-        await db.updateLessonStatus(input.lessonId, "released", {
+        await db.updateLessonStatus(input.lessonId, "completed", {
           studentConfirmedAt: new Date(),
           completedAt: new Date(),
-          refundWindowEndsAt: refundWindowEnds,
-          payoutAt: new Date(),
+          issueWindowEndsAt: issueWindowEnds,
+          // DO NOT set payoutAt — payout happens after issue window
         });
 
         // Create review if provided. Also flip visibility on both reviews
@@ -1352,7 +1349,54 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    // Request refund (within 48-hour window)
+    // Raise issue (student) — within 24-hour issue window after completion
+    // Pauses coach payout and marks lesson as disputed for admin resolution.
+    raiseIssue: protectedProcedure
+      .input(z.object({
+        lessonId: z.number(),
+        reason: z.string().min(1, "Please describe the issue"),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const lesson = await db.getLessonById(input.lessonId);
+        if (!lesson) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
+        }
+        if (lesson.studentId !== ctx.user.id) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Not your lesson" });
+        }
+        // Can only raise issues on completed lessons (during issue window)
+        if (lesson.status !== "completed") {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Issues can only be raised for completed lessons" });
+        }
+        // Check 24-hour issue window
+        if (lesson.issueWindowEndsAt && new Date() > lesson.issueWindowEndsAt) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "The 24-hour issue window has expired",
+          });
+        }
+
+        // Mark as disputed — payout is paused until admin resolves
+        await db.updateLessonStatus(input.lessonId, "disputed", {
+          cancellationReason: input.reason,
+        });
+
+        // Notify admin/owner about the dispute
+        try {
+          const student = await db.getUserById(ctx.user.id);
+          await notifyOwner({
+            title: `Lesson Dispute: #${input.lessonId}`,
+            content: `Student ${student?.name || ctx.user.id} raised an issue for lesson #${input.lessonId}: ${input.reason}`,
+          });
+        } catch (err) {
+          console.error(`[raiseIssue] Failed to notify owner for lesson ${input.lessonId}:`, err);
+        }
+
+        return { success: true };
+      }),
+
+    // LEGACY: Request refund (within 48-hour window) — kept for backward compatibility
+    // New lessons use raiseIssue instead.
     requestRefund: protectedProcedure
       .input(z.object({
         lessonId: z.number(),
@@ -1931,13 +1975,12 @@ export const appRouter = router({
           throw new TRPCError({ code: "FORBIDDEN", message: "Not your lesson" });
         }
 
-        // R2-1: Only allow checkout for lessons that have been confirmed by the coach.
-        // Any other status (pending_confirmation, declined, no_show, disputed, etc.)
-        // must NOT proceed to payment.
-        if (lesson.status !== "confirmed") {
+        // Payment-first model: checkout is allowed only from pending_payment.
+        // Student pays upfront; coach is notified only after payment_collected.
+        if (lesson.status !== "pending_payment") {
           throw new TRPCError({
             code: "PRECONDITION_FAILED",
-            message: `Cannot create checkout: lesson is in '${lesson.status}' state (must be 'confirmed')`,
+            message: `Cannot create checkout: lesson is in '${lesson.status}' state (must be 'pending_payment')`,
           });
         }
 
@@ -2437,6 +2480,129 @@ export const appRouter = router({
             successCount,
             failCount,
           };
+        }),
+    }),
+
+    // ============ DISPUTE RESOLUTION & PAYOUT MANAGEMENT ============
+    disputes: router({
+      // List disputed lessons for admin review
+      list: protectedProcedure
+        .use(({ ctx, next }) => {
+          if (ctx.user.role !== "admin") {
+            throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
+          }
+          return next({ ctx });
+        })
+        .query(async () => {
+          return await db.getLessonsByStatus("disputed");
+        }),
+
+      // List completed lessons ready for payout release (issue window expired, no dispute)
+      pendingPayouts: protectedProcedure
+        .use(({ ctx, next }) => {
+          if (ctx.user.role !== "admin") {
+            throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
+          }
+          return next({ ctx });
+        })
+        .query(async () => {
+          return await db.getCompletedLessonsReadyForPayout();
+        }),
+
+      // Release coach payout — transfers funds from platform to coach's connected account
+      releasePayout: protectedProcedure
+        .input(z.object({ lessonId: z.number() }))
+        .use(({ ctx, next }) => {
+          if (ctx.user.role !== "admin") {
+            throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
+          }
+          return next({ ctx });
+        })
+        .mutation(async ({ input }) => {
+          const lesson = await db.getLessonById(input.lessonId);
+          if (!lesson) {
+            throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
+          }
+          // Can release payout for completed (issue window passed) or disputed (admin override)
+          if (lesson.status !== "completed" && lesson.status !== "disputed") {
+            throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Lesson is not in a payable state" });
+          }
+          if (!lesson.stripePaymentIntentId) {
+            throw new TRPCError({ code: "PRECONDITION_FAILED", message: "No payment recorded for this lesson" });
+          }
+          // Prevent double payout
+          if (lesson.stripeTransferId) {
+            throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Payout already released" });
+          }
+
+          // Look up coach's connected account
+          const coach = await db.getUserById(lesson.coachId);
+          if (!coach?.stripeConnectAccountId) {
+            throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Coach does not have a connected Stripe account" });
+          }
+
+          // Transfer coach payout to their connected account
+          const result = await transferToCoach({
+            accountId: coach.stripeConnectAccountId,
+            amountCents: lesson.coachPayoutCents,
+            currency: lesson.currency || "usd",
+            description: `Payout for lesson #${lesson.id}`,
+            metadata: {
+              lessonId: lesson.id.toString(),
+              coachId: lesson.coachId.toString(),
+              studentId: lesson.studentId.toString(),
+            },
+          });
+
+          if (!result.success) {
+            throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Transfer failed: ${result.error}` });
+          }
+
+          // Mark lesson as released with transfer ID
+          await db.updateLessonTransfer(input.lessonId, result.transferId!);
+
+          return { success: true, transferId: result.transferId };
+        }),
+
+      // Admin: full refund to student (for disputed lessons)
+      refundStudent: protectedProcedure
+        .input(z.object({
+          lessonId: z.number(),
+          amountCents: z.number().optional(), // undefined = full refund
+          reason: z.string().optional(),
+        }))
+        .use(({ ctx, next }) => {
+          if (ctx.user.role !== "admin") {
+            throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
+          }
+          return next({ ctx });
+        })
+        .mutation(async ({ input }) => {
+          const lesson = await db.getLessonById(input.lessonId);
+          if (!lesson) {
+            throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
+          }
+          if (lesson.status !== "disputed" && lesson.status !== "completed") {
+            throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Lesson is not in a refundable state" });
+          }
+          if (!lesson.stripePaymentIntentId) {
+            throw new TRPCError({ code: "PRECONDITION_FAILED", message: "No payment recorded for this lesson" });
+          }
+
+          // Refund the student
+          await stripeService.createRefund(
+            lesson.stripePaymentIntentId,
+            input.amountCents, // undefined = full refund
+            "requested_by_customer"
+          );
+
+          await db.updateLessonStatus(input.lessonId, "refunded", {
+            refundAmountCents: input.amountCents ?? lesson.amountCents,
+            refundProcessedAt: new Date(),
+            cancellationReason: input.reason || "Admin refund",
+          });
+
+          return { success: true, refundAmountCents: input.amountCents ?? lesson.amountCents };
         }),
     }),
     

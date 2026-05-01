@@ -6,8 +6,8 @@
  * than checking source strings.
  *
  * Coverage:
- *  - payment.createCheckout: rejects non-confirmed, idempotent (no duplicate sessions)
- *  - checkout.session.completed webhook: only transitions confirmed → paid
+ *  - payment.createCheckout: rejects non-pending_payment, idempotent (no duplicate sessions)
+ *  - checkout.session.completed webhook: only transitions pending_payment → payment_collected
  *  - lesson.confirmCompletion: rejects unpaid, requires stripePaymentIntentId
  *  - content.recordPurchase: rejects missing metadata, wrong user, wrong item, wrong amount/currency, duplicate PI
  *  - referral.recordSignup: uses ctx.user.id, blocks self-referral, handles duplicate
@@ -28,10 +28,12 @@ vi.mock("./aiVettingService");
 vi.mock("./email");
 vi.mock("./_core/notification");
 vi.mock("./auth");
+vi.mock("./stripeConnect");
 
 import { appRouter } from "./routers";
 import * as db from "./db";
 import * as stripeService from "./stripe";
+import * as stripeConnect from "./stripeConnect";
 import type { TrpcContext } from "./_core/context";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -77,7 +79,7 @@ function makeLessonRow(overrides: Record<string, any> = {}) {
     id: 100,
     studentId: 1,
     coachId: 2,
-    status: "confirmed",
+    status: "pending_payment",
     amountCents: 5000,
     currency: "USD",
     stripePaymentIntentId: null,
@@ -112,16 +114,24 @@ beforeEach(() => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe("payment.createCheckout", () => {
-  it("rejects when lesson status is not 'confirmed'", async () => {
-    vi.mocked(db.getLessonById).mockResolvedValue(makeLessonRow({ status: "pending_confirmation" }));
+  it("rejects when lesson status is not 'pending_payment'", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(makeLessonRow({ status: "confirmed" }));
     const caller = appRouter.createCaller(createContext());
 
     await expect(caller.payment.createCheckout({ lessonId: 100 }))
       .rejects.toThrow("Cannot create checkout");
   });
 
-  it("rejects when lesson status is 'paid' (already paid)", async () => {
-    vi.mocked(db.getLessonById).mockResolvedValue(makeLessonRow({ status: "paid" }));
+  it("rejects when lesson status is 'payment_collected' (already paid)", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(makeLessonRow({ status: "payment_collected" }));
+    const caller = appRouter.createCaller(createContext());
+
+    await expect(caller.payment.createCheckout({ lessonId: 100 }))
+      .rejects.toThrow("Cannot create checkout");
+  });
+
+  it("rejects when lesson status is 'released'", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(makeLessonRow({ status: "released" }));
     const caller = appRouter.createCaller(createContext());
 
     await expect(caller.payment.createCheckout({ lessonId: 100 }))
@@ -130,6 +140,14 @@ describe("payment.createCheckout", () => {
 
   it("rejects when lesson status is 'declined'", async () => {
     vi.mocked(db.getLessonById).mockResolvedValue(makeLessonRow({ status: "declined" }));
+    const caller = appRouter.createCaller(createContext());
+
+    await expect(caller.payment.createCheckout({ lessonId: 100 }))
+      .rejects.toThrow("Cannot create checkout");
+  });
+
+  it("rejects when lesson status is 'refunded'", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(makeLessonRow({ status: "refunded" }));
     const caller = appRouter.createCaller(createContext());
 
     await expect(caller.payment.createCheckout({ lessonId: 100 }))
@@ -188,7 +206,7 @@ describe("payment.createCheckout", () => {
     expect(db.setLessonCheckoutSession).toHaveBeenCalledWith(100, "cs_new_456");
   });
 
-  it("creates new session and persists session ID for confirmed lesson without existing session", async () => {
+  it("creates new session and persists session ID for pending_payment lesson without existing session", async () => {
     vi.mocked(db.getLessonById).mockResolvedValue(makeLessonRow());
     vi.mocked(db.claimLessonCheckoutSlot).mockResolvedValue(true);
     vi.mocked(db.getUserById).mockResolvedValue({
@@ -642,36 +660,36 @@ describe("checkout.session.completed webhook", () => {
     return { req, res };
   }
 
-  it("transitions confirmed lesson to paid", async () => {
-    vi.mocked(db.getLessonById).mockResolvedValue(makeLessonRow({ status: "confirmed" }));
-    vi.mocked(db.updateLessonPaymentIntent).mockResolvedValue(undefined);
-    vi.mocked(db.clearLessonCheckoutSession).mockResolvedValue(undefined);
+  it("transitions pending_payment lesson to payment_collected", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(makeLessonRow({ status: "pending_payment" }));
+    vi.mocked(db.updateLessonPaymentCollected).mockResolvedValue(undefined);
+    vi.mocked(db.clearLessonCheckoutSession).mockResolvedValue(undefined as any);
     vi.mocked(db.getUserById).mockResolvedValue({ id: 1, name: "Student", email: "s@t.com" } as any);
 
     const { req, res } = createWebhookReqRes();
     await handleStripeWebhook(req, res);
 
-    expect(db.updateLessonPaymentIntent).toHaveBeenCalledWith(100, "pi_test_123");
+    expect(db.updateLessonPaymentCollected).toHaveBeenCalledWith(100, "pi_test_123");
     expect(res.json).toHaveBeenCalledWith({ received: true });
   });
 
-  it("does NOT transition pending_confirmation lesson to paid (no-op)", async () => {
-    vi.mocked(db.getLessonById).mockResolvedValue(makeLessonRow({ status: "pending_confirmation" }));
+  it("does NOT transition confirmed lesson (already past payment_collected)", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(makeLessonRow({ status: "confirmed" }));
 
     const { req, res } = createWebhookReqRes();
     await handleStripeWebhook(req, res);
 
-    expect(db.updateLessonPaymentIntent).not.toHaveBeenCalled();
+    expect(db.updateLessonPaymentCollected).not.toHaveBeenCalled();
     expect(res.json).toHaveBeenCalledWith({ received: true });
   });
 
-  it("does NOT transition already-paid lesson (idempotent no-op)", async () => {
-    vi.mocked(db.getLessonById).mockResolvedValue(makeLessonRow({ status: "paid" }));
+  it("does NOT transition already payment_collected lesson (idempotent no-op)", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(makeLessonRow({ status: "payment_collected" }));
 
     const { req, res } = createWebhookReqRes();
     await handleStripeWebhook(req, res);
 
-    expect(db.updateLessonPaymentIntent).not.toHaveBeenCalled();
+    expect(db.updateLessonPaymentCollected).not.toHaveBeenCalled();
   });
 
   it("does NOT transition released/completed lesson", async () => {
@@ -680,7 +698,7 @@ describe("checkout.session.completed webhook", () => {
     const { req, res } = createWebhookReqRes();
     await handleStripeWebhook(req, res);
 
-    expect(db.updateLessonPaymentIntent).not.toHaveBeenCalled();
+    expect(db.updateLessonPaymentCollected).not.toHaveBeenCalled();
   });
 });
 
@@ -688,26 +706,26 @@ describe("checkout.session.completed webhook", () => {
 // lesson.confirmCompletion
 // ═══════════════════════════════════════════════════════════════════════════════
 
-describe("lesson.confirmCompletion", () => {
-  it("rejects when lesson status is 'confirmed' (not yet paid)", async () => {
-    vi.mocked(db.getLessonById).mockResolvedValue(makeLessonRow({ status: "confirmed" }));
+describe("lesson.confirmCompletion (payment-first model)", () => {
+  it("rejects when lesson status is 'payment_collected' (not yet coach-confirmed)", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(makeLessonRow({ status: "payment_collected" }));
     const caller = appRouter.createCaller(createContext());
 
     await expect(caller.lesson.confirmCompletion({ lessonId: 100 }))
-      .rejects.toThrow("Lesson must be paid before it can be completed");
+      .rejects.toThrow("Lesson must be confirmed before it can be completed");
   });
 
-  it("rejects when lesson status is 'pending_confirmation'", async () => {
-    vi.mocked(db.getLessonById).mockResolvedValue(makeLessonRow({ status: "pending_confirmation" }));
+  it("rejects when lesson status is 'pending_payment'", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(makeLessonRow({ status: "pending_payment" }));
     const caller = appRouter.createCaller(createContext());
 
     await expect(caller.lesson.confirmCompletion({ lessonId: 100 }))
-      .rejects.toThrow("Lesson must be paid before it can be completed");
+      .rejects.toThrow("Lesson must be confirmed before it can be completed");
   });
 
-  it("rejects paid lesson without stripePaymentIntentId", async () => {
+  it("rejects confirmed lesson without stripePaymentIntentId", async () => {
     vi.mocked(db.getLessonById).mockResolvedValue(
-      makeLessonRow({ status: "paid", stripePaymentIntentId: null })
+      makeLessonRow({ status: "confirmed", stripePaymentIntentId: null })
     );
     const caller = appRouter.createCaller(createContext());
 
@@ -715,18 +733,214 @@ describe("lesson.confirmCompletion", () => {
       .rejects.toThrow("Payment not recorded for this lesson");
   });
 
-  it("succeeds for paid lesson with stripePaymentIntentId", async () => {
+  it("succeeds for confirmed lesson — starts 24h issue window, does NOT capture payment", async () => {
     vi.mocked(db.getLessonById).mockResolvedValue(
-      makeLessonRow({ status: "paid", stripePaymentIntentId: "pi_valid_123" })
+      makeLessonRow({ status: "confirmed", stripePaymentIntentId: "pi_valid_123" })
     );
-    vi.mocked(stripeService.capturePaymentIntent).mockResolvedValue(undefined as any);
     vi.mocked(db.updateLessonStatus).mockResolvedValue(undefined);
 
     const caller = appRouter.createCaller(createContext());
     const result = await caller.lesson.confirmCompletion({ lessonId: 100 });
 
-    expect(stripeService.capturePaymentIntent).toHaveBeenCalledWith("pi_valid_123");
+    // Payment-first model: NO capturePaymentIntent call (already captured at checkout)
+    expect(stripeService.capturePaymentIntent).not.toHaveBeenCalled();
+    // Status should be set to 'completed' (not 'released')
+    expect(db.updateLessonStatus).toHaveBeenCalledWith(
+      100,
+      "completed",
+      expect.objectContaining({
+        studentConfirmedAt: expect.any(Date),
+        completedAt: expect.any(Date),
+        issueWindowEndsAt: expect.any(Date),
+      })
+    );
+    // Verify issueWindowEndsAt is ~24 hours from now (not 48h)
+    const callArgs = vi.mocked(db.updateLessonStatus).mock.calls[0];
+    const issueWindowEndsAt = (callArgs[2] as any).issueWindowEndsAt as Date;
+    const hoursFromNow = (issueWindowEndsAt.getTime() - Date.now()) / (1000 * 60 * 60);
+    expect(hoursFromNow).toBeGreaterThan(23);
+    expect(hoursFromNow).toBeLessThan(25);
     expect(result).toBeDefined();
+  });
+
+  it("rejects when lesson status is 'released' (already paid out)", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(makeLessonRow({ status: "released" }));
+    const caller = appRouter.createCaller(createContext());
+
+    await expect(caller.lesson.confirmCompletion({ lessonId: 100 }))
+      .rejects.toThrow("Lesson must be confirmed before it can be completed");
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// lesson.confirmAsCoach (payment-first model)
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe("lesson.confirmAsCoach (payment-first model)", () => {
+  function coachContext() {
+    return createContext({ id: 2, role: "user", userType: "coach" });
+  }
+
+  it("rejects when lesson status is 'pending_payment' (not yet paid)", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(makeLessonRow({ status: "pending_payment", coachId: 2 }));
+    const caller = appRouter.createCaller(coachContext());
+
+    await expect(caller.lesson.confirmAsCoach({ lessonId: 100 }))
+      .rejects.toThrow("Lesson cannot be confirmed in its current state");
+  });
+
+  it("rejects when lesson status is 'confirmed' (already accepted)", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(makeLessonRow({ status: "confirmed", coachId: 2 }));
+    const caller = appRouter.createCaller(coachContext());
+
+    await expect(caller.lesson.confirmAsCoach({ lessonId: 100 }))
+      .rejects.toThrow("Lesson cannot be confirmed in its current state");
+  });
+
+  it("succeeds when lesson status is 'payment_collected'", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(
+      makeLessonRow({ status: "payment_collected", coachId: 2, stripePaymentIntentId: "pi_123" })
+    );
+    vi.mocked(db.updateLessonStatus).mockResolvedValue(undefined);
+    vi.mocked(db.getUserById).mockResolvedValue({ id: 1, name: "Student", email: "s@t.com" } as any);
+
+    const caller = appRouter.createCaller(coachContext());
+    const result = await caller.lesson.confirmAsCoach({ lessonId: 100 });
+
+    expect(db.updateLessonStatus).toHaveBeenCalledWith(100, "confirmed", expect.objectContaining({
+      coachConfirmedAt: expect.any(Date),
+    }));
+    expect(result).toEqual({ success: true });
+  });
+
+  it("rejects when coach is not the lesson's coach", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(makeLessonRow({ status: "payment_collected", coachId: 99 }));
+    const caller = appRouter.createCaller(coachContext());
+
+    await expect(caller.lesson.confirmAsCoach({ lessonId: 100 }))
+      .rejects.toThrow("Not your lesson");
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// lesson.declineAsCoach (payment-first model)
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe("lesson.declineAsCoach (payment-first model)", () => {
+  function coachContext() {
+    return createContext({ id: 2, role: "user", userType: "coach" });
+  }
+
+  it("rejects when lesson status is 'pending_payment' (not yet paid)", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(makeLessonRow({ status: "pending_payment", coachId: 2 }));
+    const caller = appRouter.createCaller(coachContext());
+
+    await expect(caller.lesson.declineAsCoach({ lessonId: 100 }))
+      .rejects.toThrow("Lesson cannot be declined in its current state");
+  });
+
+  it("rejects when lesson status is 'confirmed' (already accepted)", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(makeLessonRow({ status: "confirmed", coachId: 2 }));
+    const caller = appRouter.createCaller(coachContext());
+
+    await expect(caller.lesson.declineAsCoach({ lessonId: 100 }))
+      .rejects.toThrow("Lesson cannot be declined in its current state");
+  });
+
+  it("succeeds when lesson status is 'payment_collected' — triggers full refund", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(
+      makeLessonRow({ status: "payment_collected", coachId: 2, stripePaymentIntentId: "pi_decline_123", amountCents: 5000 })
+    );
+    vi.mocked(db.updateLessonStatus).mockResolvedValue(undefined);
+    vi.mocked(stripeService.createRefund).mockResolvedValue({ id: "re_123" } as any);
+    vi.mocked(db.getUserById).mockResolvedValue({ id: 1, name: "Student", email: "s@t.com" } as any);
+
+    const caller = appRouter.createCaller(coachContext());
+    const result = await caller.lesson.declineAsCoach({ lessonId: 100, reason: "Schedule conflict" });
+
+    // Full refund (no amount specified = full)
+    expect(stripeService.createRefund).toHaveBeenCalledWith("pi_decline_123", undefined, "requested_by_customer");
+    // Status set to 'declined'
+    expect(db.updateLessonStatus).toHaveBeenCalledWith(100, "declined", expect.objectContaining({
+      coachDeclinedAt: expect.any(Date),
+      refundAmountCents: 5000,
+    }));
+    expect(result).toEqual({ success: true, refundAmountCents: 5000 });
+  });
+
+  it("decline still succeeds even if Stripe refund fails (admin can retry)", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(
+      makeLessonRow({ status: "payment_collected", coachId: 2, stripePaymentIntentId: "pi_fail_123", amountCents: 5000 })
+    );
+    vi.mocked(db.updateLessonStatus).mockResolvedValue(undefined);
+    vi.mocked(stripeService.createRefund).mockRejectedValue(new Error("Stripe error"));
+    vi.mocked(db.getUserById).mockResolvedValue({ id: 1, name: "Student", email: "s@t.com" } as any);
+
+    const caller = appRouter.createCaller(coachContext());
+    const result = await caller.lesson.declineAsCoach({ lessonId: 100 });
+
+    // Decline still succeeds
+    expect(result).toEqual({ success: true, refundAmountCents: 5000 });
+    // Status was set to declined before refund attempt
+    expect(db.updateLessonStatus).toHaveBeenCalledWith(100, "declined", expect.anything());
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// lesson.raiseIssue (24-hour issue window)
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe("lesson.raiseIssue (24-hour issue window)", () => {
+  it("rejects when lesson status is not 'completed'", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(makeLessonRow({ status: "confirmed" }));
+    const caller = appRouter.createCaller(createContext());
+
+    await expect(caller.lesson.raiseIssue({ lessonId: 100, reason: "Coach was late" }))
+      .rejects.toThrow("Issues can only be raised for completed lessons");
+  });
+
+  it("rejects when 24-hour issue window has expired", async () => {
+    const expiredWindow = new Date();
+    expiredWindow.setHours(expiredWindow.getHours() - 1); // 1 hour ago
+    vi.mocked(db.getLessonById).mockResolvedValue(
+      makeLessonRow({ status: "completed", issueWindowEndsAt: expiredWindow })
+    );
+    const caller = appRouter.createCaller(createContext());
+
+    await expect(caller.lesson.raiseIssue({ lessonId: 100, reason: "Coach was late" }))
+      .rejects.toThrow("The 24-hour issue window has expired");
+  });
+
+  it("succeeds within issue window — marks as disputed", async () => {
+    const futureWindow = new Date();
+    futureWindow.setHours(futureWindow.getHours() + 12); // 12 hours from now
+    vi.mocked(db.getLessonById).mockResolvedValue(
+      makeLessonRow({ status: "completed", issueWindowEndsAt: futureWindow })
+    );
+    vi.mocked(db.updateLessonStatus).mockResolvedValue(undefined);
+    vi.mocked(db.getUserById).mockResolvedValue({ id: 1, name: "Student" } as any);
+    const { notifyOwner } = await import("./_core/notification");
+    vi.mocked(notifyOwner).mockResolvedValue(true);
+
+    const caller = appRouter.createCaller(createContext());
+    const result = await caller.lesson.raiseIssue({ lessonId: 100, reason: "Coach was late" });
+
+    expect(db.updateLessonStatus).toHaveBeenCalledWith(100, "disputed", expect.objectContaining({
+      cancellationReason: "Coach was late",
+    }));
+    expect(result).toEqual({ success: true });
+  });
+
+  it("rejects when student is not the lesson's student", async () => {
+    const futureWindow = new Date();
+    futureWindow.setHours(futureWindow.getHours() + 12);
+    vi.mocked(db.getLessonById).mockResolvedValue(
+      makeLessonRow({ status: "completed", studentId: 99, issueWindowEndsAt: futureWindow })
+    );
+    const caller = appRouter.createCaller(createContext());
+
+    await expect(caller.lesson.raiseIssue({ lessonId: 100, reason: "Issue" }))
+      .rejects.toThrow("Not your lesson");
   });
 });
 

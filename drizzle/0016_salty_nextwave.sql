@@ -1,0 +1,2 @@
+ALTER TABLE `lessons` MODIFY COLUMN `status` enum('pending_payment','payment_collected','pending_confirmation','confirmed','declined','paid','in_progress','completed','released','cancelled','no_show','disputed','refunded') DEFAULT 'pending_payment';--> statement-breakpoint
+ALTER TABLE `lessons` ADD `issueWindowEndsAt` timestamp;

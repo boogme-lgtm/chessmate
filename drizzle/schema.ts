@@ -181,20 +181,23 @@ export const lessons = mysqlTable("lessons", {
   notes: text("notes"),
   meetingUrl: text("meetingUrl"),
   
-  // Status flow: pending_confirmation -> confirmed -> paid -> in_progress -> completed/cancelled/disputed
+  // Status flow: pending_payment -> payment_collected -> confirmed -> completed -> released
+  //              (declined/cancelled/disputed/refunded are terminal or paused states)
   status: mysqlEnum("status", [
-    "pending_confirmation", // Awaiting coach confirmation (Airbnb-style)
-    "confirmed",    // Coach confirmed, awaiting payment
-    "declined",     // Coach declined the booking
-    "paid",         // Payment held in escrow
-    "in_progress",  // Lesson happening
-    "completed",    // Lesson done, awaiting reviews
-    "released",     // Payment released to coach
-    "cancelled",    // Cancelled before lesson
-    "no_show",      // Student or coach didn't show up
-    "disputed",     // Student raised dispute
-    "refunded"      // Refund processed
-  ]).default("pending_confirmation"),
+    "pending_payment",      // Lesson draft, awaiting student checkout
+    "payment_collected",    // Student paid, coach notified, awaiting coach acceptance
+    "pending_confirmation", // LEGACY: old flow awaiting coach confirmation before payment
+    "confirmed",            // Coach accepted, lesson scheduled
+    "declined",             // Coach declined, refund initiated
+    "paid",                 // LEGACY: old flow payment held
+    "in_progress",          // LEGACY: lesson happening
+    "completed",            // Lesson done, 24-hour issue window active
+    "released",             // Issue window passed, coach payout released
+    "cancelled",            // Cancelled before completion, refund per policy
+    "no_show",              // Student or coach didn't show up
+    "disputed",             // Student raised issue during window, payout paused
+    "refunded"              // Student refunded
+  ]).default("pending_payment"),
   
   // Pricing snapshot (at time of booking)
   amountCents: int("amountCents").notNull(),
@@ -220,7 +223,9 @@ export const lessons = mysqlTable("lessons", {
   completedAt: timestamp("completedAt"),
   payoutAt: timestamp("payoutAt"),
   
-  // Refund window (48 hours after completion)
+  // 24-hour issue window after lesson completion (replaces old 48h refund window)
+  issueWindowEndsAt: timestamp("issueWindowEndsAt"),
+  // LEGACY: old 48-hour refund window
   refundWindowEndsAt: timestamp("refundWindowEndsAt"),
   
   // Reminder tracking

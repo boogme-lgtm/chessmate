@@ -788,3 +788,15 @@
 ## Sprint 26: Security Patches Round 8 (Codex Review)
 - [x] R8-1: Distinguish transient Stripe errors from resource-not-found in createCheckout catch block
 - [x] R8-2: Add behavioral tests for transient error and missing/invalid session paths
+
+## Sprint 27: Payment Model Redesign — Protected Checkout + Delayed Coach Payout
+- [x] PM-1: Audit existing codebase (schema, booking, payment, webhooks, coach actions, completion, frontend)
+- [x] PM-2: DB schema migration — new status enum (pending_payment, payment_collected, confirmed, declined, cancelled, completed, disputed, released, refunded), payout columns, issue window fields
+- [x] PM-3: Backend — booking creates pending_payment, createCheckout from pending_payment, webhook marks payment_collected, notify coach
+- [x] PM-4: Backend — coach accept (payment_collected → confirmed), coach decline (→ refund + declined), confirmation deadline expiry (→ refund)
+- [x] PM-5: Backend — completion starts 24h issue window, dispute handling, payout release after window
+- [x] PM-6: Backend — admin resolution (release payout, full/partial refund), refund rules
+- [x] PM-7: Frontend — booking flow, dashboard labels, checkout copy, coach request UI, terminology updates
+- [x] PM-8: Email templates and notification copy updates
+- [x] PM-9: Behavioral tests for all 15 required scenarios
+- [x] PM-10: Verification, Stripe architecture documentation, migration mapping

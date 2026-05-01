@@ -111,11 +111,11 @@ async function handleCheckoutCompleted(event: Stripe.Event) {
       console.error(`[Webhook] Lesson ${lessonId} not found in DB (metadata points to missing record)`);
       return;
     }
-    // R2-2: Strict state transition — only allow confirmed → paid.
-    // Any other status (pending_confirmation, declined, no_show, disputed, etc.)
-    // must NOT be promoted to paid. Already-paid/terminal states are idempotent no-ops.
-    if (currentLesson.status !== 'confirmed') {
-      console.log(`[Webhook] Lesson ${lessonId} is in state '${currentLesson.status}', not 'confirmed'. Refusing to mark paid (no-op).`);
+    // Payment-first model: checkout.session.completed transitions pending_payment → payment_collected.
+    // The student has paid upfront; now the coach is notified about the booking request.
+    // Idempotent: if already past pending_payment, this is a no-op (webhook retry safe).
+    if (currentLesson.status !== 'pending_payment') {
+      console.log(`[Webhook] Lesson ${lessonId} is in state '${currentLesson.status}', not 'pending_payment'. No-op.`);
       return;
     }
 
@@ -131,14 +131,12 @@ async function handleCheckoutCompleted(event: Stripe.Event) {
       return;
     }
 
-    // Atomic update: set status = 'paid' AND store payment intent in a single DB call.
-    // Previously this was two sequential updates which left a brief window where the
-    // lesson was `confirmed` without a payment intent, causing "Lesson not found" race
-    // on the success page.
-    await db.updateLessonPaymentIntent(lessonId, paymentIntentId);
-    // R3-2: Clear the checkout session reference now that payment is complete
+    // Atomic update: set status = 'payment_collected' AND store payment intent.
+    // Also reset the confirmation deadline to 24h from now (coach has 24h to accept/decline).
+    await db.updateLessonPaymentCollected(lessonId, paymentIntentId);
+    // Clear the checkout session reference now that payment is complete
     await db.clearLessonCheckoutSession(lessonId);
-    console.log(`[Webhook] Lesson ${lessonId} marked 'paid' with payment intent ${paymentIntentId}`);
+    console.log(`[Webhook] Lesson ${lessonId} marked 'payment_collected' with payment intent ${paymentIntentId}`);
 
     // Send confirmation emails to student and coach
     try {
@@ -163,10 +161,10 @@ async function handleCheckoutCompleted(event: Stripe.Event) {
           const amount = `$${(lesson.amountCents / 100).toFixed(2)}`;
           const coachPayout = `$${(lesson.coachPayoutCents / 100).toFixed(2)}`;
           
-          // Send student confirmation
+          // Send student payment receipt
           await sendEmail({
             to: student.email,
-            subject: `Lesson Confirmed with ${coach.name || 'Your Coach'}`,
+            subject: `Payment received — awaiting coach confirmation`,
             html: getStudentBookingConfirmationEmail(
               student.name || 'Student',
               coach.name || 'Your Coach',
@@ -177,12 +175,20 @@ async function handleCheckoutCompleted(event: Stripe.Event) {
               lesson.id
             )
           });
-          console.log(`[Webhook] ✉️ Sent confirmation email to student: ${student.email}`);
+          console.log(`[Webhook] ✉️ Sent payment receipt to student: ${student.email}`);
           
-          // Send coach notification
+          // NOW notify coach about the paid booking request.
+          // Coach was NOT notified at booking time — only after student pays.
+          const deadline = new Date(Date.now() + 24 * 60 * 60 * 1000);
+          const confirmByDate = deadline.toLocaleDateString('en-US', {
+            weekday: 'long', month: 'long', day: 'numeric',
+          });
+          const confirmByTime = deadline.toLocaleTimeString('en-US', {
+            hour: 'numeric', minute: '2-digit', hour12: true,
+          });
           await sendEmail({
             to: coach.email,
-            subject: `New Lesson Booking from ${student.name || 'a Student'}`,
+            subject: `New paid lesson request from ${student.name || 'a Student'}`,
             html: getCoachBookingNotificationEmail(
               coach.name || 'Coach',
               student.name || 'Student',
@@ -193,7 +199,7 @@ async function handleCheckoutCompleted(event: Stripe.Event) {
               lesson.id
             )
           });
-          console.log(`[Webhook] ✉️ Sent booking notification to coach: ${coach.email}`);
+          console.log(`[Webhook] ✉️ Sent paid booking request to coach: ${coach.email}`);
         }
       }
     } catch (emailError) {
@@ -224,14 +230,15 @@ async function handlePaymentSucceeded(event: Stripe.Event) {
 
   console.log(`[Webhook] Found lesson ${lesson.id} for payment ${paymentIntent.id} (current status: ${lesson.status})`);
 
-  // R2-2: Strict state transition — only allow confirmed → paid.
-  if (lesson.status !== 'confirmed') {
-    console.log(`[Webhook] Lesson ${lesson.id} is in state '${lesson.status}', not 'confirmed'. Refusing to mark paid via payment_intent.succeeded (no-op).`);
+  // Payment-first model: payment_intent.succeeded also transitions pending_payment → payment_collected.
+  // This is a backup path — checkout.session.completed usually fires first.
+  if (lesson.status !== 'pending_payment') {
+    console.log(`[Webhook] Lesson ${lesson.id} is in state '${lesson.status}', not 'pending_payment'. No-op via payment_intent.succeeded.`);
     return;
   }
 
-  await db.updateLessonStatus(lesson.id, 'paid');
-  console.log(`[Webhook] Lesson ${lesson.id} marked 'paid' via payment_intent.succeeded`);
+  await db.updateLessonPaymentCollected(lesson.id, paymentIntent.id);
+  console.log(`[Webhook] Lesson ${lesson.id} marked 'payment_collected' via payment_intent.succeeded`);
 }
 
 /**
@@ -249,7 +256,7 @@ async function handlePaymentFailed(event: Stripe.Event) {
   
   if (lesson) {
     // Only cancel if lesson hasn't already progressed past payment
-    if (lesson.status && ['pending_confirmation', 'confirmed'].includes(lesson.status)) {
+    if (lesson.status && ['pending_payment', 'pending_confirmation', 'confirmed'].includes(lesson.status)) {
       console.log(`[Webhook] Marking lesson ${lesson.id} as payment failed`);
       await db.updateLessonStatus(lesson.id, 'cancelled');
       console.log(`[Webhook] Lesson ${lesson.id} cancelled due to payment failure`);
