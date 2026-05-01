@@ -210,7 +210,7 @@ export const appRouter = router({
       return { code };
     }),
 
-    // P2-2: Bind referral recording to authenticated user (not client-supplied userId)
+    // P2-2 + R2-4: Bind referral recording to authenticated user with duplicate prevention
     recordSignup: protectedProcedure
       .input(z.object({ code: z.string().min(1) }))
       .mutation(async ({ ctx, input }) => {
@@ -218,9 +218,20 @@ export const appRouter = router({
         if (!ref) return { success: false };
         // Prevent self-referral
         if (ref.coachId === ctx.user.id) return { success: false };
-        await db.createReferral({ referralCodeId: ref.id, referredUserId: ctx.user.id });
+
+        // R2-4: Handle duplicate gracefully — unique constraint on referredUserId
+        // means the same user can only be referred once (idempotent).
+        try {
+          await db.createReferral({ referralCodeId: ref.id, referredUserId: ctx.user.id });
+        } catch (err: any) {
+          // MySQL duplicate entry error (ER_DUP_ENTRY = 1062)
+          if (err?.errno === 1062 || err?.code === 'ER_DUP_ENTRY') {
+            return { success: true, alreadyReferred: true };
+          }
+          throw err;
+        }
         await db.incrementReferralCodeUses(ref.id);
-        return { success: true };
+        return { success: true, alreadyReferred: false };
       }),
 
     validateCode: publicProcedure
@@ -1819,7 +1830,7 @@ export const appRouter = router({
           return { success: true, alreadyOwned: true };
         }
 
-        // P1-2: Verify the PaymentIntent with Stripe before recording the purchase.
+        // P1-2 + R2-3: Verify the PaymentIntent with Stripe before recording the purchase.
         // Do NOT trust client-supplied amount or status.
         const { stripe } = await import("./stripe");
         let paymentIntent;
@@ -1834,35 +1845,70 @@ export const appRouter = router({
           throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Payment has not succeeded" });
         }
 
-        // Verify metadata matches this user and content item
+        // R2-3: HARD-require metadata fields — missing metadata = reject (not soft check)
         const metaUserId = paymentIntent.metadata?.user_id;
         const metaContentId = paymentIntent.metadata?.content_item_id;
-        if (metaUserId && metaUserId !== String(ctx.user.id)) {
+        const metaType = paymentIntent.metadata?.type;
+
+        if (!metaUserId) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "PaymentIntent missing required metadata: user_id" });
+        }
+        if (metaUserId !== String(ctx.user.id)) {
           throw new TRPCError({ code: "FORBIDDEN", message: "Payment does not belong to this user" });
         }
-        if (metaContentId && metaContentId !== String(input.contentItemId)) {
+        if (!metaContentId) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "PaymentIntent missing required metadata: content_item_id" });
+        }
+        if (metaContentId !== String(input.contentItemId)) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "Payment does not match this content item" });
         }
-
-        // Verify this payment intent hasn't been used for another purchase
-        const dupeResult: any = await database.execute(sql`
-          SELECT id FROM content_purchases
-          WHERE stripePaymentIntentId = ${input.stripePaymentIntentId}
-          LIMIT 1
-        `);
-        if ((dupeResult[0]?.length ?? 0) > 0) {
-          throw new TRPCError({ code: "CONFLICT", message: "This payment has already been used" });
+        if (!metaType || metaType !== "content_purchase") {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "PaymentIntent missing or invalid metadata: type (must be 'content_purchase')" });
         }
 
-        // Use the verified amount from Stripe, not client-supplied
-        const amountPaidCents = paymentIntent.amount;
-
-        await database.execute(sql`
-          INSERT INTO content_purchases
-            (contentItemId, userId, unlockMethod, amountPaidCents, stripePaymentIntentId)
-          VALUES
-            (${input.contentItemId}, ${ctx.user.id}, 'purchase', ${amountPaidCents}, ${input.stripePaymentIntentId})
+        // R2-3: Verify amount and currency against the content_items table
+        const contentItemResult: any = await database.execute(sql`
+          SELECT priceCents, currency FROM content_items
+          WHERE id = ${input.contentItemId}
+          LIMIT 1
         `);
+        const contentItem = contentItemResult[0]?.[0];
+        if (!contentItem) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Content item not found" });
+        }
+        const expectedCurrency = (contentItem.currency || "USD").toLowerCase();
+        const actualCurrency = (paymentIntent.currency || "").toLowerCase();
+        if (paymentIntent.amount !== contentItem.priceCents) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Payment amount mismatch: expected ${contentItem.priceCents}, got ${paymentIntent.amount}`,
+          });
+        }
+        if (actualCurrency !== expectedCurrency) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Payment currency mismatch: expected ${expectedCurrency}, got ${actualCurrency}`,
+          });
+        }
+
+        // R2-3: Insert with DB unique constraint handling for idempotency.
+        // The schema now has a unique index on stripePaymentIntentId.
+        // A duplicate key error means this payment was already recorded — treat as idempotent success.
+        const amountPaidCents = paymentIntent.amount;
+        try {
+          await database.execute(sql`
+            INSERT INTO content_purchases
+              (contentItemId, userId, unlockMethod, amountPaidCents, stripePaymentIntentId)
+            VALUES
+              (${input.contentItemId}, ${ctx.user.id}, 'purchase', ${amountPaidCents}, ${input.stripePaymentIntentId})
+          `);
+        } catch (insertErr: any) {
+          // MySQL duplicate entry error code: ER_DUP_ENTRY (1062)
+          if (insertErr?.errno === 1062 || insertErr?.code === 'ER_DUP_ENTRY') {
+            return { success: true, alreadyOwned: true };
+          }
+          throw insertErr;
+        }
         return { success: true, alreadyOwned: false };
       }),
   }),
@@ -1883,6 +1929,16 @@ export const appRouter = router({
         
         if (lesson.studentId !== ctx.user.id) {
           throw new TRPCError({ code: "FORBIDDEN", message: "Not your lesson" });
+        }
+
+        // R2-1: Only allow checkout for lessons that have been confirmed by the coach.
+        // Any other status (pending_confirmation, declined, no_show, disputed, etc.)
+        // must NOT proceed to payment.
+        if (lesson.status !== "confirmed") {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: `Cannot create checkout: lesson is in '${lesson.status}' state (must be 'confirmed')`,
+          });
         }
 
         // Get coach info

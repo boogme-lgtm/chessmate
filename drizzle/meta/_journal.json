@@ -85,6 +85,20 @@
       "when": 1777246887327,
       "tag": "0011_harsh_paladin",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "5",
+      "when": 1777652103164,
+      "tag": "0012_blushing_stature",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "5",
+      "when": 1777652168002,
+      "tag": "0013_overjoyed_lenny_balinger",
+      "breakpoints": true
     }
   ]
 }

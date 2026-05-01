@@ -1,0 +1,1 @@
+ALTER TABLE `content_purchases` ADD CONSTRAINT `content_purchases_stripePaymentIntentId_unique` UNIQUE(`stripePaymentIntentId`);

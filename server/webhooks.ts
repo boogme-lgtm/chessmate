@@ -111,12 +111,11 @@ async function handleCheckoutCompleted(event: Stripe.Event) {
       console.error(`[Webhook] Lesson ${lessonId} not found in DB (metadata points to missing record)`);
       return;
     }
-    // Idempotency: skip if lesson is already at or past the 'paid' stage.
-    // NOTE: 'confirmed' is intentionally NOT in this list — it is the expected
-    // pre-payment state after coach acceptance. The webhook must transition
-    // confirmed → paid when checkout completes.
-    if (currentLesson.status && ['paid', 'in_progress', 'completed', 'released', 'cancelled', 'refunded'].includes(currentLesson.status)) {
-      console.log(`[Webhook] Lesson ${lessonId} already in state '${currentLesson.status}', skipping duplicate event`);
+    // R2-2: Strict state transition — only allow confirmed → paid.
+    // Any other status (pending_confirmation, declined, no_show, disputed, etc.)
+    // must NOT be promoted to paid. Already-paid/terminal states are idempotent no-ops.
+    if (currentLesson.status !== 'confirmed') {
+      console.log(`[Webhook] Lesson ${lessonId} is in state '${currentLesson.status}', not 'confirmed'. Refusing to mark paid (no-op).`);
       return;
     }
 
@@ -223,9 +222,9 @@ async function handlePaymentSucceeded(event: Stripe.Event) {
 
   console.log(`[Webhook] Found lesson ${lesson.id} for payment ${paymentIntent.id} (current status: ${lesson.status})`);
 
-  // Only promote to 'paid' if not already at or past it. Idempotency guard.
-  if (lesson.status && ['paid', 'in_progress', 'completed', 'released', 'cancelled', 'refunded'].includes(lesson.status)) {
-    console.log(`[Webhook] Lesson ${lesson.id} already in state '${lesson.status}', no action`);
+  // R2-2: Strict state transition — only allow confirmed → paid.
+  if (lesson.status !== 'confirmed') {
+    console.log(`[Webhook] Lesson ${lesson.id} is in state '${lesson.status}', not 'confirmed'. Refusing to mark paid via payment_intent.succeeded (no-op).`);
     return;
   }
 

@@ -742,10 +742,18 @@
 - [x] Fix /coach/onboarding auth redirect loop — replaced hard redirect with inline auth gate (sign in / create account / back to home)
 
 ## Sprint 19: Security Remediation (Codex GPT-5.5 Audit)
-- [ ] P0-1: Fix webhook — confirmed lessons must transition to paid on checkout.session.completed
-- [ ] P0-2: Require status=paid + stripePaymentIntentId for lesson.confirmCompletion
-- [ ] P1-1: Remove pricingTier from client-controllable coach.updateProfile
-- [ ] P1-2: Verify Stripe PaymentIntent server-side for content.recordPurchase
-- [ ] P1-3: Dependency audit — resolve critical/high advisories
-- [ ] P2-1: Require password for account deletion on password-backed accounts
-- [ ] P2-2: Bind referral.recordSignup to authenticated user (remove public userId param)
+- [x] P0-1: Fix webhook — confirmed lessons must transition to paid on checkout.session.completed
+- [x] P0-2: Require status=paid + stripePaymentIntentId for lesson.confirmCompletion
+- [x] P1-1: Remove pricingTier from client-controllable coach.updateProfile
+- [x] P1-2: Verify Stripe PaymentIntent server-side for content.recordPurchase
+- [x] P1-3: Dependency audit — resolve critical/high advisories
+- [x] P2-1: Require password for account deletion on password-backed accounts
+- [x] P2-2: Bind referral.recordSignup to authenticated user (remove public userId param)
+
+## Sprint 20: Security Patches Round 2 (Codex Review)
+- [x] R2-1: payment.createCheckout guard — require lesson.status === 'confirmed'
+- [x] R2-2: webhook checkout.session.completed — only transition confirmed → paid, reject all others
+- [x] R2-3: Harden content.recordPurchase — hard metadata requirements, amount/currency verify, DB unique constraint
+- [x] R2-4: Harden referral.recordSignup — duplicate prevention with uniqueness constraint
+- [x] R2-5: Replace shallow string tests with behavioral tests
+- [x] R2-6: Run pnpm audit --prod and capture exact output

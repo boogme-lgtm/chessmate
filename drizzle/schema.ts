@@ -735,7 +735,8 @@ export const contentPurchases = mysqlTable("content_purchases", {
   // How it was unlocked
   unlockMethod: mysqlEnum("unlockMethod", ["purchase", "subscription", "free", "gift"]).notNull(),
   amountPaidCents: int("amountPaidCents").default(0).notNull(),
-  stripePaymentIntentId: varchar("stripePaymentIntentId", { length: 64 }),
+  // R2-3: Unique constraint prevents duplicate PaymentIntent use (race-safe)
+  stripePaymentIntentId: varchar("stripePaymentIntentId", { length: 64 }).unique(),
 
   unlockedAt: timestamp("unlockedAt").defaultNow().notNull(),
 });
@@ -766,7 +767,8 @@ export type InsertReferralCode = typeof referralCodes.$inferInsert;
 export const referrals = mysqlTable("referrals", {
   id: int("id").autoincrement().primaryKey(),
   referralCodeId: int("referralCodeId").notNull(),
-  referredUserId: int("referredUserId").notNull(),
+  // R2-4: unique constraint on referredUserId prevents same user from being referred multiple times
+  referredUserId: int("referredUserId").notNull().unique(),
   status: mysqlEnum("status", ["signed_up", "lesson_completed", "reward_issued"]).default("signed_up").notNull(),
   rewardIssuedAt: timestamp("rewardIssuedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
