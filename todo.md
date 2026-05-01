@@ -763,3 +763,8 @@
 - [x] R3-2: Make lesson checkout creation idempotent (DB-side guard)
 - [x] R3-3: Update audit-report.md with accurate post-fix audit results
 - [x] R3-4: Replace source-string tests with behavioral tRPC procedure tests
+
+## Sprint 22: Security Patches Round 4 (Codex Review)
+- [x] R4-1: Handle completed checkout sessions without clearing (return PRECONDITION_FAILED)
+- [x] R4-2: Add DB-level atomic guard + Stripe idempotency key to prevent concurrent duplicate sessions
+- [x] R4-3: Add behavioral tests for completed session and concurrent race scenarios

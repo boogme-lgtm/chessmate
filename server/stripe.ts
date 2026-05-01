@@ -225,6 +225,7 @@ export async function createLessonCheckoutSession(params: {
   coachPricingTier: string | null | undefined;
   successUrl: string;
   cancelUrl: string;
+  idempotencyKey?: string;
 }) {
   const {
     lessonPriceCents,
@@ -237,6 +238,7 @@ export async function createLessonCheckoutSession(params: {
     coachPricingTier,
     successUrl,
     cancelUrl,
+    idempotencyKey,
   } = params;
 
   const feePercent = getTierFeePercent(coachPricingTier ?? DEFAULT_PRICING_TIER);
@@ -302,7 +304,7 @@ export async function createLessonCheckoutSession(params: {
       lessonId: lessonId.toString(),
       studentId: studentId.toString(),
     },
-  });
+  }, idempotencyKey ? { idempotencyKey } : undefined);
 
   return session;
 }

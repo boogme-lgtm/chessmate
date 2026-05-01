@@ -1941,8 +1941,11 @@ export const appRouter = router({
           });
         }
 
-        // R3-2: Idempotency guard — if there's already an active checkout session,
-        // verify it's still open. If open, return it. If expired/complete, clear it.
+        // R4-1 + R4-2: Idempotency guard with race-safe session creation.
+        // If there's already an active checkout session, handle by status:
+        //   - open: return it (idempotent)
+        //   - complete: payment is processing, do NOT clear or recreate
+        //   - expired/other: clear and proceed to create new session
         if (lesson.stripeCheckoutSessionId) {
           try {
             const existingSession = await stripeService.retrieveCheckoutSession(lesson.stripeCheckoutSessionId);
@@ -1950,47 +1953,91 @@ export const appRouter = router({
               // Session is still payable — return it instead of creating a new one
               return { url: existingSession.url };
             }
-            // Session expired or completed — clear the reference and proceed
+            if (existingSession.status === "complete") {
+              // Payment completed but webhook hasn't processed yet.
+              // Do NOT clear — the webhook will handle the transition.
+              throw new TRPCError({
+                code: "PRECONDITION_FAILED",
+                message: "Payment is already processing for this lesson. Please wait for confirmation.",
+              });
+            }
+            // Session is expired — safe to clear and recreate
             await db.clearLessonCheckoutSession(lesson.id);
-          } catch {
+          } catch (err) {
+            // Re-throw TRPCErrors (our own PRECONDITION_FAILED above)
+            if (err instanceof TRPCError) throw err;
             // Session retrieval failed (deleted/invalid) — clear and proceed
             await db.clearLessonCheckoutSession(lesson.id);
           }
         }
 
-        // Get coach info
-        const coach = await db.getUserById(lesson.coachId);
-        if (!coach?.stripeConnectAccountId) {
+        // R4-2: Atomic compare-and-set to prevent concurrent session creation.
+        // Only set stripeCheckoutSessionId if it's currently NULL (no other request won the race).
+        const claimed = await db.claimLessonCheckoutSlot(lesson.id);
+        if (!claimed) {
+          // Another concurrent request already claimed the slot.
+          // Re-read the lesson to return the session that won the race.
+          const updatedLesson = await db.getLessonById(lesson.id);
+          if (updatedLesson?.stripeCheckoutSessionId) {
+            try {
+              const raceWinnerSession = await stripeService.retrieveCheckoutSession(updatedLesson.stripeCheckoutSessionId);
+              if (raceWinnerSession.status === "open") {
+                return { url: raceWinnerSession.url };
+              }
+            } catch { /* fall through to error */ }
+          }
           throw new TRPCError({
-            code: "PRECONDITION_FAILED",
-            message: "Coach has not completed payment setup",
+            code: "CONFLICT",
+            message: "Another checkout is being created for this lesson. Please try again.",
           });
         }
 
-        const student = await db.getUserById(ctx.user.id);
-        // Use VITE_FRONTEND_URL which works in both dev and production
-        const baseUrl = process.env.VITE_FRONTEND_URL || "http://localhost:3000";
+        try {
+          // Get coach info
+          const coach = await db.getUserById(lesson.coachId);
+          if (!coach?.stripeConnectAccountId) {
+            // Release the slot since we can't proceed
+            await db.clearLessonCheckoutSession(lesson.id);
+            throw new TRPCError({
+              code: "PRECONDITION_FAILED",
+              message: "Coach has not completed payment setup",
+            });
+          }
 
-        // Look up coach's pricing tier so checkout uses tier-based fee.
-        const coachProfile = await db.getCoachProfileByUserId(lesson.coachId);
+          const student = await db.getUserById(ctx.user.id);
+          // Use VITE_FRONTEND_URL which works in both dev and production
+          const baseUrl = process.env.VITE_FRONTEND_URL || "http://localhost:3000";
 
-        const session = await stripeService.createLessonCheckoutSession({
-          lessonPriceCents: lesson.amountCents,
-          currency: lesson.currency || "USD",
-          lessonId: lesson.id,
-          studentId: ctx.user.id,
-          studentEmail: student?.email || "",
-          coachName: coach.name || "Coach",
-          coachConnectAccountId: coach.stripeConnectAccountId,
-          coachPricingTier: coachProfile?.pricingTier,
-          successUrl: `${baseUrl}/lessons/${lesson.id}?payment=success`,
-          cancelUrl: `${baseUrl}/lessons/${lesson.id}?payment=cancelled`,
-        });
+          // Look up coach's pricing tier so checkout uses tier-based fee.
+          const coachProfile = await db.getCoachProfileByUserId(lesson.coachId);
 
-        // R3-2: Persist the session ID so subsequent calls are idempotent
-        await db.setLessonCheckoutSession(lesson.id, session.id);
+          // R4-2: Use Stripe idempotency key keyed by lesson ID to ensure
+          // only one Checkout Session is created even if our CAS has a gap.
+          const session = await stripeService.createLessonCheckoutSession({
+            lessonPriceCents: lesson.amountCents,
+            currency: lesson.currency || "USD",
+            lessonId: lesson.id,
+            studentId: ctx.user.id,
+            studentEmail: student?.email || "",
+            coachName: coach.name || "Coach",
+            coachConnectAccountId: coach.stripeConnectAccountId,
+            coachPricingTier: coachProfile?.pricingTier,
+            successUrl: `${baseUrl}/lessons/${lesson.id}?payment=success`,
+            cancelUrl: `${baseUrl}/lessons/${lesson.id}?payment=cancelled`,
+            idempotencyKey: `lesson_checkout_${lesson.id}`,
+          });
 
-        return { url: session.url };
+          // Persist the actual session ID (overwrite the placeholder)
+          await db.setLessonCheckoutSession(lesson.id, session.id);
+
+          return { url: session.url };
+        } catch (err) {
+          // If session creation fails, release the slot
+          if (!(err instanceof TRPCError)) {
+            await db.clearLessonCheckoutSession(lesson.id);
+          }
+          throw err;
+        }
       }),
   }),
 

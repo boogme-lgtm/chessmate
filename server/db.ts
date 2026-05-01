@@ -483,6 +483,25 @@ export async function updateLessonTransfer(lessonId: number, transferId: string)
     .where(eq(lessons.id, lessonId));
 }
 
+// R4-2: Atomic compare-and-set — claim the checkout slot only if it's currently NULL.
+// Returns true if this call won the race (slot was NULL and is now set to a placeholder).
+// Returns false if another request already claimed it.
+export async function claimLessonCheckoutSlot(lessonId: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+
+  // Atomic UPDATE ... WHERE stripeCheckoutSessionId IS NULL
+  // Only succeeds (affectedRows > 0) if no other request has set the value.
+  const result: any = await db.execute(sql`
+    UPDATE lessons
+    SET stripe_checkout_session_id = '__pending__'
+    WHERE id = ${lessonId} AND stripe_checkout_session_id IS NULL
+  `);
+  // mysql2 returns [ResultSetHeader, ...] where affectedRows indicates success
+  const affectedRows = result?.[0]?.affectedRows ?? result?.affectedRows ?? 0;
+  return affectedRows > 0;
+}
+
 // R3-2: Set active checkout session on a lesson (idempotency guard)
 export async function setLessonCheckoutSession(lessonId: number, sessionId: string) {
   const db = await getDb();

@@ -163,6 +163,7 @@ describe("payment.createCheckout", () => {
       url: null,
     } as any);
     vi.mocked(db.clearLessonCheckoutSession).mockResolvedValue(undefined);
+    vi.mocked(db.claimLessonCheckoutSlot).mockResolvedValue(true);
     vi.mocked(db.getUserById).mockResolvedValue({
       id: 2, name: "Coach", email: "coach@test.com",
       stripeConnectAccountId: "acct_coach123",
@@ -179,12 +180,14 @@ describe("payment.createCheckout", () => {
 
     expect(result.url).toBe("https://checkout.stripe.com/new");
     expect(db.clearLessonCheckoutSession).toHaveBeenCalledWith(100);
+    expect(db.claimLessonCheckoutSlot).toHaveBeenCalledWith(100);
     expect(stripeService.createLessonCheckoutSession).toHaveBeenCalled();
     expect(db.setLessonCheckoutSession).toHaveBeenCalledWith(100, "cs_new_456");
   });
 
   it("creates new session and persists session ID for confirmed lesson without existing session", async () => {
     vi.mocked(db.getLessonById).mockResolvedValue(makeLessonRow());
+    vi.mocked(db.claimLessonCheckoutSlot).mockResolvedValue(true);
     vi.mocked(db.getUserById).mockResolvedValue({
       id: 2, name: "Coach", email: "coach@test.com",
       stripeConnectAccountId: "acct_coach123",
@@ -200,7 +203,98 @@ describe("payment.createCheckout", () => {
     const result = await caller.payment.createCheckout({ lessonId: 100 });
 
     expect(result.url).toBe("https://checkout.stripe.com/fresh");
+    expect(db.claimLessonCheckoutSlot).toHaveBeenCalledWith(100);
     expect(db.setLessonCheckoutSession).toHaveBeenCalledWith(100, "cs_fresh_789");
+  });
+
+  // R4-1: Completed session must NOT be cleared or replaced
+  it("throws PRECONDITION_FAILED when existing session is complete (payment processing)", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(
+      makeLessonRow({ stripeCheckoutSessionId: "cs_complete_001" })
+    );
+    vi.mocked(stripeService.retrieveCheckoutSession).mockResolvedValue({
+      id: "cs_complete_001",
+      status: "complete",
+      url: null,
+    } as any);
+
+    const caller = appRouter.createCaller(createContext());
+    await expect(caller.payment.createCheckout({ lessonId: 100 }))
+      .rejects.toMatchObject({
+        code: "PRECONDITION_FAILED",
+        message: expect.stringContaining("Payment is already processing"),
+      });
+
+    // Must NOT clear the session or create a new one
+    expect(db.clearLessonCheckoutSession).not.toHaveBeenCalled();
+    expect(stripeService.createLessonCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  // R4-2: Concurrent race — second caller loses the CAS and gets CONFLICT
+  it("rejects concurrent duplicate checkout when claimLessonCheckoutSlot returns false", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(makeLessonRow());
+    // First call claimed the slot; this simulates the second concurrent call
+    vi.mocked(db.claimLessonCheckoutSlot).mockResolvedValue(false);
+    // The race winner already persisted a session
+    vi.mocked(db.getLessonById).mockResolvedValueOnce(makeLessonRow());
+    // Second getLessonById call (re-read after losing race) returns the winner's session
+    vi.mocked(db.getLessonById).mockResolvedValueOnce(
+      makeLessonRow({ stripeCheckoutSessionId: "cs_winner_session" })
+    );
+    vi.mocked(stripeService.retrieveCheckoutSession).mockResolvedValue({
+      id: "cs_winner_session",
+      status: "open",
+      url: "https://checkout.stripe.com/winner",
+    } as any);
+
+    const caller = appRouter.createCaller(createContext());
+    const result = await caller.payment.createCheckout({ lessonId: 100 });
+
+    // Should return the winner's session URL instead of creating a new one
+    expect(result.url).toBe("https://checkout.stripe.com/winner");
+    // Must NOT call createLessonCheckoutSession (no duplicate session)
+    expect(stripeService.createLessonCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  // R4-2: Concurrent race — when race winner's session can't be retrieved, throw CONFLICT
+  it("throws CONFLICT when race loser cannot retrieve winner's session", async () => {
+    vi.mocked(db.getLessonById)
+      .mockResolvedValueOnce(makeLessonRow()) // initial read
+      .mockResolvedValueOnce(makeLessonRow({ stripeCheckoutSessionId: "cs_winner_gone" })); // re-read after losing
+    vi.mocked(db.claimLessonCheckoutSlot).mockResolvedValue(false);
+    vi.mocked(stripeService.retrieveCheckoutSession).mockRejectedValue(new Error("not found"));
+
+    const caller = appRouter.createCaller(createContext());
+    await expect(caller.payment.createCheckout({ lessonId: 100 }))
+      .rejects.toMatchObject({
+        code: "CONFLICT",
+        message: expect.stringContaining("Another checkout is being created"),
+      });
+
+    expect(stripeService.createLessonCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  // R4-2: Idempotency key is passed to Stripe
+  it("passes idempotencyKey keyed by lesson ID to createLessonCheckoutSession", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(makeLessonRow());
+    vi.mocked(db.claimLessonCheckoutSlot).mockResolvedValue(true);
+    vi.mocked(db.getUserById).mockResolvedValue({
+      id: 2, name: "Coach", email: "coach@test.com",
+      stripeConnectAccountId: "acct_coach123",
+    } as any);
+    vi.mocked(db.getCoachProfileByUserId).mockResolvedValue({ pricingTier: "standard" } as any);
+    vi.mocked(stripeService.createLessonCheckoutSession).mockResolvedValue({
+      id: "cs_idem_001",
+      url: "https://checkout.stripe.com/idem",
+    } as any);
+    vi.mocked(db.setLessonCheckoutSession).mockResolvedValue(undefined);
+
+    const caller = appRouter.createCaller(createContext());
+    await caller.payment.createCheckout({ lessonId: 100 });
+
+    expect(stripeService.createLessonCheckoutSession).toHaveBeenCalledWith(
+      expect.objectContaining({ idempotencyKey: "lesson_checkout_100" })
+    );
   });
 });
 
