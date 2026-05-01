@@ -176,7 +176,11 @@ export const appRouter = router({
       .mutation(async ({ ctx, input }) => {
         const user = await db.getUserById(ctx.user.id);
         if (!user) throw new TRPCError({ code: "NOT_FOUND" });
-        if (user.password && input.password) {
+        // P2-1: If user has a password (non-OAuth), REQUIRE it for deletion
+        if (user.password) {
+          if (!input.password) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Password is required to delete your account" });
+          }
           const { comparePassword } = await import("./auth");
           const valid = await comparePassword(input.password, user.password);
           if (!valid) {
@@ -206,12 +210,15 @@ export const appRouter = router({
       return { code };
     }),
 
-    recordSignup: publicProcedure
-      .input(z.object({ code: z.string().min(1), userId: z.number() }))
-      .mutation(async ({ input }) => {
+    // P2-2: Bind referral recording to authenticated user (not client-supplied userId)
+    recordSignup: protectedProcedure
+      .input(z.object({ code: z.string().min(1) }))
+      .mutation(async ({ ctx, input }) => {
         const ref = await db.getReferralCodeByCode(input.code);
         if (!ref) return { success: false };
-        await db.createReferral({ referralCodeId: ref.id, referredUserId: input.userId });
+        // Prevent self-referral
+        if (ref.coachId === ctx.user.id) return { success: false };
+        await db.createReferral({ referralCodeId: ref.id, referredUserId: ctx.user.id });
         await db.incrementReferralCodeUses(ref.id);
         return { success: true };
       }),
@@ -841,7 +848,8 @@ export const appRouter = router({
         experienceYears: z.number().min(0).max(50).optional(),
         languages: z.array(z.string()).optional(),
         hourlyRateCents: z.number().min(500).max(100000).optional(),
-        pricingTier: z.enum(["free", "pro", "elite"]).optional(),
+        // P1-1: pricingTier removed from client input — tier changes are server-owned
+        // (subscription billing or admin-only). Coaches cannot self-select lower fees.
         availabilitySchedule: z.record(z.string(), z.object({
           enabled: z.boolean(),
           slots: z.array(z.object({ start: z.string(), end: z.string() })),
@@ -898,13 +906,9 @@ export const appRouter = router({
         if (input.onboardingCompleted) coachUpdate.onboardingCompletedAt = new Date();
         if (input.profileActive) coachUpdate.profileActivatedAt = new Date();
         if (input.guidelinesAgreed) coachUpdate.guidelinesAgreedAt = new Date();
-        // Keep legacy commissionRate in sync with the new pricingTier so old
-        // booking code paths that read commissionRate stay consistent.
-        // TODO: implement tier subscription billing for Pro/Elite — until
-        // then all coaches effectively run on Free tier pricing in production.
-        if (input.pricingTier) {
-          coachUpdate.commissionRate = PRICING_TIERS[input.pricingTier as PricingTier].platformFeePercent;
-        }
+        // P1-1: pricingTier is server-owned. Coaches cannot change their commission
+        // rate through profile updates. Tier changes happen only through subscription
+        // billing or admin action. All coaches default to Free tier until billing is live.
 
         if (Object.keys(coachUpdate).length > 0) {
           await db.updateCoachProfile(ctx.user.id, coachUpdate as any);
@@ -1290,14 +1294,18 @@ export const appRouter = router({
         if (lesson.studentId !== ctx.user.id) {
           throw new TRPCError({ code: "FORBIDDEN", message: "Not your lesson" });
         }
-        if (!["confirmed", "paid"].includes(lesson.status)) {
-          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Lesson cannot be completed in its current state" });
+        // P0-2: Only paid lessons can be completed. Confirmed (unpaid) lessons
+        // must go through checkout first.
+        if (lesson.status !== "paid") {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Lesson must be paid before it can be completed" });
+        }
+        // P0-2: Require a valid payment intent — cannot release funds without one
+        if (!lesson.stripePaymentIntentId) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Payment not recorded for this lesson" });
         }
 
         // Capture payment (release from escrow)
-        if (lesson.stripePaymentIntentId) {
-          await stripeService.capturePaymentIntent(lesson.stripePaymentIntentId);
-        }
+        await stripeService.capturePaymentIntent(lesson.stripePaymentIntentId);
 
         // Update lesson status
         const refundWindowEnds = new Date();
@@ -1795,7 +1803,6 @@ export const appRouter = router({
       .input(z.object({
         contentItemId: z.number(),
         stripePaymentIntentId: z.string(),
-        amountPaidCents: z.number().int().nonnegative(),
       }))
       .mutation(async ({ ctx, input }) => {
         const database = await db.getDb();
@@ -1812,11 +1819,49 @@ export const appRouter = router({
           return { success: true, alreadyOwned: true };
         }
 
+        // P1-2: Verify the PaymentIntent with Stripe before recording the purchase.
+        // Do NOT trust client-supplied amount or status.
+        const { stripe } = await import("./stripe");
+        let paymentIntent;
+        try {
+          paymentIntent = await stripe.paymentIntents.retrieve(input.stripePaymentIntentId);
+        } catch (err) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid payment intent ID" });
+        }
+
+        // Verify payment succeeded
+        if (paymentIntent.status !== "succeeded") {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Payment has not succeeded" });
+        }
+
+        // Verify metadata matches this user and content item
+        const metaUserId = paymentIntent.metadata?.user_id;
+        const metaContentId = paymentIntent.metadata?.content_item_id;
+        if (metaUserId && metaUserId !== String(ctx.user.id)) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Payment does not belong to this user" });
+        }
+        if (metaContentId && metaContentId !== String(input.contentItemId)) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Payment does not match this content item" });
+        }
+
+        // Verify this payment intent hasn't been used for another purchase
+        const dupeResult: any = await database.execute(sql`
+          SELECT id FROM content_purchases
+          WHERE stripePaymentIntentId = ${input.stripePaymentIntentId}
+          LIMIT 1
+        `);
+        if ((dupeResult[0]?.length ?? 0) > 0) {
+          throw new TRPCError({ code: "CONFLICT", message: "This payment has already been used" });
+        }
+
+        // Use the verified amount from Stripe, not client-supplied
+        const amountPaidCents = paymentIntent.amount;
+
         await database.execute(sql`
           INSERT INTO content_purchases
             (contentItemId, userId, unlockMethod, amountPaidCents, stripePaymentIntentId)
           VALUES
-            (${input.contentItemId}, ${ctx.user.id}, 'purchase', ${input.amountPaidCents}, ${input.stripePaymentIntentId})
+            (${input.contentItemId}, ${ctx.user.id}, 'purchase', ${amountPaidCents}, ${input.stripePaymentIntentId})
         `);
         return { success: true, alreadyOwned: false };
       }),

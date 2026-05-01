@@ -740,3 +740,12 @@
 ## Sprint 18: Navigation & Auth UX Fixes
 - [x] Fix "For Coaches" nav button — changed from /coaches to /for-coaches (coach recruitment landing)
 - [x] Fix /coach/onboarding auth redirect loop — replaced hard redirect with inline auth gate (sign in / create account / back to home)
+
+## Sprint 19: Security Remediation (Codex GPT-5.5 Audit)
+- [ ] P0-1: Fix webhook — confirmed lessons must transition to paid on checkout.session.completed
+- [ ] P0-2: Require status=paid + stripePaymentIntentId for lesson.confirmCompletion
+- [ ] P1-1: Remove pricingTier from client-controllable coach.updateProfile
+- [ ] P1-2: Verify Stripe PaymentIntent server-side for content.recordPurchase
+- [ ] P1-3: Dependency audit — resolve critical/high advisories
+- [ ] P2-1: Require password for account deletion on password-backed accounts
+- [ ] P2-2: Bind referral.recordSignup to authenticated user (remove public userId param)

@@ -111,7 +111,11 @@ async function handleCheckoutCompleted(event: Stripe.Event) {
       console.error(`[Webhook] Lesson ${lessonId} not found in DB (metadata points to missing record)`);
       return;
     }
-    if (currentLesson.status && ['paid', 'confirmed', 'in_progress', 'completed', 'released', 'cancelled', 'refunded'].includes(currentLesson.status)) {
+    // Idempotency: skip if lesson is already at or past the 'paid' stage.
+    // NOTE: 'confirmed' is intentionally NOT in this list — it is the expected
+    // pre-payment state after coach acceptance. The webhook must transition
+    // confirmed → paid when checkout completes.
+    if (currentLesson.status && ['paid', 'in_progress', 'completed', 'released', 'cancelled', 'refunded'].includes(currentLesson.status)) {
       console.log(`[Webhook] Lesson ${lessonId} already in state '${currentLesson.status}', skipping duplicate event`);
       return;
     }
