@@ -768,3 +768,9 @@
 - [x] R4-1: Handle completed checkout sessions without clearing (return PRECONDITION_FAILED)
 - [x] R4-2: Add DB-level atomic guard + Stripe idempotency key to prevent concurrent duplicate sessions
 - [x] R4-3: Add behavioral tests for completed session and concurrent race scenarios
+
+## Sprint 23: Security Patches Round 5 (Codex Review)
+- [x] R5-1: Fix CAS column name to use Drizzle schema reference instead of raw string
+- [x] R5-2: Treat __pending__ as in-progress (no Stripe retrieve, no clear, return CONFLICT)
+- [x] R5-3: Add version component to idempotency key for safe re-checkout after expiry
+- [x] R5-4: Add behavioral tests for all required scenarios

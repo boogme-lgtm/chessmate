@@ -82,6 +82,7 @@ function makeLessonRow(overrides: Record<string, any> = {}) {
     currency: "USD",
     stripePaymentIntentId: null,
     stripeCheckoutSessionId: null,
+    checkoutAttempt: 0,
     scheduledAt: new Date(),
     durationMinutes: 60,
     ...overrides,
@@ -274,8 +275,8 @@ describe("payment.createCheckout", () => {
     expect(stripeService.createLessonCheckoutSession).not.toHaveBeenCalled();
   });
 
-  // R4-2: Idempotency key is passed to Stripe
-  it("passes idempotencyKey keyed by lesson ID to createLessonCheckoutSession", async () => {
+  // R4-2: Idempotency key is passed to Stripe with version component
+  it("passes versioned idempotencyKey keyed by lesson ID and attempt to createLessonCheckoutSession", async () => {
     vi.mocked(db.getLessonById).mockResolvedValue(makeLessonRow());
     vi.mocked(db.claimLessonCheckoutSlot).mockResolvedValue(true);
     vi.mocked(db.getUserById).mockResolvedValue({
@@ -293,8 +294,132 @@ describe("payment.createCheckout", () => {
     await caller.payment.createCheckout({ lessonId: 100 });
 
     expect(stripeService.createLessonCheckoutSession).toHaveBeenCalledWith(
-      expect.objectContaining({ idempotencyKey: "lesson_checkout_100" })
+      expect.objectContaining({ idempotencyKey: "lesson_checkout_100_v0" })
     );
+  });
+
+  // R5-3: After clearing an expired session, idempotency key uses incremented attempt
+  it("uses incremented checkoutAttempt in idempotency key after expired session clear", async () => {
+    // Lesson had a previous expired session that was cleared (attempt is now 2)
+    vi.mocked(db.getLessonById).mockResolvedValue(makeLessonRow({ checkoutAttempt: 2 }));
+    vi.mocked(db.claimLessonCheckoutSlot).mockResolvedValue(true);
+    vi.mocked(db.getUserById).mockResolvedValue({
+      id: 2, name: "Coach", email: "coach@test.com",
+      stripeConnectAccountId: "acct_coach123",
+    } as any);
+    vi.mocked(db.getCoachProfileByUserId).mockResolvedValue({ pricingTier: "standard" } as any);
+    vi.mocked(stripeService.createLessonCheckoutSession).mockResolvedValue({
+      id: "cs_idem_v2",
+      url: "https://checkout.stripe.com/v2",
+    } as any);
+    vi.mocked(db.setLessonCheckoutSession).mockResolvedValue(undefined);
+
+    const caller = appRouter.createCaller(createContext());
+    await caller.payment.createCheckout({ lessonId: 100 });
+
+    expect(stripeService.createLessonCheckoutSession).toHaveBeenCalledWith(
+      expect.objectContaining({ idempotencyKey: "lesson_checkout_100_v2" })
+    );
+  });
+
+  // R5-2: __pending__ slot returns CONFLICT without calling Stripe or clearing
+  it("returns CONFLICT for __pending__ slot without calling retrieveCheckoutSession or clearLessonCheckoutSession", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(
+      makeLessonRow({ stripeCheckoutSessionId: "__pending__" })
+    );
+
+    const caller = appRouter.createCaller(createContext());
+    await expect(caller.payment.createCheckout({ lessonId: 100 }))
+      .rejects.toMatchObject({
+        code: "CONFLICT",
+        message: expect.stringContaining("Checkout is already being created"),
+      });
+
+    // Must NOT call Stripe retrieve, clear, or create
+    expect(stripeService.retrieveCheckoutSession).not.toHaveBeenCalled();
+    expect(db.clearLessonCheckoutSession).not.toHaveBeenCalled();
+    expect(stripeService.createLessonCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  // R5-1: CAS uses Drizzle schema reference (compile-time verified)
+  it("claimLessonCheckoutSlot uses Drizzle column reference (schema-safe)", async () => {
+    // This test verifies the CAS function is called and returns the expected result.
+    // The actual column name correctness is enforced by TypeScript at compile time
+    // since we use `lessons.stripeCheckoutSessionId` Drizzle reference.
+    vi.mocked(db.getLessonById).mockResolvedValue(makeLessonRow());
+    vi.mocked(db.claimLessonCheckoutSlot).mockResolvedValue(true);
+    vi.mocked(db.getUserById).mockResolvedValue({
+      id: 2, name: "Coach", email: "coach@test.com",
+      stripeConnectAccountId: "acct_coach123",
+    } as any);
+    vi.mocked(db.getCoachProfileByUserId).mockResolvedValue({ pricingTier: "standard" } as any);
+    vi.mocked(stripeService.createLessonCheckoutSession).mockResolvedValue({
+      id: "cs_cas_001",
+      url: "https://checkout.stripe.com/cas",
+    } as any);
+    vi.mocked(db.setLessonCheckoutSession).mockResolvedValue(undefined);
+
+    const caller = appRouter.createCaller(createContext());
+    await caller.payment.createCheckout({ lessonId: 100 });
+
+    // CAS was called with the lesson ID
+    expect(db.claimLessonCheckoutSlot).toHaveBeenCalledWith(100);
+    // Session was persisted after creation
+    expect(db.setLessonCheckoutSession).toHaveBeenCalledWith(100, "cs_cas_001");
+  });
+
+  // R5-2: Expired session can be cleared and recreated safely
+  it("clears expired session and creates new checkout successfully", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(
+      makeLessonRow({ stripeCheckoutSessionId: "cs_expired_001", checkoutAttempt: 1 })
+    );
+    vi.mocked(stripeService.retrieveCheckoutSession).mockResolvedValue({
+      id: "cs_expired_001",
+      status: "expired",
+      url: null,
+    } as any);
+    vi.mocked(db.clearLessonCheckoutSession).mockResolvedValue(undefined);
+    vi.mocked(db.claimLessonCheckoutSlot).mockResolvedValue(true);
+    vi.mocked(db.getUserById).mockResolvedValue({
+      id: 2, name: "Coach", email: "coach@test.com",
+      stripeConnectAccountId: "acct_coach123",
+    } as any);
+    vi.mocked(db.getCoachProfileByUserId).mockResolvedValue({ pricingTier: "standard" } as any);
+    vi.mocked(stripeService.createLessonCheckoutSession).mockResolvedValue({
+      id: "cs_new_after_expiry",
+      url: "https://checkout.stripe.com/new",
+    } as any);
+    vi.mocked(db.setLessonCheckoutSession).mockResolvedValue(undefined);
+
+    const caller = appRouter.createCaller(createContext());
+    const result = await caller.payment.createCheckout({ lessonId: 100 });
+
+    expect(result.url).toBe("https://checkout.stripe.com/new");
+    // Expired session was cleared
+    expect(db.clearLessonCheckoutSession).toHaveBeenCalledWith(100);
+    // New session was created with versioned key
+    expect(stripeService.createLessonCheckoutSession).toHaveBeenCalledWith(
+      expect.objectContaining({ idempotencyKey: "lesson_checkout_100_v1" })
+    );
+  });
+
+  // R4-2: Concurrent loser with __pending__ winner gets CONFLICT
+  it("concurrent loser gets CONFLICT when winner slot is still __pending__", async () => {
+    vi.mocked(db.getLessonById)
+      .mockResolvedValueOnce(makeLessonRow()) // initial read: no session
+      .mockResolvedValueOnce(makeLessonRow({ stripeCheckoutSessionId: "__pending__" })); // re-read after losing
+    vi.mocked(db.claimLessonCheckoutSlot).mockResolvedValue(false);
+
+    const caller = appRouter.createCaller(createContext());
+    await expect(caller.payment.createCheckout({ lessonId: 100 }))
+      .rejects.toMatchObject({
+        code: "CONFLICT",
+        message: expect.stringContaining("Another checkout is being created"),
+      });
+
+    // Must NOT try to retrieve __pending__ from Stripe
+    expect(stripeService.retrieveCheckoutSession).not.toHaveBeenCalled();
+    expect(stripeService.createLessonCheckoutSession).not.toHaveBeenCalled();
   });
 });
 

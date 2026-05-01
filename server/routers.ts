@@ -1941,12 +1941,20 @@ export const appRouter = router({
           });
         }
 
-        // R4-1 + R4-2: Idempotency guard with race-safe session creation.
-        // If there's already an active checkout session, handle by status:
-        //   - open: return it (idempotent)
-        //   - complete: payment is processing, do NOT clear or recreate
-        //   - expired/other: clear and proceed to create new session
+        // R5-2: Idempotency guard with race-safe session creation.
+        // Handle existing stripeCheckoutSessionId by value:
+        //   - "__pending__": another request is creating a session right now
+        //   - real session ID: check Stripe status (open/complete/expired)
         if (lesson.stripeCheckoutSessionId) {
+          // R5-2: If the slot contains "__pending__", another request is in-flight.
+          // Do NOT call Stripe retrieve, do NOT clear. Return CONFLICT immediately.
+          if (lesson.stripeCheckoutSessionId === "__pending__") {
+            throw new TRPCError({
+              code: "CONFLICT",
+              message: "Checkout is already being created for this lesson. Please try again shortly.",
+            });
+          }
+
           try {
             const existingSession = await stripeService.retrieveCheckoutSession(lesson.stripeCheckoutSessionId);
             if (existingSession.status === "open") {
@@ -1964,7 +1972,7 @@ export const appRouter = router({
             // Session is expired — safe to clear and recreate
             await db.clearLessonCheckoutSession(lesson.id);
           } catch (err) {
-            // Re-throw TRPCErrors (our own PRECONDITION_FAILED above)
+            // Re-throw TRPCErrors (our own errors above)
             if (err instanceof TRPCError) throw err;
             // Session retrieval failed (deleted/invalid) — clear and proceed
             await db.clearLessonCheckoutSession(lesson.id);
@@ -1978,7 +1986,7 @@ export const appRouter = router({
           // Another concurrent request already claimed the slot.
           // Re-read the lesson to return the session that won the race.
           const updatedLesson = await db.getLessonById(lesson.id);
-          if (updatedLesson?.stripeCheckoutSessionId) {
+          if (updatedLesson?.stripeCheckoutSessionId && updatedLesson.stripeCheckoutSessionId !== "__pending__") {
             try {
               const raceWinnerSession = await stripeService.retrieveCheckoutSession(updatedLesson.stripeCheckoutSessionId);
               if (raceWinnerSession.status === "open") {
@@ -2011,8 +2019,10 @@ export const appRouter = router({
           // Look up coach's pricing tier so checkout uses tier-based fee.
           const coachProfile = await db.getCoachProfileByUserId(lesson.coachId);
 
-          // R4-2: Use Stripe idempotency key keyed by lesson ID to ensure
-          // only one Checkout Session is created even if our CAS has a gap.
+          // R5-3: Use versioned Stripe idempotency key so that after an expired session
+          // is cleared, a new session can be created without hitting Stripe's 24h idempotency window.
+          // The checkoutAttempt counter increments each time we successfully clear an expired session.
+          const attempt = lesson.checkoutAttempt ?? 0;
           const session = await stripeService.createLessonCheckoutSession({
             lessonPriceCents: lesson.amountCents,
             currency: lesson.currency || "USD",
@@ -2024,7 +2034,7 @@ export const appRouter = router({
             coachPricingTier: coachProfile?.pricingTier,
             successUrl: `${baseUrl}/lessons/${lesson.id}?payment=success`,
             cancelUrl: `${baseUrl}/lessons/${lesson.id}?payment=cancelled`,
-            idempotencyKey: `lesson_checkout_${lesson.id}`,
+            idempotencyKey: `lesson_checkout_${lesson.id}_v${attempt}`,
           });
 
           // Persist the actual session ID (overwrite the placeholder)

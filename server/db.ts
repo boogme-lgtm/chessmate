@@ -483,7 +483,8 @@ export async function updateLessonTransfer(lessonId: number, transferId: string)
     .where(eq(lessons.id, lessonId));
 }
 
-// R4-2: Atomic compare-and-set — claim the checkout slot only if it's currently NULL.
+// R5-1: Atomic compare-and-set — claim the checkout slot only if it's currently NULL.
+// Uses Drizzle column references to ensure column name matches schema.
 // Returns true if this call won the race (slot was NULL and is now set to a placeholder).
 // Returns false if another request already claimed it.
 export async function claimLessonCheckoutSlot(lessonId: number): Promise<boolean> {
@@ -492,10 +493,11 @@ export async function claimLessonCheckoutSlot(lessonId: number): Promise<boolean
 
   // Atomic UPDATE ... WHERE stripeCheckoutSessionId IS NULL
   // Only succeeds (affectedRows > 0) if no other request has set the value.
+  // Uses Drizzle column references so TypeScript catches any column name mismatch.
   const result: any = await db.execute(sql`
-    UPDATE lessons
-    SET stripe_checkout_session_id = '__pending__'
-    WHERE id = ${lessonId} AND stripe_checkout_session_id IS NULL
+    UPDATE ${lessons}
+    SET ${lessons.stripeCheckoutSessionId} = '__pending__'
+    WHERE ${lessons.id} = ${lessonId} AND ${lessons.stripeCheckoutSessionId} IS NULL
   `);
   // mysql2 returns [ResultSetHeader, ...] where affectedRows indicates success
   const affectedRows = result?.[0]?.affectedRows ?? result?.affectedRows ?? 0;
@@ -512,13 +514,18 @@ export async function setLessonCheckoutSession(lessonId: number, sessionId: stri
     .where(eq(lessons.id, lessonId));
 }
 
-// R3-2: Clear checkout session (e.g., on expiry or after payment)
+// R5-3: Clear checkout session and increment attempt counter.
+// The attempt counter ensures the next Stripe idempotency key is unique,
+// allowing legitimate re-checkout after an expired session is cleared.
 export async function clearLessonCheckoutSession(lessonId: number) {
   const db = await getDb();
   if (!db) return;
 
   await db.update(lessons)
-    .set({ stripeCheckoutSessionId: null })
+    .set({
+      stripeCheckoutSessionId: null,
+      checkoutAttempt: sql`${lessons.checkoutAttempt} + 1`,
+    })
     .where(eq(lessons.id, lessonId));
 }
 
