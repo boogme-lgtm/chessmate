@@ -779,3 +779,8 @@
 - [x] R6-1: Make clearLessonCheckoutSession return new checkoutAttempt value
 - [x] R6-2: Use returned attempt value in createCheckout idempotency key (not stale in-memory value)
 - [x] R6-3: Add behavioral test for expired session using incremented attempt in idempotency key
+
+## Sprint 25: Security Patches Round 7 (Codex Review)
+- [x] R7-1: Add clearLessonCheckoutSessionIfMatches (conditional atomic clear with WHERE session = expected)
+- [x] R7-2: Update createCheckout to use conditional clear and handle 0-row result (re-read + CONFLICT)
+- [x] R7-3: Add behavioral tests for concurrent expired-session race

@@ -514,9 +514,43 @@ export async function setLessonCheckoutSession(lessonId: number, sessionId: stri
     .where(eq(lessons.id, lessonId));
 }
 
-// R6-1: Clear checkout session and increment attempt counter.
-// Returns the new checkoutAttempt value so callers use the fresh value
-// in the Stripe idempotency key (not the stale in-memory value).
+// R7-1: Conditional atomic clear — only clears if the current session ID matches expectedSessionId.
+// This prevents a concurrent request from wiping out a __pending__ slot claimed by another request.
+// Returns { cleared: boolean, checkoutAttempt: number }.
+export async function clearLessonCheckoutSessionIfMatches(
+  lessonId: number,
+  expectedSessionId: string
+): Promise<{ cleared: boolean; checkoutAttempt: number }> {
+  const db = await getDb();
+  if (!db) return { cleared: false, checkoutAttempt: 0 };
+
+  const result = await db.update(lessons)
+    .set({
+      stripeCheckoutSessionId: null,
+      checkoutAttempt: sql`${lessons.checkoutAttempt} + 1`,
+    })
+    .where(
+      and(
+        eq(lessons.id, lessonId),
+        eq(lessons.stripeCheckoutSessionId, expectedSessionId)
+      )
+    );
+
+  // MySQL returns affectedRows; if 0, the session ID didn't match (race lost)
+  const affectedRows = (result as any)[0]?.affectedRows ?? (result as any).affectedRows ?? 0;
+  if (affectedRows === 0) {
+    return { cleared: false, checkoutAttempt: 0 };
+  }
+
+  // Read back the incremented value to return it
+  const [row] = await db.select({ checkoutAttempt: lessons.checkoutAttempt })
+    .from(lessons)
+    .where(eq(lessons.id, lessonId));
+  return { cleared: true, checkoutAttempt: row?.checkoutAttempt ?? 0 };
+}
+
+// R7-1: Unconditional clear for webhook use (after payment succeeds, we know the session is ours).
+// Used only by the webhook handler where we own the session and there's no race concern.
 export async function clearLessonCheckoutSession(lessonId: number): Promise<number> {
   const db = await getDb();
   if (!db) return 0;
@@ -528,7 +562,6 @@ export async function clearLessonCheckoutSession(lessonId: number): Promise<numb
     })
     .where(eq(lessons.id, lessonId));
 
-  // Read back the incremented value to return it
   const [row] = await db.select({ checkoutAttempt: lessons.checkoutAttempt })
     .from(lessons)
     .where(eq(lessons.id, lessonId));

@@ -1959,8 +1959,12 @@ export const appRouter = router({
             });
           }
 
+          // R7-2: Store the expected session ID for conditional atomic clear.
+          const expectedSessionId = lesson.stripeCheckoutSessionId!;
+          let shouldClear = false;
+
           try {
-            const existingSession = await stripeService.retrieveCheckoutSession(lesson.stripeCheckoutSessionId);
+            const existingSession = await stripeService.retrieveCheckoutSession(expectedSessionId);
             if (existingSession.status === "open") {
               // Session is still payable — return it instead of creating a new one
               return { url: existingSession.url };
@@ -1973,13 +1977,43 @@ export const appRouter = router({
                 message: "Payment is already processing for this lesson. Please wait for confirmation.",
               });
             }
-            // Session is expired — safe to clear and recreate
-            freshAttempt = await db.clearLessonCheckoutSession(lesson.id);
+            // Session is expired — safe to conditionally clear
+            shouldClear = true;
           } catch (err) {
             // Re-throw TRPCErrors (our own errors above)
             if (err instanceof TRPCError) throw err;
-            // Session retrieval failed (deleted/invalid) — clear and proceed
-            freshAttempt = await db.clearLessonCheckoutSession(lesson.id);
+            // Session retrieval failed (deleted/invalid from Stripe) — safe to conditionally clear
+            shouldClear = true;
+          }
+
+          if (shouldClear) {
+            // R7-2: Conditional atomic clear — only clears if session ID still matches.
+            // If another request already cleared it and claimed __pending__, this returns cleared=false.
+            const clearResult = await db.clearLessonCheckoutSessionIfMatches(lesson.id, expectedSessionId);
+            if (!clearResult.cleared) {
+              // Another request already cleared/replaced the session — re-read and respond
+              const refreshed = await db.getLessonById(lesson.id);
+              if (refreshed?.stripeCheckoutSessionId === "__pending__") {
+                throw new TRPCError({
+                  code: "CONFLICT",
+                  message: "Another checkout is being created for this lesson. Please try again shortly.",
+                });
+              }
+              if (refreshed?.stripeCheckoutSessionId) {
+                // Another request already created a new session — try to return it
+                try {
+                  const newSession = await stripeService.retrieveCheckoutSession(refreshed.stripeCheckoutSessionId);
+                  if (newSession.status === "open") {
+                    return { url: newSession.url };
+                  }
+                } catch { /* fall through */ }
+              }
+              throw new TRPCError({
+                code: "CONFLICT",
+                message: "Another checkout is being created for this lesson. Please try again shortly.",
+              });
+            }
+            freshAttempt = clearResult.checkoutAttempt;
           }
         }
 

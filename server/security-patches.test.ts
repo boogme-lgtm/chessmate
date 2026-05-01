@@ -163,7 +163,8 @@ describe("payment.createCheckout", () => {
       status: "expired",
       url: null,
     } as any);
-    vi.mocked(db.clearLessonCheckoutSession).mockResolvedValue(undefined);
+    // R7: Now uses conditional clear that returns { cleared, checkoutAttempt }
+    vi.mocked(db.clearLessonCheckoutSessionIfMatches).mockResolvedValue({ cleared: true, checkoutAttempt: 1 });
     vi.mocked(db.claimLessonCheckoutSlot).mockResolvedValue(true);
     vi.mocked(db.getUserById).mockResolvedValue({
       id: 2, name: "Coach", email: "coach@test.com",
@@ -180,7 +181,8 @@ describe("payment.createCheckout", () => {
     const result = await caller.payment.createCheckout({ lessonId: 100 });
 
     expect(result.url).toBe("https://checkout.stripe.com/new");
-    expect(db.clearLessonCheckoutSession).toHaveBeenCalledWith(100);
+    // R7: Conditional clear was called with the expected session ID
+    expect(db.clearLessonCheckoutSessionIfMatches).toHaveBeenCalledWith(100, "cs_expired_123");
     expect(db.claimLessonCheckoutSlot).toHaveBeenCalledWith(100);
     expect(stripeService.createLessonCheckoutSession).toHaveBeenCalled();
     expect(db.setLessonCheckoutSession).toHaveBeenCalledWith(100, "cs_new_456");
@@ -368,7 +370,7 @@ describe("payment.createCheckout", () => {
     expect(db.setLessonCheckoutSession).toHaveBeenCalledWith(100, "cs_cas_001");
   });
 
-  // R6-3: Expired session cleared — uses fresh attempt value (not stale in-memory)
+  // R6-3 / R7: Expired session cleared — uses fresh attempt value (not stale in-memory)
   it("clears expired session and uses fresh incremented attempt in idempotency key", async () => {
     // Lesson has checkoutAttempt=1 in memory, but after clear it becomes 2 in DB
     vi.mocked(db.getLessonById).mockResolvedValue(
@@ -379,8 +381,8 @@ describe("payment.createCheckout", () => {
       status: "expired",
       url: null,
     } as any);
-    // clearLessonCheckoutSession now returns the NEW attempt value (1+1=2)
-    vi.mocked(db.clearLessonCheckoutSession).mockResolvedValue(2 as any);
+    // R7: clearLessonCheckoutSessionIfMatches returns { cleared: true, checkoutAttempt: 2 }
+    vi.mocked(db.clearLessonCheckoutSessionIfMatches).mockResolvedValue({ cleared: true, checkoutAttempt: 2 });
     vi.mocked(db.claimLessonCheckoutSlot).mockResolvedValue(true);
     vi.mocked(db.getUserById).mockResolvedValue({
       id: 2, name: "Coach", email: "coach@test.com",
@@ -397,8 +399,8 @@ describe("payment.createCheckout", () => {
     const result = await caller.payment.createCheckout({ lessonId: 100 });
 
     expect(result.url).toBe("https://checkout.stripe.com/new");
-    // Expired session was cleared
-    expect(db.clearLessonCheckoutSession).toHaveBeenCalledWith(100);
+    // R7: Conditional clear was called with expected session ID
+    expect(db.clearLessonCheckoutSessionIfMatches).toHaveBeenCalledWith(100, "cs_expired_001");
     // CRITICAL: idempotency key uses v2 (fresh from DB), NOT v1 (stale in-memory)
     expect(stripeService.createLessonCheckoutSession).toHaveBeenCalledWith(
       expect.objectContaining({ idempotencyKey: "lesson_checkout_100_v2" })
@@ -447,6 +449,75 @@ describe("payment.createCheckout", () => {
 
     // Must NOT try to retrieve __pending__ from Stripe
     expect(stripeService.retrieveCheckoutSession).not.toHaveBeenCalled();
+    expect(stripeService.createLessonCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  // R7-3: Two concurrent requests both observe the same expired session;
+  // the second conditional clear must fail and must not create a second Stripe Checkout Session.
+  it("concurrent expired-session race: second request gets CONFLICT when conditional clear fails", async () => {
+    // Both requests read the same expired session
+    vi.mocked(db.getLessonById).mockResolvedValue(
+      makeLessonRow({ stripeCheckoutSessionId: "cs_expired_race", checkoutAttempt: 1 })
+    );
+    vi.mocked(stripeService.retrieveCheckoutSession).mockResolvedValue({
+      id: "cs_expired_race",
+      status: "expired",
+      url: null,
+    } as any);
+    // Conditional clear fails (0 rows affected) because request A already cleared it
+    vi.mocked(db.clearLessonCheckoutSessionIfMatches).mockResolvedValue({ cleared: false, checkoutAttempt: 0 });
+    // After failing, re-read shows __pending__ (request A claimed the slot)
+    vi.mocked(db.getLessonById).mockResolvedValueOnce(
+      makeLessonRow({ stripeCheckoutSessionId: "cs_expired_race", checkoutAttempt: 1 })
+    ).mockResolvedValueOnce(
+      makeLessonRow({ stripeCheckoutSessionId: "__pending__", checkoutAttempt: 2 })
+    );
+
+    const caller = appRouter.createCaller(createContext());
+    await expect(caller.payment.createCheckout({ lessonId: 100 }))
+      .rejects.toMatchObject({
+        code: "CONFLICT",
+        message: expect.stringContaining("Another checkout is being created"),
+      });
+
+    // CRITICAL: Must NOT create a second Stripe Checkout Session
+    expect(stripeService.createLessonCheckoutSession).not.toHaveBeenCalled();
+    // Must NOT call claimLessonCheckoutSlot (never reached)
+    expect(db.claimLessonCheckoutSlot).not.toHaveBeenCalled();
+  });
+
+  // R7-3: Concurrent expired-session race where second request finds a new open session from request A
+  it("concurrent expired-session race: second request returns new open session URL when available", async () => {
+    vi.mocked(db.getLessonById)
+      .mockResolvedValueOnce(
+        makeLessonRow({ stripeCheckoutSessionId: "cs_expired_race2", checkoutAttempt: 1 })
+      )
+      // After conditional clear fails, re-read shows request A's new session
+      .mockResolvedValueOnce(
+        makeLessonRow({ stripeCheckoutSessionId: "cs_new_from_A", checkoutAttempt: 2 })
+      );
+    // First retrieve: expired
+    vi.mocked(stripeService.retrieveCheckoutSession)
+      .mockResolvedValueOnce({
+        id: "cs_expired_race2",
+        status: "expired",
+        url: null,
+      } as any)
+      // Second retrieve: request A's new session is open
+      .mockResolvedValueOnce({
+        id: "cs_new_from_A",
+        status: "open",
+        url: "https://checkout.stripe.com/from_A",
+      } as any);
+    // Conditional clear fails (request A already cleared)
+    vi.mocked(db.clearLessonCheckoutSessionIfMatches).mockResolvedValue({ cleared: false, checkoutAttempt: 0 });
+
+    const caller = appRouter.createCaller(createContext());
+    const result = await caller.payment.createCheckout({ lessonId: 100 });
+
+    // Returns request A's session URL instead of creating a duplicate
+    expect(result.url).toBe("https://checkout.stripe.com/from_A");
+    // Must NOT create a second Stripe Checkout Session
     expect(stripeService.createLessonCheckoutSession).not.toHaveBeenCalled();
   });
 });
