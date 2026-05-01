@@ -1982,8 +1982,22 @@ export const appRouter = router({
           } catch (err) {
             // Re-throw TRPCErrors (our own errors above)
             if (err instanceof TRPCError) throw err;
-            // Session retrieval failed (deleted/invalid from Stripe) — safe to conditionally clear
-            shouldClear = true;
+            // Distinguish resource-not-found from transient errors
+            const stripeErr = err as any;
+            const isResourceMissing =
+              stripeErr?.type === "StripeInvalidRequestError" ||
+              stripeErr?.statusCode === 404 ||
+              stripeErr?.code === "resource_missing";
+            if (isResourceMissing) {
+              // Session definitively does not exist in Stripe — safe to conditionally clear
+              shouldClear = true;
+            } else {
+              // Transient error (network, rate limit, auth, 5xx) — do NOT clear the live session
+              throw new TRPCError({
+                code: "PRECONDITION_FAILED",
+                message: "Unable to verify checkout status. Please try again shortly.",
+              });
+            }
           }
 
           if (shouldClear) {

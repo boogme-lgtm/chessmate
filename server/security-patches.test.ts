@@ -520,6 +520,85 @@ describe("payment.createCheckout", () => {
     // Must NOT create a second Stripe Checkout Session
     expect(stripeService.createLessonCheckoutSession).not.toHaveBeenCalled();
   });
+
+  // R8: Transient Stripe error does NOT clear the session or create a new one
+  it("transient Stripe retrieve error does not clear session or create new checkout", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(
+      makeLessonRow({ stripeCheckoutSessionId: "cs_live_session" })
+    );
+    // Simulate a transient network/rate-limit error (not a resource_missing error)
+    const transientError = new Error("Request failed");
+    (transientError as any).type = "StripeConnectionError";
+    (transientError as any).statusCode = 500;
+    vi.mocked(stripeService.retrieveCheckoutSession).mockRejectedValue(transientError);
+
+    const caller = appRouter.createCaller(createContext());
+    await expect(caller.payment.createCheckout({ lessonId: 100 }))
+      .rejects.toMatchObject({
+        code: "PRECONDITION_FAILED",
+        message: expect.stringContaining("Unable to verify checkout status"),
+      });
+
+    // CRITICAL: Must NOT clear the session, claim a slot, or create a new session
+    expect(db.clearLessonCheckoutSessionIfMatches).not.toHaveBeenCalled();
+    expect(db.claimLessonCheckoutSlot).not.toHaveBeenCalled();
+    expect(stripeService.createLessonCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  // R8: Rate limit error does NOT clear the session
+  it("Stripe rate limit error does not clear session or create new checkout", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(
+      makeLessonRow({ stripeCheckoutSessionId: "cs_rate_limited" })
+    );
+    const rateLimitError = new Error("Rate limit exceeded");
+    (rateLimitError as any).type = "StripeRateLimitError";
+    (rateLimitError as any).statusCode = 429;
+    vi.mocked(stripeService.retrieveCheckoutSession).mockRejectedValue(rateLimitError);
+
+    const caller = appRouter.createCaller(createContext());
+    await expect(caller.payment.createCheckout({ lessonId: 100 }))
+      .rejects.toMatchObject({
+        code: "PRECONDITION_FAILED",
+        message: expect.stringContaining("Unable to verify checkout status"),
+      });
+
+    expect(db.clearLessonCheckoutSessionIfMatches).not.toHaveBeenCalled();
+    expect(db.claimLessonCheckoutSlot).not.toHaveBeenCalled();
+    expect(stripeService.createLessonCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  // R8: Missing/invalid session (resource_missing) CAN be conditionally cleared and recreated
+  it("Stripe resource_missing error conditionally clears and recreates session", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(
+      makeLessonRow({ stripeCheckoutSessionId: "cs_deleted_session" })
+    );
+    const notFoundError = new Error("No such checkout session");
+    (notFoundError as any).type = "StripeInvalidRequestError";
+    (notFoundError as any).statusCode = 404;
+    (notFoundError as any).code = "resource_missing";
+    vi.mocked(stripeService.retrieveCheckoutSession).mockRejectedValue(notFoundError);
+    vi.mocked(db.clearLessonCheckoutSessionIfMatches).mockResolvedValue({ cleared: true, checkoutAttempt: 1 });
+    vi.mocked(db.claimLessonCheckoutSlot).mockResolvedValue(true);
+    vi.mocked(db.getUserById).mockResolvedValue({
+      id: 2, name: "Coach", email: "coach@test.com",
+      stripeConnectAccountId: "acct_coach123",
+    } as any);
+    vi.mocked(db.getCoachProfileByUserId).mockResolvedValue({ pricingTier: "standard" } as any);
+    vi.mocked(stripeService.createLessonCheckoutSession).mockResolvedValue({
+      id: "cs_replacement",
+      url: "https://checkout.stripe.com/replacement",
+    } as any);
+    vi.mocked(db.setLessonCheckoutSession).mockResolvedValue(undefined);
+
+    const caller = appRouter.createCaller(createContext());
+    const result = await caller.payment.createCheckout({ lessonId: 100 });
+
+    expect(result.url).toBe("https://checkout.stripe.com/replacement");
+    // Conditional clear was called with the expected session ID
+    expect(db.clearLessonCheckoutSessionIfMatches).toHaveBeenCalledWith(100, "cs_deleted_session");
+    expect(db.claimLessonCheckoutSlot).toHaveBeenCalledWith(100);
+    expect(stripeService.createLessonCheckoutSession).toHaveBeenCalled();
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════

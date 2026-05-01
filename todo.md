@@ -784,3 +784,7 @@
 - [x] R7-1: Add clearLessonCheckoutSessionIfMatches (conditional atomic clear with WHERE session = expected)
 - [x] R7-2: Update createCheckout to use conditional clear and handle 0-row result (re-read + CONFLICT)
 - [x] R7-3: Add behavioral tests for concurrent expired-session race
+
+## Sprint 26: Security Patches Round 8 (Codex Review)
+- [x] R8-1: Distinguish transient Stripe errors from resource-not-found in createCheckout catch block
+- [x] R8-2: Add behavioral tests for transient error and missing/invalid session paths
