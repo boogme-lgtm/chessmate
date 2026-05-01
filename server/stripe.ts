@@ -385,4 +385,9 @@ export async function createInstantPayout(
   return payout;
 }
 
+// R3-2: Retrieve a checkout session to check its status
+export async function retrieveCheckoutSession(sessionId: string) {
+  return stripe.checkout.sessions.retrieve(sessionId);
+}
+
 export { stripe };

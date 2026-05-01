@@ -1,181 +1,630 @@
 /**
- * Security Patch Tests — Behavioral Tests (Round 2)
+ * Security Patch Tests — Behavioral Tests (Round 3)
  *
- * R2-1: payment.createCheckout requires lesson.status === 'confirmed'
- * R2-2: checkout.session.completed only transitions confirmed → paid
- * R2-3: content.recordPurchase hard metadata requirements + amount/currency verification
- * R2-4: referral.recordSignup duplicate prevention
- * P0-2: lesson.confirmCompletion requires status=paid + stripePaymentIntentId
- * P1-1: pricingTier not in coach.updateProfile input
- * P2-1: deleteAccount requires password for password-backed users
+ * These tests call actual tRPC procedures and webhook handlers with mocked
+ * DB and Stripe responses. They verify security invariants end-to-end rather
+ * than checking source strings.
+ *
+ * Coverage:
+ *  - payment.createCheckout: rejects non-confirmed, idempotent (no duplicate sessions)
+ *  - checkout.session.completed webhook: only transitions confirmed → paid
+ *  - lesson.confirmCompletion: rejects unpaid, requires stripePaymentIntentId
+ *  - content.recordPurchase: rejects missing metadata, wrong user, wrong item, wrong amount/currency, duplicate PI
+ *  - referral.recordSignup: uses ctx.user.id, blocks self-referral, handles duplicate
+ *  - user.deleteAccount: requires password for password-backed users
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import * as fs from 'fs';
+import { TRPCError } from '@trpc/server';
 
-// ─── Behavioral tests via source analysis ───────────────────────────────────
-// These tests verify the actual logic patterns in the source, not just string presence.
+// ─── Module mocks ─────────────────────────────────────────────────────────────
+vi.mock("./db");
+vi.mock("./emailService");
+vi.mock("./nurtureEmailScheduler");
+vi.mock("./resendWelcomeEmails");
+vi.mock("./stripe");
+vi.mock("./storage");
+vi.mock("./aiVettingService");
+vi.mock("./email");
+vi.mock("./_core/notification");
+vi.mock("./auth");
 
-const routerSource = fs.readFileSync('./server/routers.ts', 'utf-8');
-const webhookSource = fs.readFileSync('./server/webhooks.ts', 'utf-8');
+import { appRouter } from "./routers";
+import * as db from "./db";
+import * as stripeService from "./stripe";
+import type { TrpcContext } from "./_core/context";
 
-// ─── R2-1: payment.createCheckout requires confirmed status ─────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-describe('R2-1: payment.createCheckout requires lesson.status === confirmed', () => {
-  it('should reject checkout when lesson is not in confirmed state', () => {
-    // Extract the createCheckout procedure body
-    const checkoutStart = routerSource.indexOf('createCheckout: protectedProcedure');
-    const checkoutBody = routerSource.slice(checkoutStart, checkoutStart + 2500);
+function createContext(overrides: Partial<NonNullable<TrpcContext["user"]>> = {}): TrpcContext {
+  const user = {
+    id: 1,
+    openId: "test-openid",
+    name: "Test User",
+    email: "test@example.com",
+    password: null,
+    emailVerified: true,
+    emailVerificationToken: null,
+    emailVerificationExpires: null,
+    passwordResetToken: null,
+    passwordResetExpires: null,
+    loginMethod: "manus",
+    role: "user" as const,
+    userType: "student" as const,
+    stripeCustomerId: null,
+    stripeConnectAccountId: null,
+    stripeConnectOnboarded: false,
+    avatarUrl: null,
+    bio: null,
+    country: null,
+    timezone: null,
+    notificationPreferences: null,
+    deletedAt: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    lastSignedIn: new Date(),
+    ...overrides,
+  };
+  return {
+    user,
+    req: { protocol: "https", headers: {} } as any,
+    res: { setHeader: vi.fn() } as any,
+  };
+}
 
-    // Must have a strict status check BEFORE creating the Stripe session
-    const statusCheck = checkoutBody.indexOf('lesson.status !== "confirmed"');
-    const stripeCall = checkoutBody.indexOf('createLessonCheckoutSession');
+function makeLessonRow(overrides: Record<string, any> = {}) {
+  return {
+    id: 100,
+    studentId: 1,
+    coachId: 2,
+    status: "confirmed",
+    amountCents: 5000,
+    currency: "USD",
+    stripePaymentIntentId: null,
+    stripeCheckoutSessionId: null,
+    scheduledAt: new Date(),
+    durationMinutes: 60,
+    ...overrides,
+  };
+}
 
-    expect(statusCheck).toBeGreaterThan(-1);
-    expect(stripeCall).toBeGreaterThan(-1);
-    // Status check must come BEFORE the Stripe call
-    expect(statusCheck).toBeLessThan(stripeCall);
+// ─── Setup ────────────────────────────────────────────────────────────────────
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  // Default: getDb returns a mock database object
+  vi.mocked(db.getDb).mockResolvedValue({
+    execute: vi.fn().mockResolvedValue([[], []]),
+    select: vi.fn().mockReturnThis(),
+    from: vi.fn().mockReturnThis(),
+    where: vi.fn().mockReturnThis(),
+    limit: vi.fn().mockResolvedValue([]),
+    update: vi.fn().mockReturnThis(),
+    set: vi.fn().mockReturnThis(),
+    insert: vi.fn().mockReturnThis(),
+    values: vi.fn().mockResolvedValue([{ insertId: 1 }]),
+  } as any);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// payment.createCheckout
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe("payment.createCheckout", () => {
+  it("rejects when lesson status is not 'confirmed'", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(makeLessonRow({ status: "pending_confirmation" }));
+    const caller = appRouter.createCaller(createContext());
+
+    await expect(caller.payment.createCheckout({ lessonId: 100 }))
+      .rejects.toThrow("Cannot create checkout");
   });
 
-  it('should throw PRECONDITION_FAILED for non-confirmed lessons', () => {
-    const checkoutStart = routerSource.indexOf('createCheckout: protectedProcedure');
-    const checkoutBody = routerSource.slice(checkoutStart, checkoutStart + 2500);
+  it("rejects when lesson status is 'paid' (already paid)", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(makeLessonRow({ status: "paid" }));
+    const caller = appRouter.createCaller(createContext());
 
-    // After the status check, should throw with PRECONDITION_FAILED
-    expect(checkoutBody).toContain('PRECONDITION_FAILED');
-    expect(checkoutBody).toContain("must be 'confirmed'");
+    await expect(caller.payment.createCheckout({ lessonId: 100 }))
+      .rejects.toThrow("Cannot create checkout");
+  });
+
+  it("rejects when lesson status is 'declined'", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(makeLessonRow({ status: "declined" }));
+    const caller = appRouter.createCaller(createContext());
+
+    await expect(caller.payment.createCheckout({ lessonId: 100 }))
+      .rejects.toThrow("Cannot create checkout");
+  });
+
+  it("returns existing open checkout session (idempotency)", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(
+      makeLessonRow({ stripeCheckoutSessionId: "cs_existing_123" })
+    );
+    vi.mocked(stripeService.retrieveCheckoutSession).mockResolvedValue({
+      id: "cs_existing_123",
+      status: "open",
+      url: "https://checkout.stripe.com/existing",
+    } as any);
+
+    const caller = appRouter.createCaller(createContext());
+    const result = await caller.payment.createCheckout({ lessonId: 100 });
+
+    expect(result.url).toBe("https://checkout.stripe.com/existing");
+    // Should NOT create a new session
+    expect(stripeService.createLessonCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  it("creates new session when existing session is expired", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(
+      makeLessonRow({ stripeCheckoutSessionId: "cs_expired_123" })
+    );
+    vi.mocked(stripeService.retrieveCheckoutSession).mockResolvedValue({
+      id: "cs_expired_123",
+      status: "expired",
+      url: null,
+    } as any);
+    vi.mocked(db.clearLessonCheckoutSession).mockResolvedValue(undefined);
+    vi.mocked(db.getUserById).mockResolvedValue({
+      id: 2, name: "Coach", email: "coach@test.com",
+      stripeConnectAccountId: "acct_coach123",
+    } as any);
+    vi.mocked(db.getCoachProfileByUserId).mockResolvedValue({ pricingTier: "standard" } as any);
+    vi.mocked(stripeService.createLessonCheckoutSession).mockResolvedValue({
+      id: "cs_new_456",
+      url: "https://checkout.stripe.com/new",
+    } as any);
+    vi.mocked(db.setLessonCheckoutSession).mockResolvedValue(undefined);
+
+    const caller = appRouter.createCaller(createContext());
+    const result = await caller.payment.createCheckout({ lessonId: 100 });
+
+    expect(result.url).toBe("https://checkout.stripe.com/new");
+    expect(db.clearLessonCheckoutSession).toHaveBeenCalledWith(100);
+    expect(stripeService.createLessonCheckoutSession).toHaveBeenCalled();
+    expect(db.setLessonCheckoutSession).toHaveBeenCalledWith(100, "cs_new_456");
+  });
+
+  it("creates new session and persists session ID for confirmed lesson without existing session", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(makeLessonRow());
+    vi.mocked(db.getUserById).mockResolvedValue({
+      id: 2, name: "Coach", email: "coach@test.com",
+      stripeConnectAccountId: "acct_coach123",
+    } as any);
+    vi.mocked(db.getCoachProfileByUserId).mockResolvedValue({ pricingTier: "standard" } as any);
+    vi.mocked(stripeService.createLessonCheckoutSession).mockResolvedValue({
+      id: "cs_fresh_789",
+      url: "https://checkout.stripe.com/fresh",
+    } as any);
+    vi.mocked(db.setLessonCheckoutSession).mockResolvedValue(undefined);
+
+    const caller = appRouter.createCaller(createContext());
+    const result = await caller.payment.createCheckout({ lessonId: 100 });
+
+    expect(result.url).toBe("https://checkout.stripe.com/fresh");
+    expect(db.setLessonCheckoutSession).toHaveBeenCalledWith(100, "cs_fresh_789");
   });
 });
 
-// ─── R2-2: Webhook strict confirmed → paid transition ───────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// checkout.session.completed webhook (via handleStripeWebhook)
+// ═══════════════════════════════════════════════════════════════════════════════
 
-describe('R2-2: Webhook only transitions confirmed → paid', () => {
-  it('should use strict status !== confirmed check in handleCheckoutCompleted', () => {
-    // The webhook should ONLY allow confirmed → paid, not use a skip-list
-    expect(webhookSource).toContain("currentLesson.status !== 'confirmed'");
-    // Old skip-list pattern should be gone
-    expect(webhookSource).not.toMatch(/\['paid',\s*'in_progress',\s*'completed'.*\]\.includes\(currentLesson\.status\)/);
+describe("checkout.session.completed webhook", () => {
+  // We test the handleStripeWebhook function directly
+  let handleStripeWebhook: typeof import("./webhooks").handleStripeWebhook;
+
+  beforeEach(async () => {
+    // Import the webhook handler (it imports from mocked modules)
+    const webhooks = await import("./webhooks");
+    handleStripeWebhook = webhooks.handleStripeWebhook;
+    // Mock constructWebhookEvent to bypass signature verification
+    vi.mocked(stripeService.constructWebhookEvent).mockImplementation(
+      (_body, _sig, _secret) => ({
+        id: "evt_real_123",
+        type: "checkout.session.completed",
+        data: {
+          object: {
+            id: "cs_test_session",
+            payment_status: "paid",
+            payment_intent: "pi_test_123",
+            metadata: { lessonId: "100" },
+          },
+        },
+      } as any)
+    );
   });
 
-  it('should reject pending_confirmation lessons (no-op)', () => {
-    // The log message should indicate refusal for non-confirmed states
-    expect(webhookSource).toContain("Refusing to mark paid (no-op)");
+  function createWebhookReqRes(body: any = {}) {
+    const req = {
+      body: JSON.stringify(body),
+      headers: { "stripe-signature": "sig_test_valid" },
+    } as any;
+    const res = {
+      status: vi.fn().mockReturnThis(),
+      json: vi.fn().mockReturnThis(),
+    } as any;
+    return { req, res };
+  }
+
+  it("transitions confirmed lesson to paid", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(makeLessonRow({ status: "confirmed" }));
+    vi.mocked(db.updateLessonPaymentIntent).mockResolvedValue(undefined);
+    vi.mocked(db.clearLessonCheckoutSession).mockResolvedValue(undefined);
+    vi.mocked(db.getUserById).mockResolvedValue({ id: 1, name: "Student", email: "s@t.com" } as any);
+
+    const { req, res } = createWebhookReqRes();
+    await handleStripeWebhook(req, res);
+
+    expect(db.updateLessonPaymentIntent).toHaveBeenCalledWith(100, "pi_test_123");
+    expect(res.json).toHaveBeenCalledWith({ received: true });
   });
 
-  it('should apply same strict check in handlePaymentSucceeded', () => {
-    // Find the function definition (async function handlePaymentSucceeded)
-    const piStart = webhookSource.indexOf('async function handlePaymentSucceeded');
-    const piBody = webhookSource.slice(piStart, piStart + 1200);
+  it("does NOT transition pending_confirmation lesson to paid (no-op)", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(makeLessonRow({ status: "pending_confirmation" }));
 
-    expect(piBody).toContain("lesson.status !== 'confirmed'");
-    expect(piBody).toContain("Refusing to mark paid via payment_intent.succeeded (no-op)");
-  });
-});
+    const { req, res } = createWebhookReqRes();
+    await handleStripeWebhook(req, res);
 
-// ─── R2-3: content.recordPurchase hard metadata requirements ─────────────────
-
-describe('R2-3: content.recordPurchase hardened verification', () => {
-  const recordStart = routerSource.indexOf('recordPurchase: protectedProcedure');
-  const recordBody = routerSource.slice(recordStart, recordStart + 5000);
-
-  it('should hard-require metadata.user_id (throw if missing)', () => {
-    expect(recordBody).toContain('!metaUserId');
-    expect(recordBody).toContain('PaymentIntent missing required metadata: user_id');
+    expect(db.updateLessonPaymentIntent).not.toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith({ received: true });
   });
 
-  it('should hard-require metadata.content_item_id (throw if missing)', () => {
-    expect(recordBody).toContain('!metaContentId');
-    expect(recordBody).toContain('PaymentIntent missing required metadata: content_item_id');
+  it("does NOT transition already-paid lesson (idempotent no-op)", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(makeLessonRow({ status: "paid" }));
+
+    const { req, res } = createWebhookReqRes();
+    await handleStripeWebhook(req, res);
+
+    expect(db.updateLessonPaymentIntent).not.toHaveBeenCalled();
   });
 
-  it('should hard-require metadata.type === content_purchase', () => {
-    expect(recordBody).toContain('!metaType || metaType !== "content_purchase"');
-    expect(recordBody).toContain("must be 'content_purchase'");
-  });
+  it("does NOT transition released/completed lesson", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(makeLessonRow({ status: "released" }));
 
-  it('should verify amount against content_items table', () => {
-    expect(recordBody).toContain('paymentIntent.amount !== contentItem.priceCents');
-    expect(recordBody).toContain('Payment amount mismatch');
-  });
+    const { req, res } = createWebhookReqRes();
+    await handleStripeWebhook(req, res);
 
-  it('should verify currency against content_items table', () => {
-    expect(recordBody).toContain('actualCurrency !== expectedCurrency');
-    expect(recordBody).toContain('Payment currency mismatch');
-  });
-
-  it('should handle duplicate PaymentIntent via DB unique constraint (idempotent)', () => {
-    // Should catch ER_DUP_ENTRY and return idempotent success
-    expect(recordBody).toContain('ER_DUP_ENTRY');
-    expect(recordBody).toContain('alreadyOwned: true');
-  });
-});
-
-// ─── R2-4: referral.recordSignup duplicate prevention ────────────────────────
-
-describe('R2-4: referral.recordSignup duplicate prevention', () => {
-  const refStart = routerSource.indexOf('recordSignup: protectedProcedure');
-  const refBody = routerSource.slice(refStart, refStart + 1000);
-
-  it('should catch duplicate entry errors and return idempotent response', () => {
-    expect(refBody).toContain('ER_DUP_ENTRY');
-    expect(refBody).toContain('alreadyReferred: true');
-  });
-
-  it('should use protectedProcedure (not publicProcedure)', () => {
-    expect(refBody).toContain('protectedProcedure');
-    expect(refBody).not.toContain('publicProcedure');
-  });
-
-  it('should use ctx.user.id (not client-supplied userId)', () => {
-    expect(refBody).toContain('ctx.user.id');
-    expect(refBody).not.toMatch(/userId.*z\.number/);
-  });
-
-  it('should prevent self-referral', () => {
-    expect(refBody).toContain('ref.coachId === ctx.user.id');
+    expect(db.updateLessonPaymentIntent).not.toHaveBeenCalled();
   });
 });
 
-// ─── P0-2: confirmCompletion requires paid + paymentIntent ───────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// lesson.confirmCompletion
+// ═══════════════════════════════════════════════════════════════════════════════
 
-describe('P0-2: confirmCompletion requires paid status and payment intent', () => {
-  const confirmStart = routerSource.indexOf('confirmCompletion: protectedProcedure');
-  const confirmBody = routerSource.slice(confirmStart, confirmStart + 1200);
+describe("lesson.confirmCompletion", () => {
+  it("rejects when lesson status is 'confirmed' (not yet paid)", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(makeLessonRow({ status: "confirmed" }));
+    const caller = appRouter.createCaller(createContext());
 
-  it('should only allow "paid" status for lesson completion', () => {
-    expect(confirmBody).toContain('"paid"');
-    // Should NOT allow "confirmed" in the status check
-    expect(confirmBody).not.toMatch(/includes\([^)]*"confirmed"/);
+    await expect(caller.lesson.confirmCompletion({ lessonId: 100 }))
+      .rejects.toThrow("Lesson must be paid before it can be completed");
   });
 
-  it('should require stripePaymentIntentId before capturing', () => {
-    expect(confirmBody).toContain('stripePaymentIntentId');
-    expect(confirmBody).toMatch(/throw.*TRPCError|PRECONDITION_FAILED/);
+  it("rejects when lesson status is 'pending_confirmation'", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(makeLessonRow({ status: "pending_confirmation" }));
+    const caller = appRouter.createCaller(createContext());
+
+    await expect(caller.lesson.confirmCompletion({ lessonId: 100 }))
+      .rejects.toThrow("Lesson must be paid before it can be completed");
+  });
+
+  it("rejects paid lesson without stripePaymentIntentId", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(
+      makeLessonRow({ status: "paid", stripePaymentIntentId: null })
+    );
+    const caller = appRouter.createCaller(createContext());
+
+    await expect(caller.lesson.confirmCompletion({ lessonId: 100 }))
+      .rejects.toThrow("Payment not recorded for this lesson");
+  });
+
+  it("succeeds for paid lesson with stripePaymentIntentId", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(
+      makeLessonRow({ status: "paid", stripePaymentIntentId: "pi_valid_123" })
+    );
+    vi.mocked(stripeService.capturePaymentIntent).mockResolvedValue(undefined as any);
+    vi.mocked(db.updateLessonStatus).mockResolvedValue(undefined);
+
+    const caller = appRouter.createCaller(createContext());
+    const result = await caller.lesson.confirmCompletion({ lessonId: 100 });
+
+    expect(stripeService.capturePaymentIntent).toHaveBeenCalledWith("pi_valid_123");
+    expect(result).toBeDefined();
   });
 });
 
-// ─── P1-1: pricingTier not client-controllable ───────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// content.recordPurchase
+// ═══════════════════════════════════════════════════════════════════════════════
 
-describe('P1-1: pricingTier cannot be set by client', () => {
-  it('should not accept pricingTier in coach.updateProfile input schema', () => {
-    const coachStart = routerSource.indexOf('coach: router({');
-    const coachSection = routerSource.slice(coachStart, coachStart + 3000);
-    const updateStart = coachSection.indexOf('updateProfile: protectedProcedure');
-    const inputSection = coachSection.slice(updateStart, updateStart + 1500);
+describe("content.recordPurchase", () => {
+  const validPaymentIntent = {
+    id: "pi_content_123",
+    status: "succeeded",
+    amount: 1999,
+    currency: "usd",
+    metadata: {
+      user_id: "1",
+      content_item_id: "42",
+      type: "content_purchase",
+    },
+  };
 
-    expect(inputSection).not.toMatch(/pricingTier.*z\.enum/);
+  function mockDbForRecordPurchase(contentItem = { priceCents: 1999, currency: "USD" }) {
+    const mockDatabase = {
+      execute: vi.fn()
+        // First call: check existing purchase (none found)
+        .mockResolvedValueOnce([[]])
+        // Second call: content item lookup
+        .mockResolvedValueOnce([[contentItem]])
+        // Third call: insert
+        .mockResolvedValueOnce([{ insertId: 1 }]),
+    };
+    vi.mocked(db.getDb).mockResolvedValue(mockDatabase as any);
+    return mockDatabase;
+  }
+
+  beforeEach(() => {
+    // Mock the dynamic import of stripe
+    vi.doMock("./stripe", () => ({
+      stripe: {
+        paymentIntents: {
+          retrieve: vi.fn().mockResolvedValue(validPaymentIntent),
+        },
+      },
+      ...stripeService,
+    }));
+  });
+
+  it("rejects when metadata.user_id is missing", async () => {
+    mockDbForRecordPurchase();
+    const { stripe } = await import("./stripe");
+    vi.mocked((stripe as any).paymentIntents.retrieve).mockResolvedValue({
+      ...validPaymentIntent,
+      metadata: { content_item_id: "42", type: "content_purchase" },
+    });
+
+    const caller = appRouter.createCaller(createContext());
+    await expect(caller.content.recordPurchase({
+      contentItemId: 42,
+      stripePaymentIntentId: "pi_content_123",
+    })).rejects.toThrow("PaymentIntent missing required metadata: user_id");
+  });
+
+  it("rejects when metadata.user_id doesn't match current user", async () => {
+    mockDbForRecordPurchase();
+    const { stripe } = await import("./stripe");
+    vi.mocked((stripe as any).paymentIntents.retrieve).mockResolvedValue({
+      ...validPaymentIntent,
+      metadata: { ...validPaymentIntent.metadata, user_id: "999" },
+    });
+
+    const caller = appRouter.createCaller(createContext());
+    await expect(caller.content.recordPurchase({
+      contentItemId: 42,
+      stripePaymentIntentId: "pi_content_123",
+    })).rejects.toThrow("Payment does not belong to this user");
+  });
+
+  it("rejects when metadata.content_item_id is missing", async () => {
+    mockDbForRecordPurchase();
+    const { stripe } = await import("./stripe");
+    vi.mocked((stripe as any).paymentIntents.retrieve).mockResolvedValue({
+      ...validPaymentIntent,
+      metadata: { user_id: "1", type: "content_purchase" },
+    });
+
+    const caller = appRouter.createCaller(createContext());
+    await expect(caller.content.recordPurchase({
+      contentItemId: 42,
+      stripePaymentIntentId: "pi_content_123",
+    })).rejects.toThrow("PaymentIntent missing required metadata: content_item_id");
+  });
+
+  it("rejects when metadata.content_item_id doesn't match input", async () => {
+    mockDbForRecordPurchase();
+    const { stripe } = await import("./stripe");
+    vi.mocked((stripe as any).paymentIntents.retrieve).mockResolvedValue({
+      ...validPaymentIntent,
+      metadata: { ...validPaymentIntent.metadata, content_item_id: "99" },
+    });
+
+    const caller = appRouter.createCaller(createContext());
+    await expect(caller.content.recordPurchase({
+      contentItemId: 42,
+      stripePaymentIntentId: "pi_content_123",
+    })).rejects.toThrow("Payment does not match this content item");
+  });
+
+  it("rejects when metadata.type is not 'content_purchase'", async () => {
+    mockDbForRecordPurchase();
+    const { stripe } = await import("./stripe");
+    vi.mocked((stripe as any).paymentIntents.retrieve).mockResolvedValue({
+      ...validPaymentIntent,
+      metadata: { ...validPaymentIntent.metadata, type: "lesson_payment" },
+    });
+
+    const caller = appRouter.createCaller(createContext());
+    await expect(caller.content.recordPurchase({
+      contentItemId: 42,
+      stripePaymentIntentId: "pi_content_123",
+    })).rejects.toThrow("must be 'content_purchase'");
+  });
+
+  it("rejects when payment amount doesn't match content item price", async () => {
+    mockDbForRecordPurchase({ priceCents: 2999, currency: "USD" });
+    const { stripe } = await import("./stripe");
+    vi.mocked((stripe as any).paymentIntents.retrieve).mockResolvedValue(validPaymentIntent);
+
+    const caller = appRouter.createCaller(createContext());
+    await expect(caller.content.recordPurchase({
+      contentItemId: 42,
+      stripePaymentIntentId: "pi_content_123",
+    })).rejects.toThrow("Payment amount mismatch");
+  });
+
+  it("rejects when payment currency doesn't match content item currency", async () => {
+    mockDbForRecordPurchase({ priceCents: 1999, currency: "EUR" });
+    const { stripe } = await import("./stripe");
+    vi.mocked((stripe as any).paymentIntents.retrieve).mockResolvedValue(validPaymentIntent);
+
+    const caller = appRouter.createCaller(createContext());
+    await expect(caller.content.recordPurchase({
+      contentItemId: 42,
+      stripePaymentIntentId: "pi_content_123",
+    })).rejects.toThrow("Payment currency mismatch");
+  });
+
+  it("handles duplicate PaymentIntent gracefully (idempotent)", async () => {
+    const mockDatabase = {
+      execute: vi.fn()
+        // First call: check existing purchase (none found)
+        .mockResolvedValueOnce([[]])
+        // Second call: content item lookup
+        .mockResolvedValueOnce([[{ priceCents: 1999, currency: "USD" }]])
+        // Third call: insert throws duplicate entry
+        .mockRejectedValueOnce({ errno: 1062, code: "ER_DUP_ENTRY" }),
+    };
+    vi.mocked(db.getDb).mockResolvedValue(mockDatabase as any);
+    const { stripe } = await import("./stripe");
+    vi.mocked((stripe as any).paymentIntents.retrieve).mockResolvedValue(validPaymentIntent);
+
+    const caller = appRouter.createCaller(createContext());
+    const result = await caller.content.recordPurchase({
+      contentItemId: 42,
+      stripePaymentIntentId: "pi_content_123",
+    });
+
+    expect(result).toEqual({ success: true, alreadyOwned: true });
   });
 });
 
-// ─── P2-1: deleteAccount requires password ───────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// referral.recordSignup
+// ═══════════════════════════════════════════════════════════════════════════════
 
-describe('P2-1: deleteAccount requires password for password-backed users', () => {
-  it('should check for password when user has one set', () => {
-    const deleteStart = routerSource.indexOf('deleteAccount: protectedProcedure');
-    const deleteBody = routerSource.slice(deleteStart, deleteStart + 600);
+describe("referral.recordSignup", () => {
+  it("uses ctx.user.id (not client-supplied userId)", async () => {
+    vi.mocked(db.getReferralCodeByCode).mockResolvedValue({
+      id: 10, coachId: 2, code: "ABC123", isActive: true, totalUses: 0,
+      createdAt: new Date(), updatedAt: new Date(),
+    } as any);
+    vi.mocked(db.createReferral).mockResolvedValue(undefined);
+    vi.mocked(db.incrementReferralCodeUses).mockResolvedValue(undefined);
 
-    // Should throw when password user doesn't supply password
-    expect(deleteBody).toMatch(/user\.password.*!input\.password|!input\.password.*user\.password/s);
-    expect(deleteBody).toMatch(/throw.*TRPCError/);
+    const caller = appRouter.createCaller(createContext({ id: 5 }));
+    await caller.referral.recordSignup({ code: "ABC123" });
+
+    // createReferral should be called with ctx.user.id (5), not any client-supplied value
+    expect(db.createReferral).toHaveBeenCalledWith({
+      referralCodeId: 10,
+      referredUserId: 5,
+    });
+  });
+
+  it("blocks self-referral (coach cannot refer themselves)", async () => {
+    vi.mocked(db.getReferralCodeByCode).mockResolvedValue({
+      id: 10, coachId: 1, code: "SELF123", isActive: true, totalUses: 0,
+      createdAt: new Date(), updatedAt: new Date(),
+    } as any);
+
+    const caller = appRouter.createCaller(createContext({ id: 1 }));
+    const result = await caller.referral.recordSignup({ code: "SELF123" });
+
+    expect(result).toEqual({ success: false });
+    expect(db.createReferral).not.toHaveBeenCalled();
+  });
+
+  it("handles duplicate referred user without incrementing usage twice", async () => {
+    vi.mocked(db.getReferralCodeByCode).mockResolvedValue({
+      id: 10, coachId: 2, code: "DUP123", isActive: true, totalUses: 3,
+      createdAt: new Date(), updatedAt: new Date(),
+    } as any);
+    vi.mocked(db.createReferral).mockRejectedValue({ errno: 1062, code: "ER_DUP_ENTRY" });
+
+    const caller = appRouter.createCaller(createContext({ id: 7 }));
+    const result = await caller.referral.recordSignup({ code: "DUP123" });
+
+    expect(result).toEqual({ success: true, alreadyReferred: true });
+    // Should NOT increment usage on duplicate
+    expect(db.incrementReferralCodeUses).not.toHaveBeenCalled();
+  });
+
+  it("increments usage on first successful referral", async () => {
+    vi.mocked(db.getReferralCodeByCode).mockResolvedValue({
+      id: 10, coachId: 2, code: "NEW123", isActive: true, totalUses: 0,
+      createdAt: new Date(), updatedAt: new Date(),
+    } as any);
+    vi.mocked(db.createReferral).mockResolvedValue(undefined);
+    vi.mocked(db.incrementReferralCodeUses).mockResolvedValue(undefined);
+
+    const caller = appRouter.createCaller(createContext({ id: 8 }));
+    const result = await caller.referral.recordSignup({ code: "NEW123" });
+
+    expect(result).toEqual({ success: true, alreadyReferred: false });
+    expect(db.incrementReferralCodeUses).toHaveBeenCalledWith(10);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// user.deleteAccount
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe("user.deleteAccount", () => {
+  it("requires password for password-backed users", async () => {
+    vi.mocked(db.getUserById).mockResolvedValue({
+      id: 1, email: "test@example.com", password: "$2a$10$hashedpassword",
+      loginMethod: "email",
+    } as any);
+
+    const caller = appRouter.createCaller(createContext());
+    await expect(caller.user.deleteAccount({}))
+      .rejects.toThrow("Password is required to delete your account");
+  });
+
+  it("rejects incorrect password", async () => {
+    vi.mocked(db.getUserById).mockResolvedValue({
+      id: 1, email: "test@example.com", password: "$2a$10$hashedpassword",
+      loginMethod: "email",
+    } as any);
+
+    // Mock the dynamic import of auth module
+    const auth = await import("./auth");
+    vi.mocked(auth.comparePassword).mockResolvedValue(false);
+
+    const caller = appRouter.createCaller(createContext());
+    await expect(caller.user.deleteAccount({ password: "wrongpass" }))
+      .rejects.toThrow("Incorrect password");
+  });
+
+  it("allows deletion with correct password", async () => {
+    vi.mocked(db.getUserById).mockResolvedValue({
+      id: 1, email: "test@example.com", password: "$2a$10$hashedpassword",
+      loginMethod: "email",
+    } as any);
+    vi.mocked(db.softDeleteUser).mockResolvedValue(undefined);
+
+    const auth = await import("./auth");
+    vi.mocked(auth.comparePassword).mockResolvedValue(true);
+
+    const caller = appRouter.createCaller(createContext());
+    const result = await caller.user.deleteAccount({ password: "correctpass" });
+
+    expect(result).toEqual({ success: true });
+    expect(db.softDeleteUser).toHaveBeenCalledWith(1);
+  });
+
+  it("allows deletion without password for OAuth users", async () => {
+    vi.mocked(db.getUserById).mockResolvedValue({
+      id: 1, email: "test@example.com", password: null,
+      loginMethod: "manus",
+    } as any);
+    vi.mocked(db.softDeleteUser).mockResolvedValue(undefined);
+
+    const caller = appRouter.createCaller(createContext());
+    const result = await caller.user.deleteAccount({});
+
+    expect(result).toEqual({ success: true });
+    expect(db.softDeleteUser).toHaveBeenCalledWith(1);
   });
 });

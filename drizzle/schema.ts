@@ -205,6 +205,8 @@ export const lessons = mysqlTable("lessons", {
   // Stripe payment tracking (only IDs, not sensitive data)
   stripePaymentIntentId: varchar("stripePaymentIntentId", { length: 64 }),
   stripeTransferId: varchar("stripeTransferId", { length: 64 }),
+  // R3-2: Active checkout session ID for idempotency (prevents multiple payable sessions)
+  stripeCheckoutSessionId: varchar("stripeCheckoutSessionId", { length: 128 }),
   
   // Booking confirmation tracking
   coachConfirmedAt: timestamp("coachConfirmedAt"), // When coach accepted the booking

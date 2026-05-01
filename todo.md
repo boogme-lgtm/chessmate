@@ -757,3 +757,9 @@
 - [x] R2-4: Harden referral.recordSignup — duplicate prevention with uniqueness constraint
 - [x] R2-5: Replace shallow string tests with behavioral tests
 - [x] R2-6: Run pnpm audit --prod and capture exact output
+
+## Sprint 21: Security Patches Round 3 (Codex Review)
+- [x] R3-1: Upgrade axios to >=1.13.5, regenerate lockfile, verify audit
+- [x] R3-2: Make lesson checkout creation idempotent (DB-side guard)
+- [x] R3-3: Update audit-report.md with accurate post-fix audit results
+- [x] R3-4: Replace source-string tests with behavioral tRPC procedure tests

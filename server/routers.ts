@@ -1941,6 +1941,23 @@ export const appRouter = router({
           });
         }
 
+        // R3-2: Idempotency guard — if there's already an active checkout session,
+        // verify it's still open. If open, return it. If expired/complete, clear it.
+        if (lesson.stripeCheckoutSessionId) {
+          try {
+            const existingSession = await stripeService.retrieveCheckoutSession(lesson.stripeCheckoutSessionId);
+            if (existingSession.status === "open") {
+              // Session is still payable — return it instead of creating a new one
+              return { url: existingSession.url };
+            }
+            // Session expired or completed — clear the reference and proceed
+            await db.clearLessonCheckoutSession(lesson.id);
+          } catch {
+            // Session retrieval failed (deleted/invalid) — clear and proceed
+            await db.clearLessonCheckoutSession(lesson.id);
+          }
+        }
+
         // Get coach info
         const coach = await db.getUserById(lesson.coachId);
         if (!coach?.stripeConnectAccountId) {
@@ -1969,6 +1986,9 @@ export const appRouter = router({
           successUrl: `${baseUrl}/lessons/${lesson.id}?payment=success`,
           cancelUrl: `${baseUrl}/lessons/${lesson.id}?payment=cancelled`,
         });
+
+        // R3-2: Persist the session ID so subsequent calls are idempotent
+        await db.setLessonCheckoutSession(lesson.id, session.id);
 
         return { url: session.url };
       }),

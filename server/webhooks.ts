@@ -136,6 +136,8 @@ async function handleCheckoutCompleted(event: Stripe.Event) {
     // lesson was `confirmed` without a payment intent, causing "Lesson not found" race
     // on the success page.
     await db.updateLessonPaymentIntent(lessonId, paymentIntentId);
+    // R3-2: Clear the checkout session reference now that payment is complete
+    await db.clearLessonCheckoutSession(lessonId);
     console.log(`[Webhook] Lesson ${lessonId} marked 'paid' with payment intent ${paymentIntentId}`);
 
     // Send confirmation emails to student and coach

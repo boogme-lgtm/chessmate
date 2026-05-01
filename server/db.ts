@@ -483,6 +483,26 @@ export async function updateLessonTransfer(lessonId: number, transferId: string)
     .where(eq(lessons.id, lessonId));
 }
 
+// R3-2: Set active checkout session on a lesson (idempotency guard)
+export async function setLessonCheckoutSession(lessonId: number, sessionId: string) {
+  const db = await getDb();
+  if (!db) return;
+
+  await db.update(lessons)
+    .set({ stripeCheckoutSessionId: sessionId })
+    .where(eq(lessons.id, lessonId));
+}
+
+// R3-2: Clear checkout session (e.g., on expiry or after payment)
+export async function clearLessonCheckoutSession(lessonId: number) {
+  const db = await getDb();
+  if (!db) return;
+
+  await db.update(lessons)
+    .set({ stripeCheckoutSessionId: null })
+    .where(eq(lessons.id, lessonId));
+}
+
 export async function getLessonByPaymentIntent(paymentIntentId: string) {
   const db = await getDb();
   if (!db) return null;
