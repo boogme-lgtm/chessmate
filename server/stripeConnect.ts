@@ -144,17 +144,21 @@ export async function transferToCoach(params: {
   currency?: string;
   description: string;
   metadata?: Record<string, string>;
+  idempotencyKey?: string;
 }) {
-  const { accountId, amountCents, currency = 'usd', description, metadata } = params;
+  const { accountId, amountCents, currency = 'usd', description, metadata, idempotencyKey } = params;
 
   try {
-    const transfer = await stripe.transfers.create({
-      amount: amountCents,
-      currency,
-      destination: accountId,
-      description,
-      metadata,
-    });
+    const transfer = await stripe.transfers.create(
+      {
+        amount: amountCents,
+        currency,
+        destination: accountId,
+        description,
+        metadata,
+      },
+      idempotencyKey ? { idempotencyKey } : undefined
+    );
 
     return {
       success: true,

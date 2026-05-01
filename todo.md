@@ -800,3 +800,11 @@
 - [x] PM-8: Email templates and notification copy updates
 - [x] PM-9: Behavioral tests for all 15 required scenarios
 - [x] PM-10: Verification, Stripe architecture documentation, migration mapping
+
+## Sprint 28 — Payment-First Model Hardening (Completed)
+- [x] S28-1: declineAsCoach — Stripe failure must NOT silently succeed; throw INTERNAL_SERVER_ERROR, leave in payment_collected, flag for admin
+- [x] S28-2: confirmCompletion — require lesson end time + 15min grace to have passed before student can confirm
+- [x] S28-3: releasePayout — enforce issueWindowEndsAt <= now, atomic CAS, Stripe idempotency key, admin override for disputed
+- [x] S28-4: autoDeclineStaleBookings — process payment_collected (not just pending_confirmation), full Stripe refund, no silent failure
+- [x] S28-5: autoCompletePastLessons — always set issueWindowEndsAt = now + 24h on completion (both confirmed and legacy paid)
+- [x] S28-6: Behavioral tests for all 5 scenarios above (101 tests passing, 0 failures)

@@ -734,10 +734,18 @@ describe("lesson.confirmCompletion (payment-first model)", () => {
   });
 
   it("succeeds for confirmed lesson — starts 24h issue window, does NOT capture payment", async () => {
+    // Sprint 28: scheduledAt must be in the past (lesson end time + 15min grace must have passed)
+    const pastScheduledAt = new Date(Date.now() - 2 * 60 * 60 * 1000); // started 2h ago
     vi.mocked(db.getLessonById).mockResolvedValue(
-      makeLessonRow({ status: "confirmed", stripePaymentIntentId: "pi_valid_123" })
+      makeLessonRow({
+        status: "confirmed",
+        stripePaymentIntentId: "pi_valid_123",
+        scheduledAt: pastScheduledAt,
+        durationMinutes: 60, // ended 1h ago, well past 15min grace
+      })
     );
     vi.mocked(db.updateLessonStatus).mockResolvedValue(undefined);
+    vi.mocked(db.updateStudentXp).mockResolvedValue(undefined);
 
     const caller = appRouter.createCaller(createContext());
     const result = await caller.lesson.confirmCompletion({ lessonId: 100 });
@@ -868,21 +876,24 @@ describe("lesson.declineAsCoach (payment-first model)", () => {
     expect(result).toEqual({ success: true, refundAmountCents: 5000 });
   });
 
-  it("decline still succeeds even if Stripe refund fails (admin can retry)", async () => {
+  it("throws INTERNAL_SERVER_ERROR when Stripe refund fails — does NOT silently succeed", async () => {
     vi.mocked(db.getLessonById).mockResolvedValue(
       makeLessonRow({ status: "payment_collected", coachId: 2, stripePaymentIntentId: "pi_fail_123", amountCents: 5000 })
     );
     vi.mocked(db.updateLessonStatus).mockResolvedValue(undefined);
     vi.mocked(stripeService.createRefund).mockRejectedValue(new Error("Stripe error"));
+    vi.mocked(db.flagLessonRefundFailed).mockResolvedValue(undefined);
     vi.mocked(db.getUserById).mockResolvedValue({ id: 1, name: "Student", email: "s@t.com" } as any);
 
     const caller = appRouter.createCaller(coachContext());
-    const result = await caller.lesson.declineAsCoach({ lessonId: 100 });
+    // Sprint 28: refund failure now throws instead of silently succeeding
+    await expect(caller.lesson.declineAsCoach({ lessonId: 100 }))
+      .rejects.toThrow("Decline recorded but refund could not be processed");
 
-    // Decline still succeeds
-    expect(result).toEqual({ success: true, refundAmountCents: 5000 });
-    // Status was set to declined before refund attempt
-    expect(db.updateLessonStatus).toHaveBeenCalledWith(100, "declined", expect.anything());
+    // Lesson must NOT be marked as declined
+    expect(db.updateLessonStatus).not.toHaveBeenCalledWith(100, "declined", expect.anything());
+    // Must flag for admin visibility
+    expect(db.flagLessonRefundFailed).toHaveBeenCalledWith(100, expect.any(String));
   });
 });
 
@@ -1237,5 +1248,320 @@ describe("user.deleteAccount", () => {
 
     expect(result).toEqual({ success: true });
     expect(db.softDeleteUser).toHaveBeenCalledWith(1);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Sprint 28 — Hardened payment-first model behavioral tests
+// ═════════════════════════════════════════════════════════════════════════════
+
+// ─── S28-1: declineAsCoach — Stripe failure must NOT silently succeed ─────────
+describe("S28-1: declineAsCoach — Stripe refund failure throws, does not silently succeed", () => {
+  function coachCtx() { return createContext({ id: 2, role: "user", userType: "coach" }); }
+
+  it("throws INTERNAL_SERVER_ERROR when Stripe refund fails — lesson stays in payment_collected", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(
+      makeLessonRow({ status: "payment_collected", coachId: 2, stripePaymentIntentId: "pi_fail_s28", amountCents: 5000 })
+    );
+    vi.mocked(stripeService.createRefund).mockRejectedValue(new Error("Stripe network error"));
+    vi.mocked(db.flagLessonRefundFailed).mockResolvedValue(undefined);
+
+    const caller = appRouter.createCaller(coachCtx());
+    await expect(caller.lesson.declineAsCoach({ lessonId: 100 }))
+      .rejects.toThrow("Decline recorded but refund could not be processed");
+
+    // Must NOT mark lesson as declined
+    expect(db.updateLessonStatus).not.toHaveBeenCalledWith(100, "declined", expect.anything());
+    // Must flag for admin visibility
+    expect(db.flagLessonRefundFailed).toHaveBeenCalledWith(100, expect.stringContaining("Stripe refund creation failed"));
+  });
+
+  it("throws when no stripePaymentIntentId — cannot refund, marks declined and throws", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(
+      makeLessonRow({ status: "payment_collected", coachId: 2, stripePaymentIntentId: null, amountCents: 5000 })
+    );
+    vi.mocked(db.updateLessonStatus).mockResolvedValue(undefined);
+
+    const caller = appRouter.createCaller(coachCtx());
+    await expect(caller.lesson.declineAsCoach({ lessonId: 100 }))
+      .rejects.toThrow("no payment intent found");
+
+    // Stripe refund must NOT be attempted
+    expect(stripeService.createRefund).not.toHaveBeenCalled();
+  });
+
+  it("succeeds and marks declined ONLY after Stripe refund succeeds", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(
+      makeLessonRow({ status: "payment_collected", coachId: 2, stripePaymentIntentId: "pi_ok_s28", amountCents: 5000 })
+    );
+    vi.mocked(stripeService.createRefund).mockResolvedValue({ id: "re_ok_s28" } as any);
+    vi.mocked(db.updateLessonStatus).mockResolvedValue(undefined);
+    vi.mocked(db.getUserById).mockResolvedValue({ id: 1, name: "Student", email: "s@t.com" } as any);
+
+    const caller = appRouter.createCaller(coachCtx());
+    const result = await caller.lesson.declineAsCoach({ lessonId: 100 });
+
+    expect(result).toEqual({ success: true, refundAmountCents: 5000 });
+    // Declined AFTER successful refund
+    expect(db.updateLessonStatus).toHaveBeenCalledWith(100, "declined", expect.objectContaining({
+      refundProcessedAt: expect.any(Date),
+    }));
+  });
+});
+
+// ─── S28-2: confirmCompletion — lesson end time must have passed ──────────────
+describe("S28-2: confirmCompletion — rejects if lesson has not ended yet", () => {
+  it("rejects when scheduledAt + duration is in the future", async () => {
+    const futureLesson = makeLessonRow({
+      status: "confirmed",
+      stripePaymentIntentId: "pi_future",
+      scheduledAt: new Date(Date.now() + 2 * 60 * 60 * 1000), // 2h from now
+      durationMinutes: 60,
+    });
+    vi.mocked(db.getLessonById).mockResolvedValue(futureLesson);
+
+    const caller = appRouter.createCaller(createContext());
+    await expect(caller.lesson.confirmCompletion({ lessonId: 100 }))
+      .rejects.toThrow("The lesson has not ended yet");
+  });
+
+  it("rejects when lesson just started (within duration + grace period)", async () => {
+    const recentLesson = makeLessonRow({
+      status: "confirmed",
+      stripePaymentIntentId: "pi_recent",
+      scheduledAt: new Date(Date.now() - 30 * 60 * 1000), // started 30 min ago
+      durationMinutes: 60, // ends in 30 min + 15 min grace = still in future
+    });
+    vi.mocked(db.getLessonById).mockResolvedValue(recentLesson);
+
+    const caller = appRouter.createCaller(createContext());
+    await expect(caller.lesson.confirmCompletion({ lessonId: 100 }))
+      .rejects.toThrow("The lesson has not ended yet");
+  });
+
+  it("succeeds when lesson ended more than 15 minutes ago", async () => {
+    const pastLesson = makeLessonRow({
+      status: "confirmed",
+      stripePaymentIntentId: "pi_past",
+      scheduledAt: new Date(Date.now() - 2 * 60 * 60 * 1000), // started 2h ago
+      durationMinutes: 60, // ended 1h ago, well past 15 min grace
+    });
+    vi.mocked(db.getLessonById).mockResolvedValue(pastLesson);
+    vi.mocked(db.updateLessonStatus).mockResolvedValue(undefined);
+    vi.mocked(db.updateStudentXp).mockResolvedValue(undefined);
+
+    const caller = appRouter.createCaller(createContext());
+    const result = await caller.lesson.confirmCompletion({ lessonId: 100 });
+
+    expect(result).toEqual({ success: true });
+    expect(db.updateLessonStatus).toHaveBeenCalledWith(100, "completed", expect.objectContaining({
+      issueWindowEndsAt: expect.any(Date),
+    }));
+  });
+});
+
+// ─── S28-3: releasePayout — enforce issueWindowEndsAt ─────────────────────────
+describe("S28-3: releasePayout — enforces issue window expiry and atomic CAS", () => {
+  function adminCtx() { return createContext({ id: 99, role: "admin" }); }
+
+  it("rejects when issueWindowEndsAt is null (no window set)", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(
+      makeLessonRow({ status: "completed", stripePaymentIntentId: "pi_nowindow", issueWindowEndsAt: null })
+    );
+
+    const caller = appRouter.createCaller(adminCtx());
+    await expect(caller.admin.disputes.releasePayout({ lessonId: 100 }))
+      .rejects.toThrow("no issue window set");
+  });
+
+  it("rejects when issue window has not expired yet", async () => {
+    const futureWindow = new Date(Date.now() + 12 * 60 * 60 * 1000); // 12h from now
+    vi.mocked(db.getLessonById).mockResolvedValue(
+      makeLessonRow({ status: "completed", stripePaymentIntentId: "pi_window_active", issueWindowEndsAt: futureWindow })
+    );
+
+    const caller = appRouter.createCaller(adminCtx());
+    await expect(caller.admin.disputes.releasePayout({ lessonId: 100 }))
+      .rejects.toThrow("Issue window has not expired yet");
+  });
+
+  it("rejects when lesson is disputed and no adminOverrideReason provided", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(
+      makeLessonRow({ status: "disputed", stripePaymentIntentId: "pi_disputed" })
+    );
+
+    const caller = appRouter.createCaller(adminCtx());
+    await expect(caller.admin.disputes.releasePayout({ lessonId: 100 }))
+      .rejects.toThrow("Admin override reason is required for disputed lessons");
+  });
+
+  it("rejects when CAS fails (concurrent payout in progress)", async () => {
+    const expiredWindow = new Date(Date.now() - 60 * 60 * 1000); // 1h ago
+    vi.mocked(db.getLessonById).mockResolvedValue(
+      makeLessonRow({
+        status: "completed",
+        stripePaymentIntentId: "pi_cas_test",
+        issueWindowEndsAt: expiredWindow,
+        stripeTransferId: null,
+      })
+    );
+    vi.mocked(db.getUserById).mockResolvedValue({
+      id: 2, stripeConnectAccountId: "acct_coach123"
+    } as any);
+    // CAS returns false = another request already claimed it
+    vi.mocked(db.claimLessonPayoutSlot).mockResolvedValue(false);
+
+    const caller = appRouter.createCaller(adminCtx());
+    await expect(caller.admin.disputes.releasePayout({ lessonId: 100 }))
+      .rejects.toThrow("Payout already claimed by a concurrent request");
+  });
+
+  it("releases payout slot on Stripe transfer failure", async () => {
+    const expiredWindow = new Date(Date.now() - 60 * 60 * 1000);
+    vi.mocked(db.getLessonById).mockResolvedValue(
+      makeLessonRow({
+        status: "completed",
+        stripePaymentIntentId: "pi_transfer_fail",
+        issueWindowEndsAt: expiredWindow,
+        stripeTransferId: null,
+      })
+    );
+    vi.mocked(db.getUserById).mockResolvedValue({
+      id: 2, stripeConnectAccountId: "acct_coach123"
+    } as any);
+    vi.mocked(db.claimLessonPayoutSlot).mockResolvedValue(true);
+    vi.mocked(stripeConnect.transferToCoach).mockResolvedValue({ success: false, error: "Network error" });
+    vi.mocked(db.releaseLessonPayoutSlot).mockResolvedValue(undefined);
+
+    const caller = appRouter.createCaller(adminCtx());
+    await expect(caller.admin.disputes.releasePayout({ lessonId: 100 }))
+      .rejects.toThrow("Transfer failed: Network error");
+
+    // Slot must be released so admin can retry
+    expect(db.releaseLessonPayoutSlot).toHaveBeenCalledWith(100);
+    // finalizeLessonPayout must NOT be called
+    expect(db.finalizeLessonPayout).not.toHaveBeenCalled();
+  });
+
+  it("succeeds with idempotency key when window expired and CAS wins", async () => {
+    const expiredWindow = new Date(Date.now() - 60 * 60 * 1000);
+    vi.mocked(db.getLessonById).mockResolvedValue(
+      makeLessonRow({
+        id: 100,
+        status: "completed",
+        stripePaymentIntentId: "pi_success_s28",
+        issueWindowEndsAt: expiredWindow,
+        stripeTransferId: null,
+        coachPayoutCents: 4500,
+        currency: "usd",
+        coachId: 2,
+        studentId: 1,
+      })
+    );
+    vi.mocked(db.getUserById).mockResolvedValue({
+      id: 2, stripeConnectAccountId: "acct_coach123"
+    } as any);
+    vi.mocked(db.claimLessonPayoutSlot).mockResolvedValue(true);
+    vi.mocked(stripeConnect.transferToCoach).mockResolvedValue({ success: true, transferId: "tr_s28_ok" });
+    vi.mocked(db.finalizeLessonPayout).mockResolvedValue(undefined);
+
+    const caller = appRouter.createCaller(adminCtx());
+    const result = await caller.admin.disputes.releasePayout({ lessonId: 100 });
+
+    expect(result).toEqual({ success: true, transferId: "tr_s28_ok" });
+    // Idempotency key must be deterministic
+    expect(stripeConnect.transferToCoach).toHaveBeenCalledWith(expect.objectContaining({
+      idempotencyKey: "lesson_payout_100",
+    }));
+    // Finalize must be called (not updateLessonTransfer)
+    expect(db.finalizeLessonPayout).toHaveBeenCalledWith(100, "tr_s28_ok");
+  });
+
+  it("returns alreadyReleased=true when payout was already finalized (idempotent retry)", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(
+      makeLessonRow({
+        status: "completed",
+        stripePaymentIntentId: "pi_already",
+        stripeTransferId: "tr_already_done",
+      })
+    );
+
+    const caller = appRouter.createCaller(adminCtx());
+    const result = await caller.admin.disputes.releasePayout({ lessonId: 100 });
+
+    expect(result).toEqual({ success: true, transferId: "tr_already_done", alreadyReleased: true });
+    expect(stripeConnect.transferToCoach).not.toHaveBeenCalled();
+  });
+});
+
+// ─── S28-4: autoDeclineStaleBookings — processes payment_collected ─────────────
+describe("S28-4: autoDeclineStaleBookings — processes payment_collected with full refund", () => {
+  it("processes payment_collected lessons past deadline with full Stripe refund", async () => {
+    // This tests the scheduler function directly
+    const { autoDeclineStaleBookings } = await import("./reminderScheduler");
+
+    const pastDeadline = new Date(Date.now() - 2 * 60 * 60 * 1000); // 2h ago
+    vi.mocked(db.getDb).mockResolvedValue({
+      execute: vi.fn().mockResolvedValue([[
+        {
+          id: 200,
+          studentId: 1,
+          coachId: 2,
+          status: "payment_collected",
+          confirmationDeadline: pastDeadline,
+          stripePaymentIntentId: "pi_stale_200",
+          amountCents: 6000,
+        }
+      ], []]),
+      update: vi.fn().mockReturnThis(),
+      set: vi.fn().mockReturnThis(),
+      where: vi.fn().mockResolvedValue(undefined),
+    } as any);
+    vi.mocked(stripeService.createRefund).mockResolvedValue({ id: "re_stale_200" } as any);
+    vi.mocked(db.getUserById).mockResolvedValue({ id: 1, name: "Student", email: "s@t.com" } as any);
+
+    await autoDeclineStaleBookings();
+
+    // Must attempt Stripe refund for payment_collected lesson
+    expect(stripeService.createRefund).toHaveBeenCalledWith("pi_stale_200", undefined, "requested_by_customer");
+  });
+});
+
+// ─── S28-5: autoCompletePastLessons — sets issueWindowEndsAt ──────────────────
+describe("S28-5: autoCompletePastLessons — always sets issueWindowEndsAt on completion", () => {
+  it("sets issueWindowEndsAt in the UPDATE query when completing a confirmed lesson", async () => {
+    const { autoCompletePastLessons } = await import("./reminderScheduler");
+
+    // First call: SELECT returns a past lesson
+    // Second call: UPDATE (affectedRows check)
+    let callCount = 0;
+    const executeMock = vi.fn().mockImplementation(() => {
+      callCount++;
+      if (callCount === 1) {
+        // SELECT result
+        return Promise.resolve([[
+          { id: 300, status: "confirmed", durationMinutes: 60, scheduledAt: new Date(Date.now() - 3 * 60 * 60 * 1000) }
+        ], []]);
+      }
+      // UPDATE result
+      return Promise.resolve([{ affectedRows: 1 }, []]);
+    });
+
+    vi.mocked(db.getDb).mockResolvedValue({
+      execute: executeMock,
+    } as any);
+
+    await autoCompletePastLessons();
+
+    // Should have been called twice: once for SELECT, once for UPDATE
+    expect(executeMock).toHaveBeenCalledTimes(2);
+
+    // The UPDATE call (2nd call) must reference issueWindowEndsAt.
+    // Drizzle sql`` template produces an object with queryChunks array.
+    const updateCallArg = executeMock.mock.calls[1]?.[0];
+    // The sql template tag serializes to an object with a queryChunks array.
+    // We check the serialized string representation contains the column name.
+    const sqlStr = JSON.stringify(updateCallArg);
+    expect(sqlStr).toMatch(/issueWindowEndsAt|issue_window_ends_at/);
   });
 });

@@ -1466,3 +1466,79 @@ export async function getCompletedLessonsReadyForPayout() {
     )
   );
 }
+
+/**
+ * Flag a lesson as having a failed refund attempt.
+ * Used when Stripe refund creation fails during coach decline or auto-decline.
+ * The lesson remains in its current status (payment_collected) so admin can retry.
+ * The cancellationReason is updated to make it visible in admin views.
+ */
+export async function flagLessonRefundFailed(lessonId: number, reason: string) {
+  const db = await getDb();
+  if (!db) return;
+
+  await db.update(lessons)
+    .set({
+      cancellationReason: `REFUND_FAILED: ${reason}`,
+      cancelledBy: "system",
+    })
+    .where(eq(lessons.id, lessonId));
+}
+
+/**
+ * Atomic CAS for payout release — claim the payout slot only if it's currently NULL.
+ * Uses a WHERE stripeTransferId IS NULL guard to prevent double-transfer under concurrent calls.
+ * Returns true if this call won the race (slot was NULL and is now set to a placeholder).
+ * Returns false if another request already claimed it (stripeTransferId was already set).
+ *
+ * The caller must then perform the actual Stripe transfer and update with the real transfer ID.
+ * If the Stripe transfer fails, the caller should clear the placeholder so the slot can be retried.
+ */
+export async function claimLessonPayoutSlot(lessonId: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+
+  const result: any = await db.execute(sql`
+    UPDATE lessons
+    SET stripeTransferId = '__pending_payout__'
+    WHERE id = ${lessonId}
+      AND stripeTransferId IS NULL
+      AND status IN ('completed', 'disputed')
+  `);
+
+  return result[0]?.affectedRows === 1;
+}
+
+/**
+ * Finalize a payout after a successful Stripe transfer.
+ * Replaces the __pending_payout__ placeholder with the real transfer ID.
+ */
+export async function finalizeLessonPayout(lessonId: number, transferId: string) {
+  const db = await getDb();
+  if (!db) return;
+
+  await db.execute(sql`
+    UPDATE lessons
+    SET stripeTransferId = ${transferId},
+        status = 'released',
+        payoutAt = NOW()
+    WHERE id = ${lessonId}
+      AND stripeTransferId = '__pending_payout__'
+  `);
+}
+
+/**
+ * Release the payout slot placeholder if the Stripe transfer failed.
+ * This allows the admin to retry the payout.
+ */
+export async function releaseLessonPayoutSlot(lessonId: number) {
+  const db = await getDb();
+  if (!db) return;
+
+  await db.execute(sql`
+    UPDATE lessons
+    SET stripeTransferId = NULL
+    WHERE id = ${lessonId}
+      AND stripeTransferId = '__pending_payout__'
+  `);
+}

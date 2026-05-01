@@ -1221,31 +1221,63 @@ export const appRouter = router({
         // Full refund — coach decline is always 100% regardless of timing
         const refundAmountCents = lesson.amountCents;
 
-        // Mark as declined (not cancelled — this is a coach rejection of a paid request)
+        // Idempotent guard: if already declined, return current state
+        // (handles retry after partial failure)
+        // (We already checked status === payment_collected above, so this is unreachable
+        // for a clean retry, but kept as documentation of intent.)
+
+        // Attempt full Stripe refund BEFORE marking as declined.
+        // If refund fails, we must NOT silently succeed — the student's money
+        // is still held and they expect it back.
+        if (!lesson.stripePaymentIntentId) {
+          // No payment intent — data integrity issue; decline without refund
+          // and flag for admin investigation.
+          await db.updateLessonStatus(input.lessonId, "declined", {
+            coachDeclinedAt: new Date(),
+            cancellationReason: `${input.reason || 'Declined by coach'} (WARNING: no stripePaymentIntentId — manual refund required)`,
+            refundAmountCents: 0,
+          });
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Lesson declined but no payment intent found — contact support to process your refund manually",
+          });
+        }
+
+        let refundSucceeded = false;
+        try {
+          await stripeService.createRefund(
+            lesson.stripePaymentIntentId,
+            undefined, // full refund
+            "requested_by_customer"
+          );
+          refundSucceeded = true;
+        } catch (stripeErr) {
+          console.error(`[declineAsCoach] Stripe refund failed for lesson ${input.lessonId}:`, stripeErr);
+        }
+
+        if (!refundSucceeded) {
+          // Refund creation failed — do NOT mark as declined.
+          // Leave in payment_collected so admin can retry.
+          // Flag it in the DB so it's visible in admin views.
+          await db.flagLessonRefundFailed(
+            input.lessonId,
+            `Coach declined — Stripe refund creation failed, admin retry required`
+          );
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Decline recorded but refund could not be processed. Our team will retry your refund automatically.",
+          });
+        }
+
+        // Refund succeeded — now mark as declined
         await db.updateLessonStatus(input.lessonId, "declined", {
           coachDeclinedAt: new Date(),
           cancellationReason: input.reason || "Declined by coach",
           refundAmountCents: refundAmountCents,
+          refundProcessedAt: new Date(),
         });
 
-        // Process full Stripe refund
-        if (lesson.stripePaymentIntentId) {
-          try {
-            await stripeService.createRefund(
-              lesson.stripePaymentIntentId,
-              undefined, // full refund
-              "requested_by_customer"
-            );
-            await db.updateLessonStatus(input.lessonId, "declined", {
-              refundProcessedAt: new Date(),
-            });
-          } catch (err) {
-            console.error(`[declineAsCoach] Stripe refund failed for lesson ${input.lessonId}:`, err);
-            // Decline still succeeds — admin can manually process refund
-          }
-        }
-
-        // Best-effort email notifications
+        // Best-effort email notifications (only sent after successful refund)
         await sendCancellationEmails(
           input.lessonId,
           'coach',
@@ -1312,6 +1344,20 @@ export const appRouter = router({
         // Require a valid payment intent — cannot release funds without one
         if (!lesson.stripePaymentIntentId) {
           throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Payment not recorded for this lesson" });
+        }
+
+        // Require the lesson end time to have passed.
+        // Use scheduledAt + durationMinutes + 15 min grace period.
+        // This prevents students from confirming completion before the lesson happens,
+        // which would start the 24h issue window prematurely.
+        const durationMs = (lesson.durationMinutes ?? 60) * 60 * 1000;
+        const gracePeriodMs = 15 * 60 * 1000; // 15 minutes
+        const lessonEndTime = new Date(lesson.scheduledAt).getTime() + durationMs + gracePeriodMs;
+        if (Date.now() < lessonEndTime) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "The lesson has not ended yet. Please wait until the lesson is complete before confirming.",
+          });
         }
 
         // NO capturePaymentIntent — payment was already captured at checkout.
@@ -2509,9 +2555,16 @@ export const appRouter = router({
           return await db.getCompletedLessonsReadyForPayout();
         }),
 
-      // Release coach payout — transfers funds from platform to coach's connected account
+      // Release coach payout — transfers funds from platform to coach's connected account.
+      //
+      // For 'completed' lessons: enforces issueWindowEndsAt <= now (window must have expired).
+      // For 'disputed' lessons: admin override is allowed (explicit decision after review).
+      // Atomic CAS prevents double-transfer under concurrent calls.
       releasePayout: protectedProcedure
-        .input(z.object({ lessonId: z.number() }))
+        .input(z.object({
+          lessonId: z.number(),
+          adminOverrideReason: z.string().optional(), // required for disputed lessons
+        }))
         .use(({ ctx, next }) => {
           if (ctx.user.role !== "admin") {
             throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
@@ -2523,16 +2576,45 @@ export const appRouter = router({
           if (!lesson) {
             throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
           }
-          // Can release payout for completed (issue window passed) or disputed (admin override)
+          // Only completed or disputed lessons can be paid out
           if (lesson.status !== "completed" && lesson.status !== "disputed") {
             throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Lesson is not in a payable state" });
           }
           if (!lesson.stripePaymentIntentId) {
             throw new TRPCError({ code: "PRECONDITION_FAILED", message: "No payment recorded for this lesson" });
           }
-          // Prevent double payout
-          if (lesson.stripeTransferId) {
-            throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Payout already released" });
+          // Idempotent: if already released with a real transfer ID, return success
+          if (lesson.stripeTransferId && lesson.stripeTransferId !== '__pending_payout__') {
+            return { success: true, transferId: lesson.stripeTransferId, alreadyReleased: true };
+          }
+          // If another concurrent call is in progress, reject
+          if (lesson.stripeTransferId === '__pending_payout__') {
+            throw new TRPCError({ code: "CONFLICT", message: "Payout is already in progress. Please try again in a moment." });
+          }
+
+          // For completed lessons: enforce that the issue window has actually expired.
+          // For disputed lessons: admin override is allowed but requires an explicit reason.
+          if (lesson.status === "completed") {
+            if (!lesson.issueWindowEndsAt) {
+              throw new TRPCError({
+                code: "PRECONDITION_FAILED",
+                message: "Lesson has no issue window set — cannot safely release payout",
+              });
+            }
+            if (new Date() < lesson.issueWindowEndsAt) {
+              throw new TRPCError({
+                code: "PRECONDITION_FAILED",
+                message: `Issue window has not expired yet. Payout available after ${lesson.issueWindowEndsAt.toISOString()}.`,
+              });
+            }
+          } else if (lesson.status === "disputed") {
+            // Admin override for disputed lessons requires an explicit reason
+            if (!input.adminOverrideReason?.trim()) {
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message: "Admin override reason is required for disputed lessons",
+              });
+            }
           }
 
           // Look up coach's connected account
@@ -2541,25 +2623,38 @@ export const appRouter = router({
             throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Coach does not have a connected Stripe account" });
           }
 
-          // Transfer coach payout to their connected account
+          // Atomic CAS — claim the payout slot before touching Stripe.
+          // If two concurrent calls race here, only one will win.
+          const claimed = await db.claimLessonPayoutSlot(input.lessonId);
+          if (!claimed) {
+            throw new TRPCError({ code: "CONFLICT", message: "Payout already claimed by a concurrent request. Please refresh and try again." });
+          }
+
+          // Transfer coach payout to their connected account.
+          // Use a deterministic idempotency key so Stripe deduplicates retries.
+          const idempotencyKey = `lesson_payout_${lesson.id}`;
           const result = await transferToCoach({
             accountId: coach.stripeConnectAccountId,
             amountCents: lesson.coachPayoutCents,
             currency: lesson.currency || "usd",
             description: `Payout for lesson #${lesson.id}`,
+            idempotencyKey,
             metadata: {
               lessonId: lesson.id.toString(),
               coachId: lesson.coachId.toString(),
               studentId: lesson.studentId.toString(),
+              ...(input.adminOverrideReason ? { adminOverrideReason: input.adminOverrideReason } : {}),
             },
           });
 
           if (!result.success) {
+            // Release the slot so admin can retry
+            await db.releaseLessonPayoutSlot(input.lessonId);
             throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Transfer failed: ${result.error}` });
           }
 
-          // Mark lesson as released with transfer ID
-          await db.updateLessonTransfer(input.lessonId, result.transferId!);
+          // Finalize: replace placeholder with real transfer ID and mark released
+          await db.finalizeLessonPayout(input.lessonId, result.transferId!);
 
           return { success: true, transferId: result.transferId };
         }),

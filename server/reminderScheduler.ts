@@ -181,9 +181,14 @@ export async function sendPendingReminders(): Promise<void> {
 }
 
 /**
- * Auto-decline pending_confirmation lessons whose confirmationDeadline
- * has passed. Sends a cancellation email to both parties explaining
- * the coach didn't respond in time.
+ * Auto-decline stale booking requests whose confirmationDeadline has passed.
+ *
+ * Handles two cases:
+ * 1. payment_collected — student has already paid; must issue a full Stripe
+ *    refund BEFORE marking as declined. Only emails the student about the
+ *    refund if Stripe refund creation actually succeeded. On Stripe failure,
+ *    the lesson is left in a `refund_failed` state for admin retry.
+ * 2. pending_confirmation (legacy) — no payment was taken; cancel directly.
  */
 export async function autoDeclineStaleBookings(): Promise<void> {
   const dbInstance = await getDb();
@@ -192,78 +197,198 @@ export async function autoDeclineStaleBookings(): Promise<void> {
     return;
   }
 
-  // Find pending_confirmation lessons whose deadline has expired
+  // Find both payment_collected (new) and pending_confirmation (legacy) lessons
+  // whose confirmation deadline has expired.
   const result: any = await dbInstance.execute(sql`
-    SELECT id FROM lessons
-    WHERE status = 'pending_confirmation'
+    SELECT id, status, stripePaymentIntentId, amountCents
+    FROM lessons
+    WHERE status IN ('payment_collected', 'pending_confirmation')
       AND confirmationDeadline IS NOT NULL
       AND confirmationDeadline <= NOW()
   `);
 
-  const rows = result[0] as { id: number }[];
+  const rows = result[0] as {
+    id: number;
+    status: string;
+    stripePaymentIntentId: string | null;
+    amountCents: number;
+  }[];
+
   if (!rows || rows.length === 0) {
-    console.log("[Auto-Decline] No stale pending_confirmation lessons.");
+    console.log("[Auto-Decline] No stale pending_confirmation or payment_collected lessons.");
     return;
   }
 
   console.log(`[Auto-Decline] Found ${rows.length} lesson(s) past confirmation deadline.`);
 
+  const { getLessonById, getUserById } = await import("./db");
+  const stripeService = await import("./stripe");
+
   for (const row of rows) {
     try {
-      const cancelResult = await cancelLesson(
-        row.id,
-        "system",
-        "Coach did not respond within 24 hours"
-      );
-      console.log(`[Auto-Decline] Lesson ${row.id} auto-declined`);
+      if (row.status === 'payment_collected') {
+        // Payment-first model: student has already paid.
+        // Must issue a full Stripe refund before marking declined.
+        if (!row.stripePaymentIntentId) {
+          // No payment intent recorded — mark declined without refund (data issue)
+          await dbInstance.execute(sql`
+            UPDATE lessons
+            SET status = 'declined',
+                cancelledAt = NOW(),
+                cancelledBy = 'system',
+                cancellationReason = 'Coach did not respond within 24 hours (no payment intent)'
+            WHERE id = ${row.id}
+              AND status = 'payment_collected'
+          `);
+          console.warn(`[Auto-Decline] Lesson ${row.id} declined without refund — no stripePaymentIntentId`);
+          continue;
+        }
 
-      // Notify both parties. Best-effort — log but don't throw.
-      const { getLessonById, getUserById } = await import("./db");
-      const lesson = await getLessonById(row.id);
-      if (!lesson) continue;
-      const [student, coach] = await Promise.all([
-        getUserById(lesson.studentId),
-        getUserById(lesson.coachId),
-      ]);
-      if (!student?.email || !coach?.email) continue;
+        // Attempt full Stripe refund first
+        let refundSucceeded = false;
+        try {
+          await stripeService.createRefund(
+            row.stripePaymentIntentId,
+            undefined, // full refund
+            "requested_by_customer"
+          );
+          refundSucceeded = true;
+        } catch (stripeErr) {
+          console.error(`[Auto-Decline] Stripe refund failed for lesson ${row.id}:`, stripeErr);
+        }
 
-      const lessonDate = new Date(lesson.scheduledAt).toLocaleDateString("en-US", {
-        weekday: "long", year: "numeric", month: "long", day: "numeric",
-      });
-      const lessonTime = new Date(lesson.scheduledAt).toLocaleTimeString("en-US", {
-        hour: "numeric", minute: "2-digit", hour12: true,
-      });
+        if (refundSucceeded) {
+          // Refund succeeded — mark as declined with refund recorded
+          await dbInstance.execute(sql`
+            UPDATE lessons
+            SET status = 'declined',
+                cancelledAt = NOW(),
+                cancelledBy = 'system',
+                cancellationReason = 'Coach did not respond within 24 hours',
+                refundAmountCents = ${row.amountCents},
+                refundProcessedAt = NOW()
+            WHERE id = ${row.id}
+              AND status = 'payment_collected'
+          `);
+          console.log(`[Auto-Decline] Lesson ${row.id} auto-declined with full refund`);
+        } else {
+          // Refund failed — leave in a visible state for admin retry.
+          // Do NOT mark as declined; keep status as 'payment_collected' but
+          // flag it so admin can see it needs attention.
+          await dbInstance.execute(sql`
+            UPDATE lessons
+            SET cancellationReason = 'REFUND_FAILED: Coach did not respond within 24 hours — Stripe refund creation failed, admin retry required',
+                cancelledBy = 'system'
+            WHERE id = ${row.id}
+              AND status = 'payment_collected'
+          `);
+          console.error(`[Auto-Decline] Lesson ${row.id} needs admin attention — refund failed, kept in payment_collected`);
+          // Do NOT send any email to the student — refund has not happened yet
+          continue;
+        }
 
-      await sendEmail({
-        to: student.email,
-        subject: `Lesson request not confirmed — ${lessonDate}`,
-        html: getStudentCancellationEmail({
-          studentName: student.name || "Student",
-          coachName: coach.name || "Coach",
-          lessonDate,
-          lessonTime,
-          durationMinutes: lesson.durationMinutes ?? 60,
-          amountPaid: `$${(lesson.amountCents / 100).toFixed(2)}`,
-          refundAmount: `$${(cancelResult.refundAmountCents / 100).toFixed(2)}`,
-          refundPercentage: 100, // no payment was ever taken for pending_confirmation
-          cancelledBy: "system",
-          cancellationReason: "Coach did not respond within 24 hours",
-        }),
-      });
+        // Only send emails if refund actually succeeded
+        const lesson = await getLessonById(row.id);
+        if (!lesson) continue;
+        const [student, coach] = await Promise.all([
+          getUserById(lesson.studentId),
+          getUserById(lesson.coachId),
+        ]);
+        if (!student?.email || !coach?.email) continue;
 
-      await sendEmail({
-        to: coach.email,
-        subject: `Lesson request auto-declined — ${lessonDate}`,
-        html: getCoachCancellationEmail({
-          coachName: coach.name || "Coach",
-          studentName: student.name || "Student",
-          lessonDate,
-          lessonTime,
-          durationMinutes: lesson.durationMinutes ?? 60,
-          cancelledBy: "system",
-          cancellationReason: "You didn't respond within 24 hours. The student will be offered other coaches.",
-        }),
-      });
+        const lessonDate = new Date(lesson.scheduledAt).toLocaleDateString("en-US", {
+          weekday: "long", year: "numeric", month: "long", day: "numeric",
+        });
+        const lessonTime = new Date(lesson.scheduledAt).toLocaleTimeString("en-US", {
+          hour: "numeric", minute: "2-digit", hour12: true,
+        });
+
+        await sendEmail({
+          to: student.email,
+          subject: `Booking request declined — full refund issued — ${lessonDate}`,
+          html: getStudentCancellationEmail({
+            studentName: student.name || "Student",
+            coachName: coach.name || "Coach",
+            lessonDate,
+            lessonTime,
+            durationMinutes: lesson.durationMinutes ?? 60,
+            amountPaid: `$${(lesson.amountCents / 100).toFixed(2)}`,
+            refundAmount: `$${(lesson.amountCents / 100).toFixed(2)}`,
+            refundPercentage: 100,
+            cancelledBy: "system",
+            cancellationReason: "The coach did not respond within 24 hours. A full refund has been issued.",
+          }),
+        });
+
+        await sendEmail({
+          to: coach.email,
+          subject: `Booking request auto-declined — ${lessonDate}`,
+          html: getCoachCancellationEmail({
+            coachName: coach.name || "Coach",
+            studentName: student.name || "Student",
+            lessonDate,
+            lessonTime,
+            durationMinutes: lesson.durationMinutes ?? 60,
+            cancelledBy: "system",
+            cancellationReason: "You didn't respond within 24 hours. The student has been refunded.",
+          }),
+        });
+
+      } else {
+        // Legacy pending_confirmation — no payment was taken; use normal cancel
+        const cancelResult = await cancelLesson(
+          row.id,
+          "system",
+          "Coach did not respond within 24 hours"
+        );
+        console.log(`[Auto-Decline] Legacy lesson ${row.id} auto-declined (no payment)`);
+
+        const lesson = await getLessonById(row.id);
+        if (!lesson) continue;
+        const [student, coach] = await Promise.all([
+          getUserById(lesson.studentId),
+          getUserById(lesson.coachId),
+        ]);
+        if (!student?.email || !coach?.email) continue;
+
+        const lessonDate = new Date(lesson.scheduledAt).toLocaleDateString("en-US", {
+          weekday: "long", year: "numeric", month: "long", day: "numeric",
+        });
+        const lessonTime = new Date(lesson.scheduledAt).toLocaleTimeString("en-US", {
+          hour: "numeric", minute: "2-digit", hour12: true,
+        });
+
+        await sendEmail({
+          to: student.email,
+          subject: `Lesson request not confirmed — ${lessonDate}`,
+          html: getStudentCancellationEmail({
+            studentName: student.name || "Student",
+            coachName: coach.name || "Coach",
+            lessonDate,
+            lessonTime,
+            durationMinutes: lesson.durationMinutes ?? 60,
+            amountPaid: `$${(lesson.amountCents / 100).toFixed(2)}`,
+            refundAmount: `$${(cancelResult.refundAmountCents / 100).toFixed(2)}`,
+            refundPercentage: 100,
+            cancelledBy: "system",
+            cancellationReason: "Coach did not respond within 24 hours",
+          }),
+        });
+
+        await sendEmail({
+          to: coach.email,
+          subject: `Lesson request auto-declined — ${lessonDate}`,
+          html: getCoachCancellationEmail({
+            coachName: coach.name || "Coach",
+            studentName: student.name || "Student",
+            lessonDate,
+            lessonTime,
+            durationMinutes: lesson.durationMinutes ?? 60,
+            cancelledBy: "system",
+            cancellationReason: "You didn't respond within 24 hours. The student will be offered other coaches.",
+          }),
+        });
+      }
     } catch (err) {
       console.error(`[Auto-Decline] Failed for lesson ${row.id}:`, err);
     }
@@ -272,11 +397,15 @@ export async function autoDeclineStaleBookings(): Promise<void> {
 
 /**
  * Auto-complete lessons whose scheduled time + duration has passed.
- * Targets lessons in 'paid' or 'confirmed' status that are past their
- * end time by at least 1 hour (grace period for late starts).
  *
- * This prevents stale "confirmed" / "paid" lessons from cluttering
- * both the coach and student dashboards indefinitely.
+ * Targets:
+ * - 'confirmed' (payment-first model) — always sets issueWindowEndsAt = now + 24h
+ * - 'paid' (legacy) — also sets issueWindowEndsAt so the payout path is consistent
+ *
+ * Grace period: 1 hour after lesson end time to account for late starts.
+ *
+ * IMPORTANT: issueWindowEndsAt MUST always be set. A completed lesson without
+ * issueWindowEndsAt cannot safely be auto-released to the coach payout.
  */
 export async function autoCompletePastLessons(): Promise<void> {
   const dbInstance = await getDb();
@@ -287,7 +416,7 @@ export async function autoCompletePastLessons(): Promise<void> {
 
   // Find lessons whose scheduled end time + 1h grace is in the past
   const result: any = await dbInstance.execute(sql`
-    SELECT id, studentId, coachId, durationMinutes, scheduledAt
+    SELECT id, studentId, coachId, durationMinutes, scheduledAt, status
     FROM lessons
     WHERE status IN ('paid', 'confirmed')
       AND DATE_ADD(scheduledAt, INTERVAL (COALESCE(durationMinutes, 60) + 60) MINUTE) <= NOW()
@@ -303,14 +432,21 @@ export async function autoCompletePastLessons(): Promise<void> {
 
   for (const row of rows) {
     try {
-      await dbInstance.execute(sql`
+      // Always set issueWindowEndsAt = now + 24h.
+      // Without this, the auto-release cron cannot safely release the payout.
+      const affectedRows: any = await dbInstance.execute(sql`
         UPDATE lessons
         SET status = 'completed',
-            completedAt = NOW()
+            completedAt = NOW(),
+            issueWindowEndsAt = DATE_ADD(NOW(), INTERVAL 24 HOUR)
         WHERE id = ${row.id}
           AND status IN ('paid', 'confirmed')
       `);
-      console.log(`[Auto-Complete] Lesson ${row.id} marked completed`);
+      if (affectedRows[0]?.affectedRows > 0) {
+        console.log(`[Auto-Complete] Lesson ${row.id} (was ${row.status}) marked completed with 24h issue window`);
+      } else {
+        console.log(`[Auto-Complete] Lesson ${row.id} skipped (status changed before update)`);
+      }
     } catch (err) {
       console.error(`[Auto-Complete] Failed for lesson ${row.id}:`, err);
     }
