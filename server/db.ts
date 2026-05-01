@@ -1718,13 +1718,20 @@ export async function releaseCancellationWithRefundFailed(lessonId: number): Pro
  *   - status is in the refundable set (disputed, completed)
  * Returns true if the claim was won (affectedRows = 1), false if lost to a concurrent payout.
  */
-export async function claimLessonRefundSlot(lessonId: number): Promise<boolean> {
+/**
+ * S31-4: Claim the refund slot AND store the intended refund amount atomically.
+ * This allows recovery to reconstruct the correct amount after a process crash.
+ */
+export async function claimLessonRefundSlot(lessonId: number, intendedRefundAmountCents?: number): Promise<boolean> {
   const db = await getDb();
   if (!db) return false;
 
   const result: any = await db.execute(sql`
     UPDATE lessons
-    SET stripeTransferId = '__pending_refund__'
+    SET stripeTransferId = '__pending_refund__',
+        -- Store intended refund amount so recovery can reconstruct it after a crash.
+        -- Only set if provided; leave existing value if NULL is passed.
+        refundAmountCents = COALESCE(${intendedRefundAmountCents ?? null}, refundAmountCents)
     WHERE id = ${lessonId}
       AND stripeTransferId IS NULL
       AND status IN ('disputed', 'completed')

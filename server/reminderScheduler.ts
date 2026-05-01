@@ -263,12 +263,14 @@ export async function autoDeclineStaleBookings(): Promise<void> {
         }
 
         // Attempt full Stripe refund (CAS already claimed the row)
+        // S31-2: Deterministic idempotency key — same key as recovery so Stripe deduplicates.
         let refundSucceeded = false;
         try {
           await stripeService.createRefund(
             row.stripePaymentIntentId,
             undefined, // full refund
-            "requested_by_customer"
+            "requested_by_customer",
+            `lesson_decline_refund_${row.id}`
           );
           refundSucceeded = true;
         } catch (stripeErr) {
@@ -497,7 +499,7 @@ export async function recoverStuckPendingStates(): Promise<void> {
   // Find lessons stuck in decline_pending or cancel_pending for > 10 minutes
   const stuckResult: any = await dbInstance.execute(sql`
     SELECT id, status, stripePaymentIntentId, amountCents, stripeTransferId,
-           coachId, cancelledAt, coachDeclinedAt
+           coachId, cancelledAt, coachDeclinedAt, refundAmountCents
     FROM lessons
     WHERE status IN ('decline_pending', 'cancel_pending')
       AND updatedAt < ${TEN_MINUTES_AGO}
@@ -580,6 +582,65 @@ export async function recoverStuckPendingStates(): Promise<void> {
         }
       } catch (err) {
         console.error(`[Recovery] Error recovering lesson ${row.id}:`, err);
+      }
+    }
+  }
+
+  // S31-4: Find lessons with __pending_refund__ stuck for > 10 minutes
+  const stuckRefundResult: any = await dbInstance.execute(sql`
+    SELECT id, stripePaymentIntentId, amountCents, refundAmountCents
+    FROM lessons
+    WHERE stripeTransferId = '__pending_refund__'
+      AND updatedAt < ${TEN_MINUTES_AGO}
+  `);
+
+  const stuckRefunds = stuckRefundResult[0] as any[];
+  if (stuckRefunds?.length > 0) {
+    console.warn(`[Recovery] Found ${stuckRefunds.length} lesson(s) with stuck __pending_refund__ for > 10 minutes.`);
+    const { finalizeAdminRefund, releaseAdminRefundClaim } = await import('./db');
+    const stripeService2 = await import('./stripe');
+
+    for (const row of stuckRefunds) {
+      try {
+        if (!row.stripePaymentIntentId) {
+          // No payment intent — cannot refund; release the slot for admin
+          await releaseAdminRefundClaim(row.id);
+          console.error(`[Recovery] Lesson ${row.id} stuck __pending_refund__ — no payment intent, slot released`);
+          continue;
+        }
+
+        // Use stored refundAmountCents (set by claimLessonRefundSlot in S31-4).
+        // If somehow null, fall back to full refund.
+        const refundAmountCents = row.refundAmountCents ?? row.amountCents;
+        const idempotencyKey = `lesson_admin_refund_${row.id}_${refundAmountCents}`;
+
+        let refundSucceeded = false;
+        try {
+          await stripeService2.createRefund(
+            row.stripePaymentIntentId,
+            refundAmountCents === row.amountCents ? undefined : refundAmountCents,
+            'requested_by_customer',
+            idempotencyKey
+          );
+          refundSucceeded = true;
+        } catch (stripeErr: any) {
+          if (stripeErr?.raw?.code === 'charge_already_refunded') {
+            refundSucceeded = true;
+          } else {
+            console.error(`[Recovery] Stripe refund re-attempt failed for lesson ${row.id} (__pending_refund__):`, stripeErr);
+          }
+        }
+
+        if (refundSucceeded) {
+          await finalizeAdminRefund(row.id, refundAmountCents, 'Admin refund (recovered after process crash)');
+          console.log(`[Recovery] Lesson ${row.id} __pending_refund__ recovered — refund finalized`);
+        } else {
+          // Stripe still failing — release slot so admin can retry manually
+          await releaseAdminRefundClaim(row.id);
+          console.error(`[Recovery] Lesson ${row.id} __pending_refund__ recovery failed — slot released for admin retry`);
+        }
+      } catch (err) {
+        console.error(`[Recovery] Error recovering __pending_refund__ for lesson ${row.id}:`, err);
       }
     }
   }

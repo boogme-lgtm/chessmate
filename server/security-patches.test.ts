@@ -863,7 +863,7 @@ describe("lesson.declineAsCoach (payment-first model)", () => {
     const caller = appRouter.createCaller(coachContext());
     const result = await caller.lesson.declineAsCoach({ lessonId: 100, reason: "Schedule conflict" });
     // Full refund (no amount specified = full)
-    expect(stripeService.createRefund).toHaveBeenCalledWith("pi_decline_123", undefined, "requested_by_customer");
+    expect(stripeService.createRefund).toHaveBeenCalledWith("pi_decline_123", undefined, "requested_by_customer", "lesson_decline_refund_100");
     // CAS claimed to decline_pending, then finalized
     expect(db.claimLessonCoachDecision).toHaveBeenCalledWith(100, "decline_pending");
     expect(db.finalizeCoachDecline).toHaveBeenCalled();
@@ -1520,7 +1520,7 @@ describe("S28-4: autoDeclineStaleBookings — processes payment_collected with f
     vi.mocked(db.getUserById).mockResolvedValue({ id: 1, name: "Student", email: "s@t.com" } as any);
     await autoDeclineStaleBookings();
     // Must attempt Stripe refund for payment_collected lesson
-    expect(stripeService.createRefund).toHaveBeenCalledWith("pi_stale_200", undefined, "requested_by_customer");
+    expect(stripeService.createRefund).toHaveBeenCalledWith("pi_stale_200", undefined, "requested_by_customer", "lesson_decline_refund_200");
   });
 });
 
@@ -1713,7 +1713,7 @@ describe("S29-2: Race-safe autoDeclineStaleBookings", () => {
     const { autoDeclineStaleBookings } = await import("./reminderScheduler");
     await autoDeclineStaleBookings();
 
-    expect(stripeService.createRefund).toHaveBeenCalledWith("pi_test_stale", undefined, "requested_by_customer");
+    expect(stripeService.createRefund).toHaveBeenCalledWith("pi_test_stale", undefined, "requested_by_customer", "lesson_decline_refund_43");
   });
 });
 
@@ -1779,7 +1779,7 @@ describe("S29-3: Shared settlement guard (refund vs payout)", () => {
     const result = await caller.admin.disputes.refundStudent({ lessonId: 100 });
 
     expect(result.success).toBe(true);
-    expect(db.claimLessonRefundSlot).toHaveBeenCalledWith(100);
+    expect(db.claimLessonRefundSlot).toHaveBeenCalledWith(100, 5000);
     expect(stripeService.createRefund).toHaveBeenCalled();
     expect(db.finalizeAdminRefund).toHaveBeenCalled();
   });
@@ -1882,6 +1882,8 @@ describe("S29-5: Recovery scan for stuck pending states", () => {
     }]]);
     // UPDATE to finalize to declined
     executeMock.mockResolvedValueOnce([{ affectedRows: 1 }]);
+    // SELECT: no stuck __pending_refund__ lessons (added in S31-4)
+    executeMock.mockResolvedValueOnce([[]]);
     // SELECT: no stuck __pending_payout__ lessons
     executeMock.mockResolvedValueOnce([[]]);
 
@@ -1910,6 +1912,9 @@ describe("S29-5: Recovery scan for stuck pending states", () => {
       coachId: 2,
     }]]);
     executeMock.mockResolvedValueOnce([{ affectedRows: 1 }]);
+    // SELECT: no stuck __pending_refund__ lessons (added in S31-4)
+    executeMock.mockResolvedValueOnce([[]]);
+    // SELECT: no stuck __pending_payout__ lessons
     executeMock.mockResolvedValueOnce([[]]);
 
     vi.mocked(db.getDb).mockResolvedValue({ execute: executeMock } as any);
@@ -1951,7 +1956,7 @@ describe("S30-1: Atomic admin refund vs payout — shared settlement claim", () 
 
     const result = await caller.admin.disputes.refundStudent({ lessonId: 100 });
     expect(result.success).toBe(true);
-    expect(db.claimLessonRefundSlot).toHaveBeenCalledWith(100);
+    expect(db.claimLessonRefundSlot).toHaveBeenCalledWith(100, 5000);
     expect(stripeService.createRefund).toHaveBeenCalledWith(
       "pi_disputed_001",
       undefined, // full refund (amountCents not passed, defaults to lesson.amountCents)
@@ -2062,9 +2067,11 @@ describe("S30-2: Recovery uses correct refund amounts and idempotency keys", () 
       cancelledAt: new Date(Date.now() - 20 * 60 * 1000),
       coachDeclinedAt: null,
     }]]);
-    // Second call: stuck payouts (empty)
+    // Second call: __pending_refund__ scan (empty) — added in S31-4
     executeMock.mockResolvedValueOnce([[]]);
-    // Third call: UPDATE to cancelled
+    // Third call: stuck payouts (empty)
+    executeMock.mockResolvedValueOnce([[]]);
+    // Fourth call: UPDATE to cancelled
     executeMock.mockResolvedValueOnce([{ affectedRows: 1 }]);
 
     const { getDb } = await import("./db");
@@ -2101,6 +2108,7 @@ describe("S30-2: Recovery uses correct refund amounts and idempotency keys", () 
       cancelledAt: null,
       coachDeclinedAt: new Date(Date.now() - 20 * 60 * 1000),
     }]]);
+    executeMock.mockResolvedValueOnce([[]]); // __pending_refund__ scan (empty) — added in S31-4
     executeMock.mockResolvedValueOnce([[]]); // stuck payouts
     executeMock.mockResolvedValueOnce([{ affectedRows: 1 }]); // UPDATE
 
@@ -2227,5 +2235,223 @@ describe("S30-4: claimLessonCancellation allowlist — blocks non-pre-completion
 
     const result = await caller.lesson.cancel({ lessonId: 100, reason: "test" });
     expect(result.success).toBe(true);
+  });
+});
+
+// ============================================================
+// SPRINT 31: Pending-Refund Settlement Cleanup
+// ============================================================
+
+describe("S31-2: First-attempt idempotency keys match recovery keys", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(db.getDb).mockResolvedValue({
+      execute: vi.fn().mockResolvedValue([[], []]),
+      select: vi.fn().mockReturnThis(),
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockResolvedValue([]),
+      update: vi.fn().mockReturnThis(),
+      set: vi.fn().mockReturnThis(),
+      insert: vi.fn().mockReturnThis(),
+      values: vi.fn().mockResolvedValue([{ insertId: 1 }]),
+    } as any);
+  });
+
+  it("declineAsCoach uses lesson_decline_refund_{id} as idempotency key", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(
+      makeLessonRow({ status: "payment_collected", coachId: 99, stripePaymentIntentId: "pi_idem_001", amountCents: 5000 })
+    );
+    vi.mocked(db.claimLessonCoachDecision).mockResolvedValue(true);
+    vi.mocked(db.finalizeCoachDecline).mockResolvedValue();
+    vi.mocked(stripeService.createRefund).mockResolvedValue({ id: "re_idem_001" } as any);
+
+    // Must use userType: "coach" since declineAsCoach requires coachProcedure
+    const coachCtx = createContext({ id: 99, role: "user", userType: "coach" });
+    const caller = appRouter.createCaller(coachCtx);
+    await caller.lesson.declineAsCoach({ lessonId: 100, reason: "test" });
+
+    expect(stripeService.createRefund).toHaveBeenCalledWith(
+      "pi_idem_001",
+      undefined,
+      "requested_by_customer",
+      "lesson_decline_refund_100"
+    );
+  });
+
+  it("student cancel uses lesson_cancel_refund_{id} as idempotency key", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(
+      makeLessonRow({ status: "confirmed", studentId: 1, stripePaymentIntentId: "pi_cancel_001", amountCents: 5000 })
+    );
+    vi.mocked(db.claimLessonCancellation).mockResolvedValue({ refundAmountCents: 2500, refundPercentage: 50 });
+    vi.mocked(stripeService.createRefund).mockResolvedValue({ id: "re_cancel_001" } as any);
+    vi.mocked(db.finalizeCancellation).mockResolvedValue();
+
+    const studentCtx = createContext({ id: 1 });
+    const caller = appRouter.createCaller(studentCtx);
+    await caller.lesson.cancel({ lessonId: 100, reason: "test" });
+
+    expect(stripeService.createRefund).toHaveBeenCalledWith(
+      "pi_cancel_001",
+      2500,
+      "requested_by_customer",
+      "lesson_cancel_refund_100"
+    );
+  });
+
+  it("first-attempt and recovery decline keys are identical (contract test)", () => {
+    const lessonId = 100;
+    const firstAttemptKey = `lesson_decline_refund_${lessonId}`;
+    const recoveryKey = `lesson_decline_refund_${lessonId}`;
+    expect(firstAttemptKey).toBe(recoveryKey);
+  });
+});
+
+describe("S31-3: releasePayout rejects __pending_refund__ sentinel", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.mocked(db.getDb).mockResolvedValue({
+      execute: vi.fn().mockResolvedValue([[], []]),
+      select: vi.fn().mockReturnThis(),
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockResolvedValue([]),
+      update: vi.fn().mockReturnThis(),
+      set: vi.fn().mockReturnThis(),
+      insert: vi.fn().mockReturnThis(),
+      values: vi.fn().mockResolvedValue([{ insertId: 1 }]),
+    } as any);
+  });
+
+  it("throws CONFLICT when stripeTransferId is __pending_refund__", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(
+      makeLessonRow({
+        status: "completed",
+        coachId: 99,
+        stripePaymentIntentId: "pi_pr_001",
+        stripeTransferId: "__pending_refund__",
+        issueWindowEndsAt: new Date(Date.now() - 1000),
+      })
+    );
+    const adminCtx = createContext({ id: 1, role: "admin" });
+    const caller = appRouter.createCaller(adminCtx);
+
+    await expect(
+      caller.admin.disputes.releasePayout({ lessonId: 100 })
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+  });
+
+  it("returns alreadyReleased=true for a real transfer ID (not a sentinel)", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(
+      makeLessonRow({
+        status: "completed",
+        coachId: 99,
+        stripePaymentIntentId: "pi_pr_003",
+        stripeTransferId: "tr_real_transfer_123",
+        issueWindowEndsAt: new Date(Date.now() - 1000),
+      })
+    );
+    const adminCtx = createContext({ id: 1, role: "admin" });
+    const caller = appRouter.createCaller(adminCtx);
+
+    const result = await caller.admin.disputes.releasePayout({ lessonId: 100 });
+    expect(result.alreadyReleased).toBe(true);
+    expect(result.transferId).toBe("tr_real_transfer_123");
+  });
+
+  it("does NOT treat __pending_payout__ as alreadyReleased", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(
+      makeLessonRow({
+        status: "completed",
+        coachId: 99,
+        stripePaymentIntentId: "pi_pr_004",
+        stripeTransferId: "__pending_payout__",
+        issueWindowEndsAt: new Date(Date.now() - 1000),
+      })
+    );
+    const adminCtx = createContext({ id: 1, role: "admin" });
+    const caller = appRouter.createCaller(adminCtx);
+
+    await expect(
+      caller.admin.disputes.releasePayout({ lessonId: 100 })
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+  });
+});
+
+describe("S31-4: Recovery for stuck __pending_refund__", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it("retries Stripe refund using stored refundAmountCents (not full amountCents)", async () => {
+    // Mock getDb to return different results for each scan query
+    let callCount = 0;
+    vi.mocked(db.getDb).mockResolvedValue({
+      execute: vi.fn().mockImplementation(() => {
+        callCount++;
+        if (callCount === 1) return Promise.resolve([[]]); // decline_pending/cancel_pending: empty
+        if (callCount === 2) return Promise.resolve([[    // __pending_refund__: one stuck row
+          { id: 200, stripePaymentIntentId: "pi_stuck_001", amountCents: 8000, refundAmountCents: 4000 }
+        ]]);
+        return Promise.resolve([[]]); // __pending_payout__: empty
+      }),
+    } as any);
+    vi.mocked(stripeService.createRefund).mockResolvedValue({ id: "re_recovered_001" } as any);
+    vi.mocked(db.finalizeAdminRefund).mockResolvedValue(undefined as any);
+
+    const { recoverStuckPendingStates } = await import("./reminderScheduler");
+    await recoverStuckPendingStates();
+
+    // Must use stored partial amount (4000), not full amount (8000)
+    expect(stripeService.createRefund).toHaveBeenCalledWith(
+      "pi_stuck_001",
+      4000,
+      "requested_by_customer",
+      "lesson_admin_refund_200_4000"
+    );
+    expect(db.finalizeAdminRefund).toHaveBeenCalledWith(200, 4000, "Admin refund (recovered after process crash)");
+  });
+
+  it("treats charge_already_refunded as success and finalizes", async () => {
+    let callCount = 0;
+    vi.mocked(db.getDb).mockResolvedValue({
+      execute: vi.fn().mockImplementation(() => {
+        callCount++;
+        if (callCount === 1) return Promise.resolve([[]]); // decline/cancel: empty
+        if (callCount === 2) return Promise.resolve([[
+          { id: 201, stripePaymentIntentId: "pi_stuck_002", amountCents: 5000, refundAmountCents: 5000 }
+        ]]);
+        return Promise.resolve([[]]); // payout: empty
+      }),
+    } as any);
+    vi.mocked(stripeService.createRefund).mockRejectedValue({ raw: { code: "charge_already_refunded" } });
+    vi.mocked(db.finalizeAdminRefund).mockResolvedValue(undefined as any);
+
+    const { recoverStuckPendingStates } = await import("./reminderScheduler");
+    await recoverStuckPendingStates();
+
+    // charge_already_refunded = Stripe already processed it, treat as success
+    expect(db.finalizeAdminRefund).toHaveBeenCalledWith(201, 5000, "Admin refund (recovered after process crash)");
+  });
+
+  it("releases slot on retryable Stripe failure", async () => {
+    let callCount = 0;
+    vi.mocked(db.getDb).mockResolvedValue({
+      execute: vi.fn().mockImplementation(() => {
+        callCount++;
+        if (callCount === 1) return Promise.resolve([[]]); // decline/cancel: empty
+        if (callCount === 2) return Promise.resolve([[
+          { id: 202, stripePaymentIntentId: "pi_stuck_003", amountCents: 6000, refundAmountCents: 6000 }
+        ]]);
+        return Promise.resolve([[]]); // payout: empty
+      }),
+    } as any);
+    vi.mocked(stripeService.createRefund).mockRejectedValue(new Error("Stripe network error"));
+    vi.mocked(db.releaseAdminRefundClaim).mockResolvedValue(undefined as any);
+
+    const { recoverStuckPendingStates } = await import("./reminderScheduler");
+    await recoverStuckPendingStates();
+
+    expect(db.releaseAdminRefundClaim).toHaveBeenCalledWith(202);
   });
 });

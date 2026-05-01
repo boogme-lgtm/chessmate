@@ -1252,12 +1252,14 @@ export const appRouter = router({
 
         // Attempt full Stripe refund.
         // If it fails, release the CAS claim back to payment_collected so admin can retry.
+        // S31-2: Deterministic idempotency key — same key used in recovery so Stripe deduplicates.
         let refundSucceeded = false;
         try {
           await stripeService.createRefund(
             lesson.stripePaymentIntentId,
             undefined, // full refund
-            "requested_by_customer"
+            "requested_by_customer",
+            `lesson_decline_refund_${input.lessonId}`
           );
           refundSucceeded = true;
         } catch (stripeErr) {
@@ -1320,13 +1322,15 @@ export const appRouter = router({
         const { refundAmountCents, refundPercentage } = claimed;
 
         // Attempt Stripe refund if one is due
+        // S31-2: Deterministic idempotency key — same key used in recovery so Stripe deduplicates.
         let refundSucceeded = false;
         if (refundAmountCents > 0 && lesson.stripePaymentIntentId) {
           try {
             await stripeService.createRefund(
               lesson.stripePaymentIntentId,
               refundAmountCents,
-              "requested_by_customer"
+              "requested_by_customer",
+              `lesson_cancel_refund_${input.lessonId}`
             );
             refundSucceeded = true;
           } catch (stripeErr) {
@@ -2620,13 +2624,19 @@ export const appRouter = router({
           if (!lesson.stripePaymentIntentId) {
             throw new TRPCError({ code: "PRECONDITION_FAILED", message: "No payment recorded for this lesson" });
           }
-          // Idempotent: if already released with a real transfer ID, return success
-          if (lesson.stripeTransferId && lesson.stripeTransferId !== '__pending_payout__') {
-            return { success: true, transferId: lesson.stripeTransferId, alreadyReleased: true };
+          // S31-3: Explicit sentinel checks before the real-transfer-ID idempotency path.
+          // __pending_refund__: an admin refund is in-flight — payout must not proceed.
+          if (lesson.stripeTransferId === '__pending_refund__') {
+            throw new TRPCError({ code: "CONFLICT", message: "A refund is currently in progress for this lesson. Payout cannot proceed until the refund is resolved." });
           }
-          // If another concurrent call is in progress, reject
+          // __pending_payout__: another releasePayout call is in-flight.
           if (lesson.stripeTransferId === '__pending_payout__') {
             throw new TRPCError({ code: "CONFLICT", message: "Payout is already in progress. Please try again in a moment." });
+          }
+          // Idempotent: if already released with a real transfer ID, return success.
+          // Only real Stripe transfer IDs (not sentinels) reach this branch.
+          if (lesson.stripeTransferId) {
+            return { success: true, transferId: lesson.stripeTransferId, alreadyReleased: true };
           }
 
           // For completed lessons: enforce that the issue window has actually expired.
@@ -2724,7 +2734,9 @@ export const appRouter = router({
           // S30-1: Atomic settlement claim — prevent refund+payout double-settlement.
           // claimLessonRefundSlot atomically sets stripeTransferId = '__pending_refund__'
           // WHERE stripeTransferId IS NULL, so it loses to any concurrent payout claim.
-          const claimed = await db.claimLessonRefundSlot(input.lessonId);
+          // S31-4: Also store the intended refund amount so recovery can reconstruct it after a crash.
+          const refundAmountCentsForClaim = input.amountCents ?? lesson.amountCents;
+          const claimed = await db.claimLessonRefundSlot(input.lessonId, refundAmountCentsForClaim);
           if (!claimed) {
             // Lost the race — either a payout is in-flight or already completed.
             // Re-read to give a precise error message.
@@ -2747,7 +2759,7 @@ export const appRouter = router({
             });
           }
 
-          const refundAmountCents = input.amountCents ?? lesson.amountCents;
+          const refundAmountCents = refundAmountCentsForClaim;
           const idempotencyKey = `lesson_admin_refund_${input.lessonId}_${refundAmountCents}`;
 
           try {

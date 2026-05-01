@@ -822,3 +822,10 @@
 - [x] S30-3: Disable legacy lesson.requestRefund — throws METHOD_NOT_SUPPORTED; post-payout refunds require transfer reversal (not yet implemented)
 - [x] S30-4: claimLessonCancellation allowlist — only pending_payment, payment_collected, confirmed; all other statuses blocked
 - [x] S30-5: Behavioral tests for all 4 scenarios — 137 tests passing, tsc --noEmit exits 0
+
+## Sprint 31 — Pending-Refund Settlement Cleanup (Completed)
+- [x] S31-1: Fix recovery query — refundAmountCents added to SELECT in recoverStuckPendingStates()
+- [x] S31-2: Deterministic idempotency keys on first attempts — declineAsCoach: lesson_decline_refund_{id}, cancel: lesson_cancel_refund_{id}, autoDecline: lesson_decline_refund_{id}
+- [x] S31-3: releasePayout rejects __pending_refund__ with CONFLICT; only real transfer IDs return alreadyReleased=true
+- [x] S31-4: Recovery for stuck __pending_refund__ — claimLessonRefundSlot stores refundAmountCents before Stripe; recovery retries with stored amount + idempotency key; finalizes on success; releases slot on retryable failure
+- [x] S31-5: Behavioral tests for all 4 scenarios — 146 tests passing, tsc --noEmit exits 0
