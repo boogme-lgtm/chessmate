@@ -1650,7 +1650,13 @@ export async function claimLessonCancellation(
   const db = await getDb();
   if (!db) return null;
 
-  // Atomic CAS: claim the cancellation slot
+  // S30-4: Atomic CAS: claim the cancellation slot.
+  // Use an explicit ALLOWLIST of pre-completion statuses to prevent cancellation of
+  // disputed, no_show, or any future terminal/post-completion states.
+  // Only these statuses represent a lesson that has not yet been completed or settled:
+  //   - pending_payment: booking created, student hasn't paid yet
+  //   - payment_collected: student paid, coach hasn't confirmed yet
+  //   - confirmed: coach confirmed, lesson hasn't happened yet
   const result: any = await db.execute(sql`
     UPDATE lessons
     SET status = 'cancel_pending',
@@ -1659,7 +1665,7 @@ export async function claimLessonCancellation(
         cancellationReason = ${cancellationReason || null},
         refundAmountCents = ${refundAmountCents}
     WHERE id = ${lessonId}
-      AND status NOT IN ('cancelled', 'cancel_pending', 'completed', 'released', 'refunded', 'declined', 'decline_pending')
+      AND status IN ('pending_payment', 'payment_collected', 'confirmed')
   `);
 
   if (result[0]?.affectedRows !== 1) return null;
@@ -1702,5 +1708,67 @@ export async function releaseCancellationWithRefundFailed(lessonId: number): Pro
         cancellationReason = CONCAT(COALESCE(cancellationReason, ''), ' [REFUND_FAILED: Stripe refund creation failed — admin retry required]')
     WHERE id = ${lessonId}
       AND status = 'cancel_pending'
+  `);
+}
+
+/**
+ * S30-1: Atomic settlement claim for admin refund.
+ * Atomically sets stripeTransferId = '__pending_refund__' only when:
+ *   - stripeTransferId IS NULL (no payout in flight or completed)
+ *   - status is in the refundable set (disputed, completed)
+ * Returns true if the claim was won (affectedRows = 1), false if lost to a concurrent payout.
+ */
+export async function claimLessonRefundSlot(lessonId: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+
+  const result: any = await db.execute(sql`
+    UPDATE lessons
+    SET stripeTransferId = '__pending_refund__'
+    WHERE id = ${lessonId}
+      AND stripeTransferId IS NULL
+      AND status IN ('disputed', 'completed')
+  `);
+
+  return result[0]?.affectedRows === 1;
+}
+
+/**
+ * Finalize admin refund: clear the __pending_refund__ slot and mark lesson as refunded.
+ * Only transitions from the pending state to prevent double-finalization.
+ */
+export async function finalizeAdminRefund(
+  lessonId: number,
+  refundAmountCents: number,
+  reason: string
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+
+  await db.execute(sql`
+    UPDATE lessons
+    SET status = 'refunded',
+        stripeTransferId = NULL,
+        refundAmountCents = ${refundAmountCents},
+        refundProcessedAt = NOW(),
+        cancellationReason = ${reason}
+    WHERE id = ${lessonId}
+      AND stripeTransferId = '__pending_refund__'
+  `);
+}
+
+/**
+ * Release the __pending_refund__ slot back to NULL on Stripe failure.
+ * Allows the admin to retry.
+ */
+export async function releaseAdminRefundClaim(lessonId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+
+  await db.execute(sql`
+    UPDATE lessons
+    SET stripeTransferId = NULL
+    WHERE id = ${lessonId}
+      AND stripeTransferId = '__pending_refund__'
   `);
 }

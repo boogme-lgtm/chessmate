@@ -816,3 +816,9 @@
 - [x] S29-5: Recovery scan for stuck pending states — recoverStuckPendingStates() in scheduler handles decline_pending and __pending_payout__ after crash
 - [x] S29-6: Behavioral tests for all 5 scenarios — 118 tests passing, tsc clean (exit 0)
 - [ ] S29-AUDIT: pnpm audit high vulns — path-to-regexp (express@4 transitive, ReDoS), lodash (recharts/streamdown transitive, code injection via _.template) — no fix available without major upgrades; document as known risk
+## Sprint 30 — Final Payment Settlement Hardening (Completed)
+- [x] S30-1: Atomic admin refund vs payout — claimLessonRefundSlot CAS before Stripe call; CONFLICT if payout wins; releases claim on Stripe failure
+- [x] S30-2: Recovery refund amounts — cancel_pending uses stored refundAmountCents (not full); deterministic idempotency keys for all recovery refunds
+- [x] S30-3: Disable legacy lesson.requestRefund — throws METHOD_NOT_SUPPORTED; post-payout refunds require transfer reversal (not yet implemented)
+- [x] S30-4: claimLessonCancellation allowlist — only pending_payment, payment_collected, confirmed; all other statuses blocked
+- [x] S30-5: Behavioral tests for all 4 scenarios — 137 tests passing, tsc --noEmit exits 0

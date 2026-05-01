@@ -523,14 +523,25 @@ export async function recoverStuckPendingStates(): Promise<void> {
           continue;
         }
 
-        // Re-attempt the Stripe refund using idempotency (Stripe deduplicates if already done)
-        // Idempotency key: deterministic per lesson + attempt type
+        // S30-2: Use the correct refund amount for each pending type:
+        //   - decline_pending: full refund (coach declined, student gets everything back)
+        //   - cancel_pending: use stored refundAmountCents (time-based policy already computed)
+        // Deterministic idempotency keys ensure Stripe deduplicates if already processed.
+        const isDecline = row.status === 'decline_pending';
+        const refundAmountCents = isDecline
+          ? undefined  // full refund for decline
+          : (row.refundAmountCents ?? undefined); // stored amount for cancellation
+        const idempotencyKey = isDecline
+          ? `lesson_decline_refund_${row.id}`
+          : `lesson_cancel_refund_${row.id}`;
+
         let refundSucceeded = false;
         try {
           await stripeService.createRefund(
             row.stripePaymentIntentId,
-            undefined, // full refund
-            "requested_by_customer"
+            refundAmountCents,
+            "requested_by_customer",
+            idempotencyKey
           );
           refundSucceeded = true;
         } catch (stripeErr: any) {
@@ -542,12 +553,14 @@ export async function recoverStuckPendingStates(): Promise<void> {
           }
         }
 
+        const actualRefundAmountCents = isDecline ? row.amountCents : (row.refundAmountCents ?? 0);
+
         if (refundSucceeded) {
-          const terminalStatus = row.status === 'decline_pending' ? 'declined' : 'cancelled';
+          const terminalStatus = isDecline ? 'declined' : 'cancelled';
           await dbInstance.execute(sql`
             UPDATE lessons
             SET status = ${terminalStatus},
-                refundAmountCents = ${row.amountCents},
+                refundAmountCents = ${actualRefundAmountCents},
                 refundProcessedAt = NOW(),
                 cancellationReason = CONCAT(COALESCE(cancellationReason, ''), ' [RECOVERED]')
             WHERE id = ${row.id} AND status = ${row.status}

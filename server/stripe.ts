@@ -199,7 +199,8 @@ export async function cancelPaymentIntent(paymentIntentId: string) {
 export async function createRefund(
   paymentIntentId: string,
   amountCents?: number,
-  reason?: "requested_by_customer" | "duplicate" | "fraudulent"
+  reason?: "requested_by_customer" | "duplicate" | "fraudulent",
+  idempotencyKey?: string
 ) {
   const refundParams: any = {
     payment_intent: paymentIntentId,
@@ -213,7 +214,12 @@ export async function createRefund(
     refundParams.amount = amountCents;
   }
   
-  const refund = await stripe.refunds.create(refundParams);
+  const options: any = {};
+  if (idempotencyKey) {
+    options.idempotencyKey = idempotencyKey;
+  }
+
+  const refund = await stripe.refunds.create(refundParams, Object.keys(options).length ? options : undefined);
   return refund;
 }
 
