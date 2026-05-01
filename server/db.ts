@@ -514,12 +514,12 @@ export async function setLessonCheckoutSession(lessonId: number, sessionId: stri
     .where(eq(lessons.id, lessonId));
 }
 
-// R5-3: Clear checkout session and increment attempt counter.
-// The attempt counter ensures the next Stripe idempotency key is unique,
-// allowing legitimate re-checkout after an expired session is cleared.
-export async function clearLessonCheckoutSession(lessonId: number) {
+// R6-1: Clear checkout session and increment attempt counter.
+// Returns the new checkoutAttempt value so callers use the fresh value
+// in the Stripe idempotency key (not the stale in-memory value).
+export async function clearLessonCheckoutSession(lessonId: number): Promise<number> {
   const db = await getDb();
-  if (!db) return;
+  if (!db) return 0;
 
   await db.update(lessons)
     .set({
@@ -527,6 +527,12 @@ export async function clearLessonCheckoutSession(lessonId: number) {
       checkoutAttempt: sql`${lessons.checkoutAttempt} + 1`,
     })
     .where(eq(lessons.id, lessonId));
+
+  // Read back the incremented value to return it
+  const [row] = await db.select({ checkoutAttempt: lessons.checkoutAttempt })
+    .from(lessons)
+    .where(eq(lessons.id, lessonId));
+  return row?.checkoutAttempt ?? 0;
 }
 
 export async function getLessonByPaymentIntent(paymentIntentId: string) {

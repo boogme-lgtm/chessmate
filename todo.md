@@ -774,3 +774,8 @@
 - [x] R5-2: Treat __pending__ as in-progress (no Stripe retrieve, no clear, return CONFLICT)
 - [x] R5-3: Add version component to idempotency key for safe re-checkout after expiry
 - [x] R5-4: Add behavioral tests for all required scenarios
+
+## Sprint 24: Security Patches Round 6 (Codex Review)
+- [x] R6-1: Make clearLessonCheckoutSession return new checkoutAttempt value
+- [x] R6-2: Use returned attempt value in createCheckout idempotency key (not stale in-memory value)
+- [x] R6-3: Add behavioral test for expired session using incremented attempt in idempotency key

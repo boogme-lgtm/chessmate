@@ -1945,6 +1945,10 @@ export const appRouter = router({
         // Handle existing stripeCheckoutSessionId by value:
         //   - "__pending__": another request is creating a session right now
         //   - real session ID: check Stripe status (open/complete/expired)
+        // R6-2: Track the fresh attempt value after clearing expired/invalid sessions.
+        // This ensures the idempotency key uses the incremented value, not the stale in-memory one.
+        let freshAttempt: number | null = null;
+
         if (lesson.stripeCheckoutSessionId) {
           // R5-2: If the slot contains "__pending__", another request is in-flight.
           // Do NOT call Stripe retrieve, do NOT clear. Return CONFLICT immediately.
@@ -1970,12 +1974,12 @@ export const appRouter = router({
               });
             }
             // Session is expired — safe to clear and recreate
-            await db.clearLessonCheckoutSession(lesson.id);
+            freshAttempt = await db.clearLessonCheckoutSession(lesson.id);
           } catch (err) {
             // Re-throw TRPCErrors (our own errors above)
             if (err instanceof TRPCError) throw err;
             // Session retrieval failed (deleted/invalid) — clear and proceed
-            await db.clearLessonCheckoutSession(lesson.id);
+            freshAttempt = await db.clearLessonCheckoutSession(lesson.id);
           }
         }
 
@@ -2019,10 +2023,9 @@ export const appRouter = router({
           // Look up coach's pricing tier so checkout uses tier-based fee.
           const coachProfile = await db.getCoachProfileByUserId(lesson.coachId);
 
-          // R5-3: Use versioned Stripe idempotency key so that after an expired session
-          // is cleared, a new session can be created without hitting Stripe's 24h idempotency window.
-          // The checkoutAttempt counter increments each time we successfully clear an expired session.
-          const attempt = lesson.checkoutAttempt ?? 0;
+          // R6-2: Use the fresh attempt value if we cleared an expired/invalid session,
+          // otherwise use the in-memory value (which is still current for first-time checkouts).
+          const attempt = freshAttempt ?? (lesson.checkoutAttempt ?? 0);
           const session = await stripeService.createLessonCheckoutSession({
             lessonPriceCents: lesson.amountCents,
             currency: lesson.currency || "USD",

@@ -368,8 +368,9 @@ describe("payment.createCheckout", () => {
     expect(db.setLessonCheckoutSession).toHaveBeenCalledWith(100, "cs_cas_001");
   });
 
-  // R5-2: Expired session can be cleared and recreated safely
-  it("clears expired session and creates new checkout successfully", async () => {
+  // R6-3: Expired session cleared — uses fresh attempt value (not stale in-memory)
+  it("clears expired session and uses fresh incremented attempt in idempotency key", async () => {
+    // Lesson has checkoutAttempt=1 in memory, but after clear it becomes 2 in DB
     vi.mocked(db.getLessonById).mockResolvedValue(
       makeLessonRow({ stripeCheckoutSessionId: "cs_expired_001", checkoutAttempt: 1 })
     );
@@ -378,7 +379,8 @@ describe("payment.createCheckout", () => {
       status: "expired",
       url: null,
     } as any);
-    vi.mocked(db.clearLessonCheckoutSession).mockResolvedValue(undefined);
+    // clearLessonCheckoutSession now returns the NEW attempt value (1+1=2)
+    vi.mocked(db.clearLessonCheckoutSession).mockResolvedValue(2 as any);
     vi.mocked(db.claimLessonCheckoutSlot).mockResolvedValue(true);
     vi.mocked(db.getUserById).mockResolvedValue({
       id: 2, name: "Coach", email: "coach@test.com",
@@ -397,10 +399,36 @@ describe("payment.createCheckout", () => {
     expect(result.url).toBe("https://checkout.stripe.com/new");
     // Expired session was cleared
     expect(db.clearLessonCheckoutSession).toHaveBeenCalledWith(100);
-    // New session was created with versioned key
+    // CRITICAL: idempotency key uses v2 (fresh from DB), NOT v1 (stale in-memory)
     expect(stripeService.createLessonCheckoutSession).toHaveBeenCalledWith(
-      expect.objectContaining({ idempotencyKey: "lesson_checkout_100_v1" })
+      expect.objectContaining({ idempotencyKey: "lesson_checkout_100_v2" })
     );
+  });
+
+  // R6-3: First-time checkout with no prior session still uses in-memory attempt (v0)
+  it("first-time checkout with no prior session uses in-memory checkoutAttempt (v0)", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(makeLessonRow({ checkoutAttempt: 0 }));
+    vi.mocked(db.claimLessonCheckoutSlot).mockResolvedValue(true);
+    vi.mocked(db.getUserById).mockResolvedValue({
+      id: 2, name: "Coach", email: "coach@test.com",
+      stripeConnectAccountId: "acct_coach123",
+    } as any);
+    vi.mocked(db.getCoachProfileByUserId).mockResolvedValue({ pricingTier: "standard" } as any);
+    vi.mocked(stripeService.createLessonCheckoutSession).mockResolvedValue({
+      id: "cs_first_time",
+      url: "https://checkout.stripe.com/first",
+    } as any);
+    vi.mocked(db.setLessonCheckoutSession).mockResolvedValue(undefined);
+
+    const caller = appRouter.createCaller(createContext());
+    await caller.payment.createCheckout({ lessonId: 100 });
+
+    // freshAttempt is null (no clearing happened), so uses in-memory value
+    expect(stripeService.createLessonCheckoutSession).toHaveBeenCalledWith(
+      expect.objectContaining({ idempotencyKey: "lesson_checkout_100_v0" })
+    );
+    // clearLessonCheckoutSession was never called
+    expect(db.clearLessonCheckoutSession).not.toHaveBeenCalled();
   });
 
   // R4-2: Concurrent loser with __pending__ winner gets CONFLICT
