@@ -1432,7 +1432,7 @@ describe("S28-3: releasePayout — enforces issue window expiry and atomic CAS",
 
     const caller = appRouter.createCaller(adminCtx());
     await expect(caller.admin.disputes.releasePayout({ lessonId: 100 }))
-      .rejects.toThrow("Transfer failed: Network error");
+      .rejects.toThrow("Network error");
 
     // Slot must be released so admin can retry
     expect(db.releaseLessonPayoutSlot).toHaveBeenCalledWith(100);

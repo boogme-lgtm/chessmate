@@ -25,6 +25,7 @@ import { storagePut } from "./storage";
 import { sendEmail as sendSimpleEmail, getCoachWelcomeEmail } from "./email";
 import { notifyOwner } from "./_core/notification";
 import { transferToCoach } from "./stripeConnect";
+import { releaseLessonPayoutToCoach } from "./payoutService";
 
 /**
  * Send cancellation confirmation emails to both student and coach.
@@ -2613,50 +2614,11 @@ export const appRouter = router({
           return next({ ctx });
         })
         .mutation(async ({ input }) => {
-          const lesson = await db.getLessonById(input.lessonId);
-          if (!lesson) {
-            throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
-          }
-          // Only completed or disputed lessons can be paid out
-          if (lesson.status !== "completed" && lesson.status !== "disputed") {
-            throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Lesson is not in a payable state" });
-          }
-          if (!lesson.stripePaymentIntentId) {
-            throw new TRPCError({ code: "PRECONDITION_FAILED", message: "No payment recorded for this lesson" });
-          }
-          // S31-3: Explicit sentinel checks before the real-transfer-ID idempotency path.
-          // __pending_refund__: an admin refund is in-flight — payout must not proceed.
-          if (lesson.stripeTransferId === '__pending_refund__') {
-            throw new TRPCError({ code: "CONFLICT", message: "A refund is currently in progress for this lesson. Payout cannot proceed until the refund is resolved." });
-          }
-          // __pending_payout__: another releasePayout call is in-flight.
-          if (lesson.stripeTransferId === '__pending_payout__') {
-            throw new TRPCError({ code: "CONFLICT", message: "Payout is already in progress. Please try again in a moment." });
-          }
-          // Idempotent: if already released with a real transfer ID, return success.
-          // Only real Stripe transfer IDs (not sentinels) reach this branch.
-          if (lesson.stripeTransferId) {
-            return { success: true, transferId: lesson.stripeTransferId, alreadyReleased: true };
-          }
-
-          // For completed lessons: enforce that the issue window has actually expired.
-          // For disputed lessons: admin override is allowed but requires an explicit reason.
-          if (lesson.status === "completed") {
-            if (!lesson.issueWindowEndsAt) {
-              throw new TRPCError({
-                code: "PRECONDITION_FAILED",
-                message: "Lesson has no issue window set — cannot safely release payout",
-              });
-            }
-            if (new Date() < lesson.issueWindowEndsAt) {
-              throw new TRPCError({
-                code: "PRECONDITION_FAILED",
-                message: `Issue window has not expired yet. Payout available after ${lesson.issueWindowEndsAt.toISOString()}.`,
-              });
-            }
-          } else if (lesson.status === "disputed") {
-            // Admin override for disputed lessons requires an explicit reason
-            if (!input.adminOverrideReason?.trim()) {
+          // Disputed lessons require an explicit admin override reason before delegating
+          if (!input.adminOverrideReason?.trim()) {
+            // Check if lesson is disputed first (need a quick status check)
+            const lesson = await db.getLessonById(input.lessonId);
+            if (lesson?.status === "disputed") {
               throw new TRPCError({
                 code: "BAD_REQUEST",
                 message: "Admin override reason is required for disputed lessons",
@@ -2664,46 +2626,27 @@ export const appRouter = router({
             }
           }
 
-          // Look up coach's connected account
-          const coach = await db.getUserById(lesson.coachId);
-          if (!coach?.stripeConnectAccountId) {
-            throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Coach does not have a connected Stripe account" });
-          }
-
-          // Atomic CAS — claim the payout slot before touching Stripe.
-          // If two concurrent calls race here, only one will win.
-          const claimed = await db.claimLessonPayoutSlot(input.lessonId);
-          if (!claimed) {
-            throw new TRPCError({ code: "CONFLICT", message: "Payout already claimed by a concurrent request. Please refresh and try again." });
-          }
-
-          // Transfer coach payout to their connected account.
-          // Use a deterministic idempotency key so Stripe deduplicates retries.
-          const idempotencyKey = `lesson_payout_${lesson.id}`;
-          const result = await transferToCoach({
-            accountId: coach.stripeConnectAccountId,
-            amountCents: lesson.coachPayoutCents,
-            currency: lesson.currency || "usd",
-            description: `Payout for lesson #${lesson.id}`,
-            idempotencyKey,
-            metadata: {
-              lessonId: lesson.id.toString(),
-              coachId: lesson.coachId.toString(),
-              studentId: lesson.studentId.toString(),
-              ...(input.adminOverrideReason ? { adminOverrideReason: input.adminOverrideReason } : {}),
-            },
+          const result = await releaseLessonPayoutToCoach({
+            lessonId: input.lessonId,
+            adminOverrideReason: input.adminOverrideReason,
+            // For disputed lessons with an override reason, skip the issue window check
+            skipIssueWindowCheck: !!input.adminOverrideReason?.trim(),
           });
 
-          if (!result.success) {
-            // Release the slot so admin can retry
-            await db.releaseLessonPayoutSlot(input.lessonId);
-            throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Transfer failed: ${result.error}` });
+          if (result.success) {
+            return result;
           }
-
-          // Finalize: replace placeholder with real transfer ID and mark released
-          await db.finalizeLessonPayout(input.lessonId, result.transferId!);
-
-          return { success: true, transferId: result.transferId };
+          if ('conflict' in result) {
+            throw new TRPCError({ code: "CONFLICT", message: result.reason });
+          }
+          if ('precondition' in result) {
+            // Map NOT_FOUND specifically
+            if (result.reason === "Lesson not found") {
+              throw new TRPCError({ code: "NOT_FOUND", message: result.reason });
+            }
+            throw new TRPCError({ code: "PRECONDITION_FAILED", message: result.reason });
+          }
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: result.reason });
         }),
 
       // Admin: full refund to student (for disputed lessons)

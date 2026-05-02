@@ -9,7 +9,8 @@
  */
 
 import { sql } from "drizzle-orm";
-import { getDb, cancelLesson } from "./db";
+import { getDb, cancelLesson, getCompletedLessonsReadyForPayout } from "./db";
+import { releaseLessonPayoutToCoach } from "./payoutService";
 import {
   sendEmail,
   getStudentLessonReminderEmail,
@@ -728,8 +729,68 @@ export async function recoverStuckPendingStates(): Promise<void> {
  * Start the hourly reminder scheduler.
  * Call once at server startup.
  */
+/**
+ * autoReleasePayouts
+ *
+ * Runs every 30 minutes. For each completed lesson whose 24-hour issue window
+ * has expired and whose payout has not yet been released, attempts to transfer
+ * the coach payout via the shared releaseLessonPayoutToCoach helper.
+ *
+ * Controlled by the AUTO_RELEASE_PAYOUTS_ENABLED env var (default: false).
+ * An overlap guard prevents concurrent runs within the same process.
+ */
+let _autoReleaseRunning = false;
+
+export async function autoReleasePayouts(): Promise<void> {
+  const enabled = process.env.AUTO_RELEASE_PAYOUTS_ENABLED === "true";
+  if (!enabled) {
+    console.log("[Auto-Release Payouts] Disabled (AUTO_RELEASE_PAYOUTS_ENABLED != true). Skipping.");
+    return;
+  }
+
+  if (_autoReleaseRunning) {
+    console.warn("[Auto-Release Payouts] Previous run still in progress — skipping this cycle.");
+    return;
+  }
+
+  _autoReleaseRunning = true;
+  try {
+    const lessons = await getCompletedLessonsReadyForPayout();
+    if (lessons.length === 0) {
+      console.log("[Auto-Release Payouts] No eligible lessons found.");
+      return;
+    }
+    console.log(`[Auto-Release Payouts] Processing ${lessons.length} eligible lesson(s).`);
+
+    for (const lesson of lessons) {
+      try {
+        const result = await releaseLessonPayoutToCoach({ lessonId: lesson.id });
+        if (result.success) {
+          if (result.alreadyReleased) {
+            console.log(`[Auto-Release Payouts] Lesson ${lesson.id} — already released (idempotent).`);
+          } else {
+            console.log(`[Auto-Release Payouts] Lesson ${lesson.id} — payout released. transferId=${result.transferId} coachId=${lesson.coachId} amount=${lesson.coachPayoutCents}`);
+          }
+        } else if ('conflict' in result) {
+          console.warn(`[Auto-Release Payouts] Lesson ${lesson.id} — conflict: ${result.reason}`);
+        } else if ('precondition' in result) {
+          console.warn(`[Auto-Release Payouts] Lesson ${lesson.id} — precondition failed: ${result.reason}`);
+        } else {
+          console.error(`[Auto-Release Payouts] Lesson ${lesson.id} — Stripe error: ${result.reason}`);
+        }
+      } catch (err) {
+        // Catch unexpected errors per-lesson so the loop continues for others
+        console.error(`[Auto-Release Payouts] Lesson ${lesson.id} — unexpected error:`, err);
+      }
+    }
+  } finally {
+    _autoReleaseRunning = false;
+  }
+}
+
 export function startReminderScheduler(): void {
   const INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+  const PAYOUT_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 
   const runAll = async () => {
     // S29-5: Run recovery first to clear any stuck pending states from previous crashes
@@ -753,5 +814,15 @@ export function startReminderScheduler(): void {
   // Then run every hour
   setInterval(runAll, INTERVAL_MS);
 
-  console.log("[Reminder Scheduler] Started — running every hour (recovery + reminders + auto-decline + auto-complete).");
+  // Auto-release payouts runs every 30 minutes (separate interval, separate overlap guard)
+  autoReleasePayouts().catch((err) =>
+    console.error("[Reminder Scheduler] Auto-release payouts startup run failed:", err)
+  );
+  setInterval(() => {
+    autoReleasePayouts().catch((err) =>
+      console.error("[Reminder Scheduler] Auto-release payouts run failed:", err)
+    );
+  }, PAYOUT_INTERVAL_MS);
+
+  console.log("[Reminder Scheduler] Started — hourly (recovery + reminders + auto-decline + auto-complete) + 30-min auto-release payouts.");
 }

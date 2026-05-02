@@ -835,3 +835,10 @@
 - [x] S32-2: cancel_pending with Stripe failure finalizes to cancelled+refund_failed (not payment_collected)
 - [x] S32-3: decline_pending failure behavior unchanged — returns to payment_collected for admin retry
 - [x] S32 tests: 149 tests passing, tsc --noEmit exits 0
+
+## Sprint 33 — Auto-Release Payout Cron (Completed)
+- [x] S33-1: Extract shared releaseLessonPayoutToCoach helper to server/payoutService.ts — all safety guards preserved
+- [x] S33-2: Refactor admin.disputes.releasePayout to use shared helper — no duplicate money-moving logic
+- [x] S33-3: Add autoReleasePayouts() to reminderScheduler — runs every 30 min, env flag AUTO_RELEASE_PAYOUTS_ENABLED, overlap guard
+- [x] S33-4: 7 behavioral tests in server/autoReleasePayout.test.ts — eligible payout, window not expired, disputed skipped, __pending_refund__ blocks, Stripe failure releases slot, multi-lesson continues after failure, disabled flag skips
+- [x] S33-5: 156 tests passing, tsc --noEmit exits 0
