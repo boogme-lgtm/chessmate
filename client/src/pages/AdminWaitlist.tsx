@@ -13,6 +13,28 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Download, Loader2, Users } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import { Link } from "wouter";
+
+function AdminNav({ active }: { active: "applications" | "waitlist" | "disputes" }) {
+  const links = [
+    { href: "/admin/applications", label: "Applications", key: "applications" },
+    { href: "/admin/waitlist", label: "Waitlist", key: "waitlist" },
+    { href: "/admin/disputes", label: "Disputes & Payouts", key: "disputes" },
+  ] as const;
+  return (
+    <nav className="flex gap-2 mb-8 border-b border-border pb-4">
+      {links.map((l) => (
+        <Link key={l.key} href={l.href}>
+          <span className={`px-4 py-2 rounded-md text-sm font-medium transition-colors cursor-pointer ${
+            active === l.key
+              ? "bg-primary text-primary-foreground"
+              : "text-muted-foreground hover:text-foreground hover:bg-accent"
+          }`}>{l.label}</span>
+        </Link>
+      ))}
+    </nav>
+  );
+}
 
 export default function AdminWaitlist() {
   const { user, loading: authLoading } = useAuth();
@@ -118,6 +140,8 @@ export default function AdminWaitlist() {
         <h1 className="text-4xl font-bold mb-2">Waitlist Management</h1>
         <p className="text-muted-foreground">View and export all waitlist signups</p>
       </div>
+
+      <AdminNav active="waitlist" />
 
       <Card>
         <CardHeader>

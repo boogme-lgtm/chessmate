@@ -870,3 +870,13 @@
 - [x] P36-2: Extract pure helpers into shared/lessonTimeHelpers.ts: getLessonEndWithGrace(), canConfirmLessonComplete(), getIssueWindowState(), canRaiseIssue() — testable with fixed dates
 - [x] P36-3: Fix expired issue-window banner: completed+expired → "eligible for release"; added separate released banner → "coach payout has been released"
 - [x] P36-4: 39 unit tests in server/lessonTimeHelpers.test.ts covering getLessonEndWithGrace, canConfirmLessonComplete (all statuses + grace boundary), getIssueWindowState (all statuses + active/expired/released), canRaiseIssue, and all three banner scenarios
+## Sprint 37 — Admin Disputes Panel UI
+- [x] S37-1: Created AdminDisputesPanel page at /admin/disputes with admin-only auth guard (loading/unauthenticated/access-denied states)
+- [x] S37-2: Disputed Lessons tab — table with lesson ID, parties, scheduled time, amount, issue reason, status badge, and action buttons
+- [x] S37-3: Payout-Ready tab — table of completed lessons with expired issue window; includes stats row with pending payout total
+- [x] S37-4: Release Payout action — ActionModal with required adminOverrideReason for disputed; optional for payout-ready; disabled while pending
+- [x] S37-5: Issue Refund action — ActionModal with required adminOverrideReason for disputed; optional for completed; destructive variant
+- [x] S37-6: formatAdminActionError() maps all PRECONDITION_FAILED/CONFLICT/NOT_FOUND/FORBIDDEN codes to human-readable copy
+- [x] S37-7: Wired /admin/disputes route into App.tsx
+- [x] S37-8: AdminNav component added to all three admin pages (Applications, Waitlist, Disputes & Payouts)
+- [x] S37-9: 19 unit tests in server/sprint37.test.ts covering all 12 formatAdminActionError branches + priority ordering
