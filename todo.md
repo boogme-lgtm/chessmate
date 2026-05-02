@@ -842,3 +842,10 @@
 - [x] S33-3: Add autoReleasePayouts() to reminderScheduler — runs every 30 min, env flag AUTO_RELEASE_PAYOUTS_ENABLED, overlap guard
 - [x] S33-4: 7 behavioral tests in server/autoReleasePayout.test.ts — eligible payout, window not expired, disputed skipped, __pending_refund__ blocks, Stripe failure releases slot, multi-lesson continues after failure, disabled flag skips
 - [x] S33-5: 156 tests passing, tsc --noEmit exits 0
+
+## Sprint 34 — Payout Override Scope Fix (Completed)
+- [x] S34-1: Fix releasePayout — read lesson once in router; skipIssueWindowCheck = isDisputed && hasOverrideReason (not just hasOverrideReason)
+- [x] S34-2: completed lesson inside window + adminOverrideReason still rejects (PRECONDITION_FAILED)
+- [x] S34-3: disputed lesson without adminOverrideReason rejects (BAD_REQUEST)
+- [x] S34-4: disputed lesson with adminOverrideReason skips window check and succeeds
+- [x] S34-5: autoReleasePayouts never passes skipIssueWindowCheck — 160 tests passing, tsc --noEmit exits 0

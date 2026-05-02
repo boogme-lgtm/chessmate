@@ -2614,23 +2614,32 @@ export const appRouter = router({
           return next({ ctx });
         })
         .mutation(async ({ input }) => {
-          // Disputed lessons require an explicit admin override reason before delegating
-          if (!input.adminOverrideReason?.trim()) {
-            // Check if lesson is disputed first (need a quick status check)
-            const lesson = await db.getLessonById(input.lessonId);
-            if (lesson?.status === "disputed") {
-              throw new TRPCError({
-                code: "BAD_REQUEST",
-                message: "Admin override reason is required for disputed lessons",
-              });
-            }
+          // Read lesson once to avoid stale double-read bug.
+          // skipIssueWindowCheck is ONLY allowed for disputed lessons with an explicit reason.
+          const lesson = await db.getLessonById(input.lessonId);
+          if (!lesson) {
+            throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
           }
+
+          const isDisputed = lesson.status === "disputed";
+          const hasOverrideReason = !!input.adminOverrideReason?.trim();
+
+          // Disputed lessons require an explicit admin override reason
+          if (isDisputed && !hasOverrideReason) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Admin override reason is required for disputed lessons",
+            });
+          }
+
+          // skipIssueWindowCheck is ONLY valid when the lesson is disputed AND a reason is given.
+          // A completed lesson inside the issue window must ALWAYS be rejected, even with a reason.
+          const skipIssueWindowCheck = isDisputed && hasOverrideReason;
 
           const result = await releaseLessonPayoutToCoach({
             lessonId: input.lessonId,
             adminOverrideReason: input.adminOverrideReason,
-            // For disputed lessons with an override reason, skip the issue window check
-            skipIssueWindowCheck: !!input.adminOverrideReason?.trim(),
+            skipIssueWindowCheck,
           });
 
           if (result.success) {

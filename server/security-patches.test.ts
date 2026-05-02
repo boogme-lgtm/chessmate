@@ -2612,3 +2612,133 @@ describe("S32: cancel_pending recovery edge cases", () => {
     expect(hasPaymentCollectedRevert).toBe(true);
   });
 });
+
+// ─── S34: Payout override scope ───────────────────────────────────────────────
+// Sprint 34: skipIssueWindowCheck must ONLY apply to disputed lessons with
+// adminOverrideReason. A completed lesson inside the window must always be
+// rejected, even with an override reason.
+describe("S34: releasePayout — override scope is restricted to disputed + reason", () => {
+  function adminCtx() { return createContext({ id: 1, role: "admin" }); }
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    // Default: CAS succeeds, coach has connected account, transfer succeeds
+    vi.mocked(db.claimLessonPayoutSlot).mockResolvedValue(true);
+    vi.mocked(db.getUserById).mockResolvedValue({
+      id: 2, stripeConnectAccountId: "acct_coach_s34"
+    } as any);
+    vi.mocked(db.finalizeLessonPayout).mockResolvedValue(undefined as any);
+    vi.mocked(stripeConnect.transferToCoach).mockResolvedValue({
+      success: true, transferId: "tr_s34_ok"
+    } as any);
+  });
+
+  it("S34-1: completed lesson inside issue window + adminOverrideReason still rejects", async () => {
+    const futureWindow = new Date(Date.now() + 6 * 60 * 60 * 1000); // 6h from now
+    // getLessonById is called TWICE: once in router, once in payoutService
+    vi.mocked(db.getLessonById).mockResolvedValue(
+      makeLessonRow({
+        status: "completed",
+        stripePaymentIntentId: "pi_s34_completed",
+        issueWindowEndsAt: futureWindow,
+        stripeTransferId: null,
+      })
+    );
+
+    const caller = appRouter.createCaller(adminCtx());
+    // Even with an override reason, a completed lesson inside the window must be rejected
+    await expect(
+      caller.admin.disputes.releasePayout({
+        lessonId: 100,
+        adminOverrideReason: "Admin wants to release early",
+      })
+    ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+
+    // Stripe must NOT have been called
+    expect(stripeConnect.transferToCoach).not.toHaveBeenCalled();
+  });
+
+  it("S34-2: disputed lesson without adminOverrideReason rejects with BAD_REQUEST", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(
+      makeLessonRow({
+        status: "disputed",
+        stripePaymentIntentId: "pi_s34_disputed_no_reason",
+        issueWindowEndsAt: new Date(Date.now() - 1000),
+        stripeTransferId: null,
+      })
+    );
+
+    const caller = appRouter.createCaller(adminCtx());
+    await expect(
+      caller.admin.disputes.releasePayout({ lessonId: 100 })
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+
+    expect(stripeConnect.transferToCoach).not.toHaveBeenCalled();
+  });
+
+  it("S34-3: disputed lesson with adminOverrideReason skips issue window check and succeeds", async () => {
+    const futureWindow = new Date(Date.now() + 6 * 60 * 60 * 1000); // still active window
+    // getLessonById is called twice: router + payoutService
+    vi.mocked(db.getLessonById).mockResolvedValue(
+      makeLessonRow({
+        status: "disputed",
+        stripePaymentIntentId: "pi_s34_disputed_override",
+        issueWindowEndsAt: futureWindow, // window still active — but should be skipped
+        stripeTransferId: null,
+        coachId: 2,
+      })
+    );
+
+    const caller = appRouter.createCaller(adminCtx());
+    const result = await caller.admin.disputes.releasePayout({
+      lessonId: 100,
+      adminOverrideReason: "Student confirmed lesson was completed",
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.transferId).toBe("tr_s34_ok");
+    expect(stripeConnect.transferToCoach).toHaveBeenCalledOnce();
+  });
+
+  it("S34-4: autoReleasePayouts never passes skipIssueWindowCheck and only releases eligible completed lessons", async () => {
+    // Simulate two lessons: one eligible (window expired), one not (window active)
+    const expiredWindow = new Date(Date.now() - 60 * 60 * 1000); // 1h ago
+    const activeWindow = new Date(Date.now() + 60 * 60 * 1000);  // 1h from now
+
+    const eligibleLesson = makeLessonRow({
+      id: 401,
+      status: "completed",
+      stripePaymentIntentId: "pi_s34_auto_eligible",
+      issueWindowEndsAt: expiredWindow,
+      stripeTransferId: null,
+      coachId: 2,
+    });
+    const ineligibleLesson = makeLessonRow({
+      id: 402,
+      status: "completed",
+      stripePaymentIntentId: "pi_s34_auto_ineligible",
+      issueWindowEndsAt: activeWindow,
+      stripeTransferId: null,
+      coachId: 2,
+    });
+
+    // getCompletedLessonsReadyForPayout returns only the eligible one (query enforces window)
+    vi.mocked(db.getCompletedLessonsReadyForPayout).mockResolvedValue([eligibleLesson] as any);
+    // getLessonById is called by payoutService for the eligible lesson
+    vi.mocked(db.getLessonById).mockResolvedValue(eligibleLesson);
+
+    const origEnv = process.env.AUTO_RELEASE_PAYOUTS_ENABLED;
+    process.env.AUTO_RELEASE_PAYOUTS_ENABLED = "true";
+    try {
+      const { autoReleasePayouts } = await import("./reminderScheduler");
+      await autoReleasePayouts();
+    } finally {
+      process.env.AUTO_RELEASE_PAYOUTS_ENABLED = origEnv;
+    }
+
+    // Only the eligible lesson should trigger a Stripe transfer
+    expect(stripeConnect.transferToCoach).toHaveBeenCalledOnce();
+    // The ineligible lesson was never fetched by payoutService
+    expect(db.getLessonById).not.toHaveBeenCalledWith(402);
+  });
+});
