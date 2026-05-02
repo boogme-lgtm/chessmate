@@ -880,3 +880,9 @@
 - [x] S37-7: Wired /admin/disputes route into App.tsx
 - [x] S37-8: AdminNav component added to all three admin pages (Applications, Waitlist, Disputes & Payouts)
 - [x] S37-9: 19 unit tests in server/sprint37.test.ts covering all 12 formatAdminActionError branches + priority ordering
+## Sprint 37 Patch — Stats card and shared helper
+- [x] P37-1: Extracted formatAdminActionError into shared/adminActionErrors.ts
+- [x] P37-2: AdminDisputesPanel.tsx now imports from @shared/adminActionErrors (inline copy removed)
+- [x] P37-3: sprint37.test.ts imports from ../shared/adminActionErrors (no duplication)
+- [x] P37-4: Pending Payout stats card now sums coachPayoutCents (coach net); Disputed Value card retains amountCents (gross) with label
+- [x] P37-5: 7 new stats-card tests in sprint37.test.ts (S37-S1/S2/S3): sumPendingPayoutCents, sumGrossAmountCents, and regression guard proving old amountCents path overcounts by platform fee

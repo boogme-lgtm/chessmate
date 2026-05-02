@@ -40,50 +40,7 @@ import {
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { Link } from "wouter";
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-/**
- * Maps tRPC error codes / messages to human-readable admin copy.
- * Exported for unit testing.
- */
-export function formatAdminActionError(message: string): string {
-  if (message.includes("issue window") && message.includes("not yet expired")) {
-    return "The 24-hour issue window has not expired yet. Wait until the window closes before releasing payout.";
-  }
-  if (message.includes("issue window") && message.includes("expired")) {
-    return "The issue window has already expired.";
-  }
-  if (message.includes("override reason") || message.includes("adminOverrideReason")) {
-    return "An override reason is required for disputed lessons.";
-  }
-  if (message.includes("payout transfer is currently in progress")) {
-    return "A payout transfer is already in progress for this lesson. Wait for it to complete before issuing a refund.";
-  }
-  if (message.includes("Payout already released")) {
-    return "Payout has already been released for this lesson. Post-payout refunds require a manual transfer reversal in the Stripe dashboard.";
-  }
-  if (message.includes("refund slot") || message.includes("concurrent settlement")) {
-    return "A concurrent settlement is in progress. Please wait a moment and retry.";
-  }
-  if (message.includes("already been refunded") || message.includes("refund already")) {
-    return "A refund has already been issued for this lesson.";
-  }
-  if (message.includes("No payment recorded")) {
-    return "No payment is recorded for this lesson — nothing to refund.";
-  }
-  if (message.includes("not in a refundable state")) {
-    return "This lesson is not in a refundable state (must be disputed or completed).";
-  }
-  if (message.includes("Lesson not found")) {
-    return "Lesson not found. It may have been deleted.";
-  }
-  if (message.includes("Admin access required") || message.includes("FORBIDDEN")) {
-    return "Admin access required. You do not have permission to perform this action.";
-  }
-  // Fallback: return the raw message
-  return message;
-}
+import { formatAdminActionError } from "@shared/adminActionErrors";
 
 // ─── Admin Nav ────────────────────────────────────────────────────────────────
 
@@ -539,12 +496,13 @@ export default function AdminDisputesPanel() {
                     ? "—"
                     : `$${(
                         (payoutReadyLessons ?? []).reduce(
-                          (sum: number, l: any) => sum + (l.amountCents ?? 0),
+                          (sum: number, l: any) => sum + (l.coachPayoutCents ?? 0),
                           0
                         ) / 100
                       ).toFixed(0)}`}
                 </div>
                 <div className="text-xs text-muted-foreground">Pending Payout</div>
+                <div className="text-xs text-muted-foreground/60">(coach net)</div>
               </div>
             </CardContent>
           </Card>
@@ -563,6 +521,7 @@ export default function AdminDisputesPanel() {
                       ).toFixed(0)}`}
                 </div>
                 <div className="text-xs text-muted-foreground">Disputed Value</div>
+                <div className="text-xs text-muted-foreground/60">(gross)</div>
               </div>
             </CardContent>
           </Card>
