@@ -25,8 +25,10 @@ import {
   Timer,
   AlertTriangle,
   DollarSign,
+  Flag,
+  ShieldCheck,
 } from "lucide-react";
-import { format, isPast, isFuture, differenceInHours, differenceInMinutes, differenceInSeconds } from "date-fns";
+import { format, isPast, isFuture, differenceInHours, differenceInMinutes, differenceInSeconds, isAfter } from "date-fns";
 import { toast } from "sonner";
 import { Link, useLocation } from "wouter";
 import { useEffect, useState, useCallback } from "react";
@@ -411,6 +413,8 @@ function LessonCard({ lesson, isPast = false, unreadCount = 0 }: LessonCardProps
   const [, setLocation] = useLocation();
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [showMessageThread, setShowMessageThread] = useState(false);
+  const [showRaiseIssueDialog, setShowRaiseIssueDialog] = useState(false);
+  const [issueReason, setIssueReason] = useState("");
   const utils = trpc.useUtils();
 
   const cancelMutation = trpc.lesson.cancel.useMutation({
@@ -428,6 +432,30 @@ function LessonCard({ lesson, isPast = false, unreadCount = 0 }: LessonCardProps
     onError: (err) => {
       toast.error(err.message);
       setShowCancelDialog(false);
+    },
+  });
+
+  // ── Confirm Lesson Complete ──────────────────────────────────────────────
+  const confirmCompletion = trpc.lesson.confirmCompletion.useMutation({
+    onSuccess: () => {
+      toast.success(
+        "Lesson marked complete. The 24-hour issue window has started — coach payout is released after the window closes."
+      );
+      utils.lesson.myLessons.invalidate();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  // ── Raise Issue ──────────────────────────────────────────────────────────
+  const raiseIssueMutation = trpc.lesson.raiseIssue.useMutation({
+    onSuccess: () => {
+      toast.success("Issue raised. An admin will review your case.");
+      setShowRaiseIssueDialog(false);
+      setIssueReason("");
+      utils.lesson.myLessons.invalidate();
+    },
+    onError: (err) => {
+      toast.error(err.message);
     },
   });
 
@@ -515,6 +543,29 @@ function LessonCard({ lesson, isPast = false, unreadCount = 0 }: LessonCardProps
     hoursUntilLesson > 0 &&
     ["pending_payment", "payment_collected", "confirmed"].includes(lesson.status);
 
+  // ── Confirm Lesson Complete eligibility ──────────────────────────────────
+  // Show only when: status === "confirmed" AND now >= scheduledAt + durationMinutes + 15 min grace
+  const lessonEndWithGrace = new Date(
+    new Date(lesson.scheduledAt).getTime() +
+      (lesson.durationMinutes ?? 60) * 60 * 1000 +
+      15 * 60 * 1000
+  );
+  const canConfirmComplete =
+    lesson.status === "confirmed" && isAfter(new Date(), lessonEndWithGrace);
+
+  // ── Issue window state ───────────────────────────────────────────────────
+  const issueWindowEndsAt = lesson.issueWindowEndsAt
+    ? new Date(lesson.issueWindowEndsAt)
+    : null;
+  const issueWindowActive =
+    lesson.status === "completed" &&
+    issueWindowEndsAt !== null &&
+    isAfter(issueWindowEndsAt, new Date());
+  const issueWindowExpired =
+    lesson.status === "completed" &&
+    issueWindowEndsAt !== null &&
+    !isAfter(issueWindowEndsAt, new Date());
+
   return (
     <>
       <Card className="hover:border-primary/50 transition-colors border-l-2 border-l-ember">
@@ -553,6 +604,39 @@ function LessonCard({ lesson, isPast = false, unreadCount = 0 }: LessonCardProps
                   scheduledAt={new Date(lesson.scheduledAt)}
                   status={lesson.status}
                 />
+              )}
+
+              {/* Issue window banner — shown for completed lessons */}
+              {issueWindowActive && issueWindowEndsAt && (
+                <div
+                  data-testid="issue-window-banner"
+                  className="mt-3 flex items-start gap-2 rounded-md border border-yellow-500/40 bg-yellow-50/60 dark:bg-yellow-950/20 px-3 py-2 text-sm"
+                >
+                  <ShieldCheck className="h-4 w-4 text-yellow-600 mt-0.5 shrink-0" />
+                  <div>
+                    <span className="font-medium text-yellow-800 dark:text-yellow-300">
+                      24-hour issue window open
+                    </span>
+                    <span className="text-muted-foreground">
+                      {" — "}
+                      Coach payout is released after the window closes on{" "}
+                      <span className="font-medium">
+                        {format(issueWindowEndsAt, "MMM d 'at' h:mm a")}
+                      </span>.
+                    </span>
+                  </div>
+                </div>
+              )}
+              {issueWindowExpired && (
+                <div
+                  data-testid="issue-window-expired-banner"
+                  className="mt-3 flex items-start gap-2 rounded-md border border-green-500/40 bg-green-50/60 dark:bg-green-950/20 px-3 py-2 text-sm"
+                >
+                  <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
+                  <span className="text-muted-foreground">
+                    Issue window closed — coach payout has been released.
+                  </span>
+                </div>
               )}
 
               {/* Action buttons */}
@@ -605,6 +689,34 @@ function LessonCard({ lesson, isPast = false, unreadCount = 0 }: LessonCardProps
                     Cancel Lesson
                   </Button>
                 )}
+
+                {/* Confirm Lesson Complete — only after lesson end + 15 min grace */}
+                {canConfirmComplete && (
+                  <Button
+                    data-testid="confirm-complete-btn"
+                    size="sm"
+                    className="gap-2 bg-green-600 hover:bg-green-700 text-white"
+                    disabled={confirmCompletion.isPending}
+                    onClick={() => confirmCompletion.mutate({ lessonId: lesson.id })}
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                    {confirmCompletion.isPending ? "Confirming…" : "Confirm Lesson Complete"}
+                  </Button>
+                )}
+
+                {/* Raise Issue — only during the 24-hour issue window */}
+                {issueWindowActive && (
+                  <Button
+                    data-testid="raise-issue-btn"
+                    size="sm"
+                    variant="outline"
+                    className="gap-2 text-orange-600 border-orange-400 hover:text-orange-700"
+                    onClick={() => setShowRaiseIssueDialog(true)}
+                  >
+                    <Flag className="h-4 w-4" />
+                    Raise Issue
+                  </Button>
+                )}
               </div>
             </div>
 
@@ -638,6 +750,80 @@ function LessonCard({ lesson, isPast = false, unreadCount = 0 }: LessonCardProps
           isPending={cancelMutation.isPending}
         />
       )}
+
+      {/* Raise Issue dialog */}
+      <Dialog
+        open={showRaiseIssueDialog}
+        onOpenChange={(v) => {
+          if (!v) {
+            setShowRaiseIssueDialog(false);
+            setIssueReason("");
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Flag className="h-5 w-5 text-orange-500" />
+              Raise an Issue
+            </DialogTitle>
+            <DialogDescription>
+              Describe the problem with this lesson. An admin will review your
+              case and contact both parties. Coach payout will be paused until
+              the issue is resolved.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="bg-muted/50 rounded-lg p-3 text-sm">
+              <div className="flex justify-between mb-1">
+                <span className="text-muted-foreground">Lesson date</span>
+                <span className="font-medium">
+                  {format(new Date(lesson.scheduledAt), "MMMM d, yyyy")}
+                </span>
+              </div>
+              {issueWindowEndsAt && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Window closes</span>
+                  <span className="font-medium text-orange-600">
+                    {format(issueWindowEndsAt, "MMM d 'at' h:mm a")}
+                  </span>
+                </div>
+              )}
+            </div>
+            <textarea
+              data-testid="issue-reason-input"
+              className="w-full min-h-[100px] rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
+              placeholder="Please describe what went wrong with this lesson…"
+              value={issueReason}
+              onChange={(e) => setIssueReason(e.target.value)}
+            />
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowRaiseIssueDialog(false);
+                setIssueReason("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="gap-2 bg-orange-600 hover:bg-orange-700 text-white"
+              disabled={!issueReason.trim() || raiseIssueMutation.isPending}
+              onClick={() =>
+                raiseIssueMutation.mutate({
+                  lessonId: lesson.id,
+                  reason: issueReason.trim(),
+                })
+              }
+            >
+              <Flag className="h-4 w-4" />
+              {raiseIssueMutation.isPending ? "Submitting…" : "Submit Issue"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <MessageThread
         open={showMessageThread}

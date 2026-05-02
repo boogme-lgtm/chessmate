@@ -857,3 +857,11 @@
 - [x] S35-5: Router simplified — passes adminOverrideReason directly, no local skipIssueWindowCheck computation
 - [x] S35-6: 4 behavioral tests (S35-1 through S35-4): completed+override rejects, disputed+override succeeds, stale-read race rejects, autoRelease never skips window
 - [x] S35-7: 164 tests passing, tsc --noEmit exits 0
+## Sprint 36 — Student "Confirm Lesson Complete" Button (Completed)
+- [x] S36-1: Confirm Lesson Complete button — only shown for status="confirmed" AND now >= scheduledAt + durationMinutes + 15 min grace
+- [x] S36-2: Button calls lesson.confirmCompletion({ lessonId }); on success invalidates myLessons cache and shows 24-hour issue window toast
+- [x] S36-3: Issue window banner — shown on completed lessons while issueWindowEndsAt is in the future; shows window close time
+- [x] S36-4: Issue window expired banner — shown when issueWindowEndsAt has passed; confirms coach payout released
+- [x] S36-5: Raise Issue button — shown only during active issue window; opens dialog with reason textarea; calls lesson.raiseIssue
+- [x] S36-6: Terminal statuses (payment_collected, completed, disputed, released, cancelled, declined, refunded, no_show) never show Confirm Complete button
+- [x] S36-7: 20 behavioral tests in server/sprint36.test.ts (S36-1 through S36-8); 184 tests passing, tsc --noEmit exits 0
