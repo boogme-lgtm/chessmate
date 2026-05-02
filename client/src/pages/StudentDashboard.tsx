@@ -28,10 +28,15 @@ import {
   Flag,
   ShieldCheck,
 } from "lucide-react";
-import { format, isPast, isFuture, differenceInHours, differenceInMinutes, differenceInSeconds, isAfter } from "date-fns";
+import { format, isPast, isFuture, differenceInHours, differenceInMinutes, differenceInSeconds } from "date-fns";
+import {
+  getLessonEndWithGrace,
+  canConfirmLessonComplete,
+  getIssueWindowState,
+} from "@shared/lessonTimeHelpers";
 import { toast } from "sonner";
 import { Link, useLocation } from "wouter";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import ReviewDialog from "@/components/ReviewDialog";
 import MessageThread from "@/components/MessageThread";
@@ -417,6 +422,16 @@ function LessonCard({ lesson, isPast = false, unreadCount = 0 }: LessonCardProps
   const [issueReason, setIssueReason] = useState("");
   const utils = trpc.useUtils();
 
+  // ── Live clock — refreshes every 30 s so time-gated UI auto-updates ─────
+  // Initialised to Date.now() so the first render is correct, then ticked
+  // on an interval so canConfirmComplete / issueWindowActive / canCancel
+  // flip without requiring a page reload.
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
   const cancelMutation = trpc.lesson.cancel.useMutation({
     onSuccess: (data) => {
       const msg =
@@ -537,34 +552,21 @@ function LessonCard({ lesson, isPast = false, unreadCount = 0 }: LessonCardProps
     }
   };
 
-  const hoursUntilLesson = differenceInHours(new Date(lesson.scheduledAt), new Date());
+  // ── All time-gated state is derived from `now` (updated every 30 s) ─────
+  const hoursUntilLesson = differenceInHours(new Date(lesson.scheduledAt), now);
   const canCancel =
     !isPast &&
     hoursUntilLesson > 0 &&
     ["pending_payment", "payment_collected", "confirmed"].includes(lesson.status);
 
-  // ── Confirm Lesson Complete eligibility ──────────────────────────────────
-  // Show only when: status === "confirmed" AND now >= scheduledAt + durationMinutes + 15 min grace
-  const lessonEndWithGrace = new Date(
-    new Date(lesson.scheduledAt).getTime() +
-      (lesson.durationMinutes ?? 60) * 60 * 1000 +
-      15 * 60 * 1000
-  );
-  const canConfirmComplete =
-    lesson.status === "confirmed" && isAfter(new Date(), lessonEndWithGrace);
-
-  // ── Issue window state ───────────────────────────────────────────────────
+  // Pure helpers from shared/lessonTimeHelpers.ts — use `now` not new Date()
+  const canConfirmComplete = canConfirmLessonComplete(lesson, now);
+  const issueWindowStatus = getIssueWindowState(lesson, now);
+  const issueWindowActive = issueWindowStatus === "active";
+  const issueWindowExpired = issueWindowStatus === "expired";
   const issueWindowEndsAt = lesson.issueWindowEndsAt
     ? new Date(lesson.issueWindowEndsAt)
     : null;
-  const issueWindowActive =
-    lesson.status === "completed" &&
-    issueWindowEndsAt !== null &&
-    isAfter(issueWindowEndsAt, new Date());
-  const issueWindowExpired =
-    lesson.status === "completed" &&
-    issueWindowEndsAt !== null &&
-    !isAfter(issueWindowEndsAt, new Date());
 
   return (
     <>
@@ -634,7 +636,19 @@ function LessonCard({ lesson, isPast = false, unreadCount = 0 }: LessonCardProps
                 >
                   <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
                   <span className="text-muted-foreground">
-                    Issue window closed — coach payout has been released.
+                    Issue window closed — coach payout is eligible for release.
+                  </span>
+                </div>
+              )}
+              {/* Released banner — only shown once status transitions to released */}
+              {lesson.status === "released" && (
+                <div
+                  data-testid="payout-released-banner"
+                  className="mt-3 flex items-start gap-2 rounded-md border border-emerald-500/40 bg-emerald-50/60 dark:bg-emerald-950/20 px-3 py-2 text-sm"
+                >
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600 mt-0.5 shrink-0" />
+                  <span className="text-muted-foreground">
+                    Coach payout has been released.
                   </span>
                 </div>
               )}

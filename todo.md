@@ -865,3 +865,8 @@
 - [x] S36-5: Raise Issue button — shown only during active issue window; opens dialog with reason textarea; calls lesson.raiseIssue
 - [x] S36-6: Terminal statuses (payment_collected, completed, disputed, released, cancelled, declined, refunded, no_show) never show Confirm Complete button
 - [x] S36-7: 20 behavioral tests in server/sprint36.test.ts (S36-1 through S36-8); 184 tests passing, tsc --noEmit exits 0
+## Sprint 36 Patch — Time-gated UI refresh + banner copy fix
+- [x] P36-1: Add `now` interval state (30s) to LessonCard; use for canConfirmComplete, issueWindowActive, issueWindowExpired, canCancel/hoursUntilLesson
+- [x] P36-2: Extract pure helpers into shared/lessonTimeHelpers.ts: getLessonEndWithGrace(), canConfirmLessonComplete(), getIssueWindowState(), canRaiseIssue() — testable with fixed dates
+- [x] P36-3: Fix expired issue-window banner: completed+expired → "eligible for release"; added separate released banner → "coach payout has been released"
+- [x] P36-4: 39 unit tests in server/lessonTimeHelpers.test.ts covering getLessonEndWithGrace, canConfirmLessonComplete (all statuses + grace boundary), getIssueWindowState (all statuses + active/expired/released), canRaiseIssue, and all three banner scenarios
