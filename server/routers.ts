@@ -2614,32 +2614,12 @@ export const appRouter = router({
           return next({ ctx });
         })
         .mutation(async ({ input }) => {
-          // Read lesson once to avoid stale double-read bug.
-          // skipIssueWindowCheck is ONLY allowed for disputed lessons with an explicit reason.
-          const lesson = await db.getLessonById(input.lessonId);
-          if (!lesson) {
-            throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
-          }
-
-          const isDisputed = lesson.status === "disputed";
-          const hasOverrideReason = !!input.adminOverrideReason?.trim();
-
-          // Disputed lessons require an explicit admin override reason
-          if (isDisputed && !hasOverrideReason) {
-            throw new TRPCError({
-              code: "BAD_REQUEST",
-              message: "Admin override reason is required for disputed lessons",
-            });
-          }
-
-          // skipIssueWindowCheck is ONLY valid when the lesson is disputed AND a reason is given.
-          // A completed lesson inside the issue window must ALWAYS be rejected, even with a reason.
-          const skipIssueWindowCheck = isDisputed && hasOverrideReason;
-
+          // Sprint 35: The override decision is now fully owned by the service.
+          // The service reads the lesson itself and computes skipWindow from its
+          // own read — no stale-flag risk. We pass adminOverrideReason directly.
           const result = await releaseLessonPayoutToCoach({
             lessonId: input.lessonId,
             adminOverrideReason: input.adminOverrideReason,
-            skipIssueWindowCheck,
           });
 
           if (result.success) {

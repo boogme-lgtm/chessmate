@@ -849,3 +849,11 @@
 - [x] S34-3: disputed lesson without adminOverrideReason rejects (BAD_REQUEST)
 - [x] S34-4: disputed lesson with adminOverrideReason skips window check and succeeds
 - [x] S34-5: autoReleasePayouts never passes skipIssueWindowCheck — 160 tests passing, tsc --noEmit exits 0
+## Sprint 35 — Service-Owned Override Decision (Completed)
+- [x] S35-1: Remove skipIssueWindowCheck from PayoutReleaseInput — service computes skipWindow from its own lesson read
+- [x] S35-2: Service logic: skipWindow = lesson.status === "disputed" && !!adminOverrideReason?.trim()
+- [x] S35-3: Completed lessons always enforce issueWindowEndsAt regardless of adminOverrideReason
+- [x] S35-4: Disputed lessons without adminOverrideReason return precondition failure
+- [x] S35-5: Router simplified — passes adminOverrideReason directly, no local skipIssueWindowCheck computation
+- [x] S35-6: 4 behavioral tests (S35-1 through S35-4): completed+override rejects, disputed+override succeeds, stale-read race rejects, autoRelease never skips window
+- [x] S35-7: 164 tests passing, tsc --noEmit exits 0

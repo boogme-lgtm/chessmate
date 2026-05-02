@@ -6,6 +6,17 @@
  *   - autoReleasePayouts scheduler (automated 30-min cron)
  *
  * All settlement safeguards live here once so they cannot diverge.
+ *
+ * Sprint 35: The override decision is now FULLY SERVICE-OWNED.
+ * Callers pass adminOverrideReason (or nothing). The service reads
+ * the lesson itself and computes whether the issue window can be skipped:
+ *
+ *   skipWindow = lesson.status === "disputed" && !!adminOverrideReason?.trim()
+ *
+ * A completed lesson ALWAYS enforces issueWindowEndsAt, even if
+ * adminOverrideReason is provided. Disputed lessons require adminOverrideReason
+ * to skip the window. Auto-release never passes adminOverrideReason, so it
+ * never skips the window.
  */
 
 import * as db from "./db";
@@ -13,10 +24,16 @@ import { transferToCoach } from "./stripeConnect";
 
 export type PayoutReleaseInput = {
   lessonId: number;
-  /** Required when releasing a disputed lesson. Auto-release never passes this. */
+  /**
+   * Required when releasing a disputed lesson (admin override).
+   * Auto-release never passes this — it must always enforce the window.
+   *
+   * The service computes skipWindow from its OWN lesson read:
+   *   skipWindow = lesson.status === "disputed" && !!adminOverrideReason?.trim()
+   *
+   * Callers MUST NOT pass skipIssueWindowCheck — the service owns that decision.
+   */
   adminOverrideReason?: string;
-  /** When true, skip the issueWindowEndsAt check (used for admin override of disputed). */
-  skipIssueWindowCheck?: boolean;
 };
 
 export type PayoutReleaseResult =
@@ -32,7 +49,9 @@ export type PayoutReleaseResult =
  * scheduler) can decide how to handle each outcome without try/catch.
  *
  * All existing safeguards are preserved:
- *   - issueWindowEndsAt enforcement (unless skipIssueWindowCheck)
+ *   - issueWindowEndsAt enforcement (always for completed; skippable only for
+ *     disputed with a non-empty adminOverrideReason)
+ *   - disputed lessons without adminOverrideReason → precondition failure
  *   - stripePaymentIntentId required
  *   - coach Stripe Connect account required
  *   - claimLessonPayoutSlot CAS
@@ -56,6 +75,22 @@ export async function releaseLessonPayoutToCoach(
       success: false,
       precondition: true,
       reason: `Lesson is not in a payable state (status: ${lesson.status})`,
+    };
+  }
+
+  // Sprint 35: Compute override decision using the SERVICE's own lesson read.
+  // A completed lesson ALWAYS enforces the window — adminOverrideReason is ignored.
+  // A disputed lesson may skip the window only with a non-empty adminOverrideReason.
+  const isDisputed = lesson.status === "disputed";
+  const hasOverrideReason = !!input.adminOverrideReason?.trim();
+  const skipWindow = isDisputed && hasOverrideReason;
+
+  // Disputed lessons require an explicit admin override reason to proceed.
+  if (isDisputed && !hasOverrideReason) {
+    return {
+      success: false,
+      precondition: true,
+      reason: "Admin override reason is required for disputed lessons",
     };
   }
 
@@ -90,8 +125,10 @@ export async function releaseLessonPayoutToCoach(
     return { success: true, transferId: lesson.stripeTransferId, alreadyReleased: true };
   }
 
-  // Issue window enforcement (skip for admin override of disputed lessons)
-  if (!input.skipIssueWindowCheck) {
+  // Issue window enforcement.
+  // skipWindow is only true for disputed + non-empty adminOverrideReason (computed above).
+  // Completed lessons always enforce the window regardless of adminOverrideReason.
+  if (!skipWindow) {
     if (!lesson.issueWindowEndsAt) {
       return {
         success: false,

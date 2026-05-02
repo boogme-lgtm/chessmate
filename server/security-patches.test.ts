@@ -2658,7 +2658,10 @@ describe("S34: releasePayout — override scope is restricted to disputed + reas
     expect(stripeConnect.transferToCoach).not.toHaveBeenCalled();
   });
 
-  it("S34-2: disputed lesson without adminOverrideReason rejects with BAD_REQUEST", async () => {
+    it("S34-2: disputed lesson without adminOverrideReason rejects (Sprint 35: service returns PRECONDITION_FAILED)", async () => {
+    // Sprint 34 originally expected BAD_REQUEST (thrown by router before calling service).
+    // Sprint 35 moves the check into the service, which returns { precondition: true }.
+    // The router maps precondition → PRECONDITION_FAILED, so the error code changes.
     vi.mocked(db.getLessonById).mockResolvedValue(
       makeLessonRow({
         status: "disputed",
@@ -2667,12 +2670,10 @@ describe("S34: releasePayout — override scope is restricted to disputed + reas
         stripeTransferId: null,
       })
     );
-
     const caller = appRouter.createCaller(adminCtx());
     await expect(
       caller.admin.disputes.releasePayout({ lessonId: 100 })
-    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
-
+    ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
     expect(stripeConnect.transferToCoach).not.toHaveBeenCalled();
   });
 
@@ -2740,5 +2741,175 @@ describe("S34: releasePayout — override scope is restricted to disputed + reas
     expect(stripeConnect.transferToCoach).toHaveBeenCalledOnce();
     // The ineligible lesson was never fetched by payoutService
     expect(db.getLessonById).not.toHaveBeenCalledWith(402);
+  });
+});
+
+// ─── S35: Service-owned override decision ─────────────────────────────────────
+// Sprint 35: releaseLessonPayoutToCoach now computes skipWindow from its OWN
+// lesson read. The router no longer pre-computes skipIssueWindowCheck and passes
+// it as a flag. This prevents stale-read race conditions where the router sees
+// one lesson state but the service reads a different (updated) state.
+//
+// Key invariants:
+//   - completed lesson + adminOverrideReason → always rejects (window enforced)
+//   - disputed lesson + adminOverrideReason → skips window, succeeds
+//   - router sees disputed, service sees completed (stale read) → rejects
+//   - autoReleasePayouts never passes adminOverrideReason → never skips window
+describe("S35: releaseLessonPayoutToCoach — service-owned override decision", () => {
+  function adminCtx() { return createContext({ id: 1, role: "admin" }); }
+  beforeEach(() => {
+    vi.resetAllMocks();
+    // Default happy-path mocks: CAS succeeds, coach has connected account, transfer succeeds
+    vi.mocked(db.claimLessonPayoutSlot).mockResolvedValue(true);
+    vi.mocked(db.getUserById).mockResolvedValue({
+      id: 2, stripeConnectAccountId: "acct_coach_s35"
+    } as any);
+    vi.mocked(db.finalizeLessonPayout).mockResolvedValue(undefined as any);
+    vi.mocked(stripeConnect.transferToCoach).mockResolvedValue({
+      success: true, transferId: "tr_s35_ok"
+    } as any);
+  });
+
+  it("S35-1: completed lesson inside issue window + adminOverrideReason rejects at service level", async () => {
+    // The service reads a completed lesson whose window is still active.
+    // Even though adminOverrideReason is provided, the service must reject —
+    // completed lessons always enforce issueWindowEndsAt.
+    const futureWindow = new Date(Date.now() + 6 * 60 * 60 * 1000); // 6h from now
+    vi.mocked(db.getLessonById).mockResolvedValue(
+      makeLessonRow({
+        status: "completed",
+        stripePaymentIntentId: "pi_s35_completed_override",
+        issueWindowEndsAt: futureWindow,
+        stripeTransferId: null,
+        coachId: 2,
+      })
+    );
+    const caller = appRouter.createCaller(adminCtx());
+    await expect(
+      caller.admin.disputes.releasePayout({
+        lessonId: 100,
+        adminOverrideReason: "Admin wants to force-release a completed lesson",
+      })
+    ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+    // Service must NOT have reached Stripe
+    expect(stripeConnect.transferToCoach).not.toHaveBeenCalled();
+    // CAS must NOT have been claimed
+    expect(db.claimLessonPayoutSlot).not.toHaveBeenCalled();
+  });
+
+  it("S35-2: disputed lesson + adminOverrideReason succeeds and skips issue window", async () => {
+    // The service reads a disputed lesson with an active window.
+    // With adminOverrideReason, the service should skip the window and proceed.
+    const futureWindow = new Date(Date.now() + 6 * 60 * 60 * 1000); // still active
+    vi.mocked(db.getLessonById).mockResolvedValue(
+      makeLessonRow({
+        status: "disputed",
+        stripePaymentIntentId: "pi_s35_disputed_override",
+        issueWindowEndsAt: futureWindow,
+        stripeTransferId: null,
+        coachId: 2,
+      })
+    );
+    const caller = appRouter.createCaller(adminCtx());
+    const result = await caller.admin.disputes.releasePayout({
+      lessonId: 100,
+      adminOverrideReason: "Admin reviewed dispute and confirmed lesson was delivered",
+    });
+    expect(result.success).toBe(true);
+    expect(result.transferId).toBe("tr_s35_ok");
+    // Stripe transfer must have been called exactly once
+    expect(stripeConnect.transferToCoach).toHaveBeenCalledOnce();
+    // Verify adminOverrideReason was forwarded to Stripe metadata
+    expect(stripeConnect.transferToCoach).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          adminOverrideReason: "Admin reviewed dispute and confirmed lesson was delivered",
+        }),
+      })
+    );
+  });
+
+  it("S35-3: stale router read — router would have seen disputed, service reads completed with active window → rejects", async () => {
+    // This simulates the race condition Sprint 35 is designed to prevent.
+    // In Sprint 34, the router read the lesson (saw disputed), computed
+    // skipIssueWindowCheck=true, then passed it to the service. If the lesson
+    // status changed between the router read and the service read, the stale
+    // flag would incorrectly skip the window.
+    //
+    // In Sprint 35, the service owns the decision. The mock returns completed
+    // (simulating what the service sees after the status changed), so the
+    // service must reject even though the caller passed adminOverrideReason.
+    const futureWindow = new Date(Date.now() + 6 * 60 * 60 * 1000); // window still active
+    // Service reads: completed (status changed after router would have read disputed)
+    vi.mocked(db.getLessonById).mockResolvedValue(
+      makeLessonRow({
+        status: "completed", // <-- service sees completed, not disputed
+        stripePaymentIntentId: "pi_s35_stale_race",
+        issueWindowEndsAt: futureWindow,
+        stripeTransferId: null,
+        coachId: 2,
+      })
+    );
+    const caller = appRouter.createCaller(adminCtx());
+    // Router passes adminOverrideReason (as if it had seen disputed),
+    // but the service reads completed → must reject
+    await expect(
+      caller.admin.disputes.releasePayout({
+        lessonId: 100,
+        adminOverrideReason: "Stale: router saw disputed but service sees completed",
+      })
+    ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+    // No money must have moved
+    expect(stripeConnect.transferToCoach).not.toHaveBeenCalled();
+    expect(db.claimLessonPayoutSlot).not.toHaveBeenCalled();
+  });
+
+  it("S35-4: autoReleasePayouts never passes adminOverrideReason and never skips the issue window", async () => {
+    // Auto-release calls releaseLessonPayoutToCoach({ lessonId }) with no adminOverrideReason.
+    // The service must enforce the window for all lessons in the auto-release path.
+    const expiredWindow = new Date(Date.now() - 60 * 60 * 1000); // 1h ago — eligible
+    const activeWindow = new Date(Date.now() + 60 * 60 * 1000);  // 1h from now — ineligible
+
+    const eligibleLesson = makeLessonRow({
+      id: 501,
+      status: "completed",
+      stripePaymentIntentId: "pi_s35_auto_eligible",
+      issueWindowEndsAt: expiredWindow,
+      stripeTransferId: null,
+      coachId: 2,
+    });
+    const ineligibleLesson = makeLessonRow({
+      id: 502,
+      status: "completed",
+      stripePaymentIntentId: "pi_s35_auto_ineligible",
+      issueWindowEndsAt: activeWindow,
+      stripeTransferId: null,
+      coachId: 2,
+    });
+
+    // getCompletedLessonsReadyForPayout returns only the eligible one (DB query enforces window)
+    vi.mocked(db.getCompletedLessonsReadyForPayout).mockResolvedValue([eligibleLesson] as any);
+    // getLessonById is called by payoutService for the eligible lesson
+    vi.mocked(db.getLessonById).mockResolvedValue(eligibleLesson);
+
+    const origEnv = process.env.AUTO_RELEASE_PAYOUTS_ENABLED;
+    process.env.AUTO_RELEASE_PAYOUTS_ENABLED = "true";
+    try {
+      const { autoReleasePayouts } = await import("./reminderScheduler");
+      await autoReleasePayouts();
+    } finally {
+      process.env.AUTO_RELEASE_PAYOUTS_ENABLED = origEnv;
+    }
+
+    // Only the eligible lesson triggered a Stripe transfer
+    expect(stripeConnect.transferToCoach).toHaveBeenCalledOnce();
+    // The ineligible lesson was never fetched by payoutService
+    expect(db.getLessonById).not.toHaveBeenCalledWith(502);
+    // transferToCoach must NOT have been called with adminOverrideReason in metadata
+    expect(stripeConnect.transferToCoach).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.not.objectContaining({ adminOverrideReason: expect.anything() }),
+      })
+    );
   });
 });
