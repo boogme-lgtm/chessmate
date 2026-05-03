@@ -2656,22 +2656,115 @@ export const appRouter = router({
           if (!lesson) {
             throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
           }
-          if (lesson.status !== "disputed" && lesson.status !== "completed") {
-            throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Lesson is not in a refundable state" });
-          }
           if (!lesson.stripePaymentIntentId) {
             throw new TRPCError({ code: "PRECONDITION_FAILED", message: "No payment recorded for this lesson" });
           }
 
+          // ─── S38: Post-payout path (status = 'released') ────────────────────
+          // The coach transfer has already been made. We must:
+          //   1. Claim the reversal slot (atomic, prevents double-reversal)
+          //   2. Reverse the Stripe transfer (funds return to platform)
+          //   3. Refund the student's payment intent
+          //   4. Finalize DB state
+          if (lesson.status === "released") {
+            if (!lesson.stripeTransferId) {
+              throw new TRPCError({
+                code: "PRECONDITION_FAILED",
+                message: "Lesson is marked released but has no transfer ID — cannot reverse. Contact support.",
+              });
+            }
+            const existingReversalId = lesson.stripeReversalId as string | null;
+            const existingPostPayoutRefundId = lesson.stripePostPayoutRefundId as string | null;
+
+            // Already in post-payout-refund pending state (reversal done, refund in-flight)
+            if (existingPostPayoutRefundId === "__pending_post_payout_refund__") {
+              throw new TRPCError({
+                code: "CONFLICT",
+                message: "A post-payout refund is currently in progress for this lesson. Please retry in a moment.",
+              });
+            }
+            // Already in reversal pending state
+            if (existingReversalId === "__pending_reversal__") {
+              throw new TRPCError({
+                code: "CONFLICT",
+                message: "A transfer reversal is currently in progress for this lesson. Please retry in a moment.",
+              });
+            }
+
+            const reversalAlreadyDone = existingReversalId &&
+              existingReversalId !== "__pending_reversal__" &&
+              existingReversalId !== "__pending_post_payout_refund__";
+
+            const refundAmountCents = input.amountCents ?? lesson.amountCents;
+            const reversalIdempotencyKey = `lesson_post_payout_reversal_${input.lessonId}_${refundAmountCents}`;
+            const refundIdempotencyKey = `lesson_post_payout_refund_${input.lessonId}_${refundAmountCents}`;
+
+            let resolvedReversalId = existingReversalId;
+
+            if (!reversalAlreadyDone) {
+              // Step 1: Claim the reversal slot atomically
+              const claimed = await db.claimPostPayoutReversalSlot(input.lessonId, refundAmountCents);
+              if (!claimed) {
+                throw new TRPCError({
+                  code: "CONFLICT",
+                  message: "Could not claim reversal slot — concurrent operation in progress. Please retry.",
+                });
+              }
+              // Step 2: Reverse the Stripe transfer
+              try {
+                const reversal = await stripeService.createTransferReversal(
+                  lesson.stripeTransferId,
+                  refundAmountCents === lesson.coachPayoutCents ? undefined : refundAmountCents,
+                  reversalIdempotencyKey
+                );
+                resolvedReversalId = reversal.id;
+              } catch (reversalErr: any) {
+                await db.releasePostPayoutReversalClaim(input.lessonId);
+                throw new TRPCError({
+                  code: "INTERNAL_SERVER_ERROR",
+                  message: `Stripe transfer reversal failed: ${reversalErr?.message ?? 'unknown error'}. The reversal slot has been released — please retry.`,
+                });
+              }
+              // Step 3: Advance to post-payout-refund pending state
+              await db.advanceToPostPayoutRefundSlot(input.lessonId, resolvedReversalId!);
+            } else {
+              // Reversal already done; advance to refund slot for retry
+              await db.advanceToPostPayoutRefundSlot(input.lessonId, resolvedReversalId!);
+            }
+
+            // Step 4: Refund the student
+            try {
+              const refund = await stripeService.createRefund(
+                lesson.stripePaymentIntentId,
+                refundAmountCents === lesson.amountCents ? undefined : refundAmountCents,
+                "requested_by_customer",
+                refundIdempotencyKey
+              );
+              // Step 5: Finalize DB state
+              await db.finalizePostPayoutRefund(
+                input.lessonId,
+                refund.id,
+                refundAmountCents,
+                input.reason || "Admin post-payout refund"
+              );
+            } catch (refundErr: any) {
+              await db.releasePostPayoutRefundClaim(input.lessonId);
+              throw new TRPCError({
+                code: "INTERNAL_SERVER_ERROR",
+                message: `Stripe refund failed after transfer reversal: ${refundErr?.message ?? 'unknown error'}. The transfer has been reversed. Please retry to complete the student refund.`,
+              });
+            }
+            return { success: true, refundAmountCents };
+          }
+
+          // ─── Pre-payout path (status = 'disputed' | 'completed') ────────────
+          if (lesson.status !== "disputed" && lesson.status !== "completed") {
+            throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Lesson is not in a refundable state" });
+          }
           // S30-1: Atomic settlement claim — prevent refund+payout double-settlement.
-          // claimLessonRefundSlot atomically sets stripeTransferId = '__pending_refund__'
-          // WHERE stripeTransferId IS NULL, so it loses to any concurrent payout claim.
-          // S31-4: Also store the intended refund amount so recovery can reconstruct it after a crash.
           const refundAmountCentsForClaim = input.amountCents ?? lesson.amountCents;
           const claimed = await db.claimLessonRefundSlot(input.lessonId, refundAmountCentsForClaim);
           if (!claimed) {
-            // Lost the race — either a payout is in-flight or already completed.
-            // Re-read to give a precise error message.
             const fresh = await db.getLessonById(input.lessonId);
             if (fresh?.stripeTransferId && fresh.stripeTransferId !== '__pending_refund__') {
               if (fresh.stripeTransferId === '__pending_payout__') {
@@ -2682,7 +2775,7 @@ export const appRouter = router({
               }
               throw new TRPCError({
                 code: "PRECONDITION_FAILED",
-                message: `Payout already released (transfer ${fresh.stripeTransferId}). Refunding after a completed payout requires a manual transfer reversal in the Stripe dashboard.`,
+                message: `Payout already released (transfer ${fresh.stripeTransferId}). Use the post-payout refund path.`,
               });
             }
             throw new TRPCError({
@@ -2690,12 +2783,9 @@ export const appRouter = router({
               message: "Could not claim refund slot — concurrent settlement in progress. Please retry.",
             });
           }
-
           const refundAmountCents = refundAmountCentsForClaim;
           const idempotencyKey = `lesson_admin_refund_${input.lessonId}_${refundAmountCents}`;
-
           try {
-            // Refund the student (idempotency key deduplicates retries)
             await stripeService.createRefund(
               lesson.stripePaymentIntentId,
               refundAmountCents === lesson.amountCents ? undefined : refundAmountCents,
@@ -2703,20 +2793,17 @@ export const appRouter = router({
               idempotencyKey
             );
           } catch (stripeErr: any) {
-            // Release the claim so admin can retry
             await db.releaseAdminRefundClaim(input.lessonId);
             throw new TRPCError({
               code: "INTERNAL_SERVER_ERROR",
               message: `Stripe refund failed: ${stripeErr?.message ?? 'unknown error'}. The refund slot has been released — please retry.`,
             });
           }
-
           await db.finalizeAdminRefund(
             input.lessonId,
             refundAmountCents,
             input.reason || "Admin refund"
           );
-
           return { success: true, refundAmountCents };
         }),
     }),

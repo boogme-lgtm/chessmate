@@ -723,6 +723,112 @@ export async function recoverStuckPendingStates(): Promise<void> {
       }
     }
   }
+
+  // S38: Find lessons stuck in __pending_reversal__ for > 10 minutes
+  const stuckReversalResult: any = await dbInstance.execute(sql`
+    SELECT id, stripeTransferId, stripePaymentIntentId, amountCents, coachPayoutCents,
+           stripeReversalAmountCents, stripeReversalId
+    FROM lessons
+    WHERE stripeReversalId = '__pending_reversal__'
+      AND updatedAt < ${TEN_MINUTES_AGO}
+  `);
+  const stuckReversals = stuckReversalResult[0] as any[];
+  if (stuckReversals?.length > 0) {
+    console.warn(`[Recovery] Found ${stuckReversals.length} lesson(s) with stuck __pending_reversal__ for > 10 minutes.`);
+    const { advanceToPostPayoutRefundSlot, releasePostPayoutReversalClaim } = await import('./db');
+    const stripeS38 = await import('./stripe');
+    for (const row of stuckReversals) {
+      try {
+        if (!row.stripeTransferId) {
+          await releasePostPayoutReversalClaim(row.id);
+          console.error(`[Recovery] Lesson ${row.id} stuck __pending_reversal__ — no transfer ID, slot released`);
+          continue;
+        }
+        const reversalAmountCents = row.stripeReversalAmountCents ?? row.coachPayoutCents;
+        const reversalIdempotencyKey = `lesson_post_payout_reversal_${row.id}_${reversalAmountCents}`;
+        let reversalSucceeded = false;
+        let reversalId: string | null = null;
+        try {
+          const reversal = await stripeS38.createTransferReversal(
+            row.stripeTransferId,
+            reversalAmountCents === row.coachPayoutCents ? undefined : reversalAmountCents,
+            reversalIdempotencyKey
+          );
+          reversalId = reversal.id;
+          reversalSucceeded = true;
+        } catch (stripeErr: any) {
+          if (stripeErr?.raw?.code === 'transfer_already_reversed' || stripeErr?.message?.includes('already been reversed')) {
+            await releasePostPayoutReversalClaim(row.id);
+            console.error(`[Recovery] Lesson ${row.id} __pending_reversal__ — transfer already fully reversed, slot released for admin`);
+            continue;
+          }
+          console.error(`[Recovery] Stripe reversal re-attempt failed for lesson ${row.id}:`, stripeErr);
+        }
+        if (reversalSucceeded && reversalId) {
+          await advanceToPostPayoutRefundSlot(row.id, reversalId);
+          console.log(`[Recovery] Lesson ${row.id} __pending_reversal__ recovered — advanced to post-payout-refund state`);
+        } else {
+          await releasePostPayoutReversalClaim(row.id);
+          console.error(`[Recovery] Lesson ${row.id} __pending_reversal__ recovery failed — slot released for admin retry`);
+        }
+      } catch (err) {
+        console.error(`[Recovery] Error recovering __pending_reversal__ for lesson ${row.id}:`, err);
+      }
+    }
+  }
+
+  // S38: Find lessons stuck in __pending_post_payout_refund__ for > 10 minutes
+  const stuckPostPayoutRefundResult: any = await dbInstance.execute(sql`
+    SELECT id, stripePaymentIntentId, amountCents, stripeReversalAmountCents
+    FROM lessons
+    WHERE stripePostPayoutRefundId = '__pending_post_payout_refund__'
+      AND updatedAt < ${TEN_MINUTES_AGO}
+  `);
+  const stuckPostPayoutRefunds = stuckPostPayoutRefundResult[0] as any[];
+  if (stuckPostPayoutRefunds?.length > 0) {
+    console.warn(`[Recovery] Found ${stuckPostPayoutRefunds.length} lesson(s) with stuck __pending_post_payout_refund__ for > 10 minutes.`);
+    const { finalizePostPayoutRefund, releasePostPayoutRefundClaim } = await import('./db');
+    const stripeS38b = await import('./stripe');
+    for (const row of stuckPostPayoutRefunds) {
+      try {
+        if (!row.stripePaymentIntentId) {
+          await releasePostPayoutRefundClaim(row.id);
+          console.error(`[Recovery] Lesson ${row.id} stuck __pending_post_payout_refund__ — no payment intent, slot released`);
+          continue;
+        }
+        const refundAmountCents = row.stripeReversalAmountCents ?? row.amountCents;
+        const refundIdempotencyKey = `lesson_post_payout_refund_${row.id}_${refundAmountCents}`;
+        let refundSucceeded = false;
+        let refundId: string | null = null;
+        try {
+          const refund = await stripeS38b.createRefund(
+            row.stripePaymentIntentId,
+            refundAmountCents === row.amountCents ? undefined : refundAmountCents,
+            'requested_by_customer',
+            refundIdempotencyKey
+          );
+          refundId = refund.id;
+          refundSucceeded = true;
+        } catch (stripeErr: any) {
+          if (stripeErr?.raw?.code === 'charge_already_refunded') {
+            refundSucceeded = true;
+            refundId = 're_recovered_' + row.id;
+          } else {
+            console.error(`[Recovery] Stripe refund re-attempt failed for lesson ${row.id} (__pending_post_payout_refund__):`, stripeErr);
+          }
+        }
+        if (refundSucceeded && refundId) {
+          await finalizePostPayoutRefund(row.id, refundId, refundAmountCents, 'Admin post-payout refund (recovered after process crash)');
+          console.log(`[Recovery] Lesson ${row.id} __pending_post_payout_refund__ recovered — refund finalized`);
+        } else {
+          await releasePostPayoutRefundClaim(row.id);
+          console.error(`[Recovery] Lesson ${row.id} __pending_post_payout_refund__ recovery failed — slot released for admin retry`);
+        }
+      } catch (err) {
+        console.error(`[Recovery] Error recovering __pending_post_payout_refund__ for lesson ${row.id}:`, err);
+      }
+    }
+  }
 }
 
 /**

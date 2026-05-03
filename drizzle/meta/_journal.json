@@ -127,6 +127,13 @@
       "when": 1777668302397,
       "tag": "0017_short_pepper_potts",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "5",
+      "when": 1777769870198,
+      "tag": "0018_serious_legion",
+      "breakpoints": true
     }
   ]
 }

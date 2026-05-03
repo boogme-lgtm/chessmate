@@ -240,7 +240,17 @@ export const lessons = mysqlTable("lessons", {
   refundAmountCents: int("refundAmountCents"),
   refundProcessedAt: timestamp("refundProcessedAt"),
   cancellationToken: varchar("cancellationToken", { length: 64 }), // Secure token for cancellation links
-  
+
+  // S38: Post-payout transfer reversal tracking
+  // stripeReversalId doubles as the atomic mutex for the post-payout refund path:
+  //   NULL                           = no reversal in progress or completed
+  //   '__pending_reversal__'          = reversal slot claimed, Stripe call in-flight
+  //   '__pending_post_payout_refund__'= reversal done, student refund Stripe call in-flight
+  //   'trr_xxx'                       = reversal completed (real Stripe reversal ID stored)
+  stripeReversalId: varchar("stripeReversalId", { length: 64 }),
+  stripeReversalAmountCents: int("stripeReversalAmountCents"),
+  stripePostPayoutRefundId: varchar("stripePostPayoutRefundId", { length: 64 }),
+
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

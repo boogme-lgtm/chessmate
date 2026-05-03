@@ -1779,3 +1779,107 @@ export async function releaseAdminRefundClaim(lessonId: number): Promise<void> {
       AND stripeTransferId = '__pending_refund__'
   `);
 }
+
+// ─── S38: Post-payout transfer reversal helpers ───────────────────────────────
+
+/**
+ * S38: Atomically claim the reversal slot for a released lesson.
+ * Sets stripeReversalId = '__pending_reversal__' only when:
+ *   - status = 'released'   (payout has been made)
+ *   - stripeReversalId IS NULL  (no reversal in progress or completed)
+ *
+ * Returns true if the claim was won (affectedRows = 1), false otherwise.
+ */
+export async function claimPostPayoutReversalSlot(
+  lessonId: number,
+  intendedReversalAmountCents: number
+): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  const result: any = await db.execute(sql`
+    UPDATE lessons
+    SET stripeReversalId = '__pending_reversal__',
+        stripeReversalAmountCents = ${intendedReversalAmountCents}
+    WHERE id = ${lessonId}
+      AND status = 'released'
+      AND stripeReversalId IS NULL
+  `);
+  return result[0]?.affectedRows === 1;
+}
+
+/**
+ * S38: Advance the slot from '__pending_reversal__' to '__pending_post_payout_refund__'
+ * after the Stripe transfer reversal succeeds.
+ * Stores the real Stripe reversal ID for idempotency and audit.
+ */
+export async function advanceToPostPayoutRefundSlot(
+  lessonId: number,
+  stripeReversalId: string
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.execute(sql`
+    UPDATE lessons
+    SET stripeReversalId = ${stripeReversalId},
+        stripePostPayoutRefundId = '__pending_post_payout_refund__'
+    WHERE id = ${lessonId}
+      AND stripeReversalId = '__pending_reversal__'
+  `);
+}
+
+/**
+ * S38: Finalize the post-payout refund after both Stripe operations succeed.
+ * Stores the real Stripe refund ID, sets status = 'refunded', records amounts.
+ */
+export async function finalizePostPayoutRefund(
+  lessonId: number,
+  stripeRefundId: string,
+  refundAmountCents: number,
+  reason: string
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.execute(sql`
+    UPDATE lessons
+    SET status = 'refunded',
+        stripePostPayoutRefundId = ${stripeRefundId},
+        refundAmountCents = ${refundAmountCents},
+        refundProcessedAt = NOW(),
+        cancellationReason = ${reason}
+    WHERE id = ${lessonId}
+      AND stripePostPayoutRefundId = '__pending_post_payout_refund__'
+  `);
+}
+
+/**
+ * S38: Release the reversal slot back to NULL on Stripe failure (before reversal).
+ * Allows the admin to retry.
+ */
+export async function releasePostPayoutReversalClaim(lessonId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.execute(sql`
+    UPDATE lessons
+    SET stripeReversalId = NULL,
+        stripeReversalAmountCents = NULL
+    WHERE id = ${lessonId}
+      AND stripeReversalId = '__pending_reversal__'
+  `);
+}
+
+/**
+ * S38: Release the post-payout refund slot on Stripe refund failure.
+ * Only releases if in '__pending_post_payout_refund__' state.
+ * The stripeReversalId already holds the real reversal ID at this point.
+ * Allows the admin to retry the refund step.
+ */
+export async function releasePostPayoutRefundClaim(lessonId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.execute(sql`
+    UPDATE lessons
+    SET stripePostPayoutRefundId = NULL
+    WHERE id = ${lessonId}
+      AND stripePostPayoutRefundId = '__pending_post_payout_refund__'
+  `);
+}

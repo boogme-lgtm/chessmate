@@ -891,3 +891,11 @@
 - [x] P37P2-2: All branches use normalized matching; added payout-already-in-progress, payout-already-claimed, refund-in-progress, not-in-payable-state, coach-missing-Stripe-Connect branches
 - [x] P37P2-3: Added "no issue window set" branch matching payoutService: "Lesson has no issue window set — cannot safely release payout"
 - [x] P37P2-4: 16 exact-string describe blocks in sprint37.test.ts (S37-E1 through S37-E16) covering all payoutService and routers.ts error strings verbatim; 252 tests passing
+## Sprint 38 — Transfer Reversal for Post-Payout Refunds
+- [x] S38-1: Added stripeReversalId, stripeReversalAmountCents, stripePostPayoutRefundId to lessons table; migration pushed
+- [x] S38-2: Added createTransferReversal(transferId, amount?, idempotencyKey?) to stripe.ts
+- [x] S38-3: Added 5 DB helpers: claimPostPayoutReversalSlot, advanceToPostPayoutRefundSlot, finalizePostPayoutRefund, releasePostPayoutReversalClaim, releasePostPayoutRefundClaim
+- [x] S38-4: Implemented post-payout refund path in admin.disputes.refundStudent: claim slot → reverse transfer → refund student → finalize; CONFLICT on concurrent/pending; idempotent on refunded
+- [x] S38-5: Added __pending_reversal__ and __pending_post_payout_refund__ recovery scans to recoverStuckPendingStates
+- [x] S38-6: 23 behavioral tests in server/sprint38.test.ts (S38-1 through S38-8); updated 4 S30/S30-2 recovery tests with S38 mock responses
+- [x] S38-7: 275 tests passing, tsc --noEmit exits 0

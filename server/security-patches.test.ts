@@ -1886,6 +1886,10 @@ describe("S29-5: Recovery scan for stuck pending states", () => {
     executeMock.mockResolvedValueOnce([[]]);
     // SELECT: no stuck __pending_payout__ lessons
     executeMock.mockResolvedValueOnce([[]]);
+    // SELECT: no stuck __pending_reversal__ lessons (added in S38)
+    executeMock.mockResolvedValueOnce([[]]);
+    // SELECT: no stuck __pending_post_payout_refund__ lessons (added in S38)
+    executeMock.mockResolvedValueOnce([[]]);
 
     vi.mocked(db.getDb).mockResolvedValue({ execute: executeMock } as any);
     vi.mocked(stripeService.createRefund).mockResolvedValue({ id: "re_recovered" } as any);
@@ -1915,6 +1919,10 @@ describe("S29-5: Recovery scan for stuck pending states", () => {
     // SELECT: no stuck __pending_refund__ lessons (added in S31-4)
     executeMock.mockResolvedValueOnce([[]]);
     // SELECT: no stuck __pending_payout__ lessons
+    executeMock.mockResolvedValueOnce([[]]);
+    // SELECT: no stuck __pending_reversal__ lessons (added in S38)
+    executeMock.mockResolvedValueOnce([[]]);
+    // SELECT: no stuck __pending_post_payout_refund__ lessons (added in S38)
     executeMock.mockResolvedValueOnce([[]]);
 
     vi.mocked(db.getDb).mockResolvedValue({ execute: executeMock } as any);
@@ -2071,7 +2079,11 @@ describe("S30-2: Recovery uses correct refund amounts and idempotency keys", () 
     executeMock.mockResolvedValueOnce([[]]);
     // Third call: stuck payouts (empty)
     executeMock.mockResolvedValueOnce([[]]);
-    // Fourth call: UPDATE to cancelled
+    // Fourth call: no stuck __pending_reversal__ lessons (added in S38)
+    executeMock.mockResolvedValueOnce([[]]);
+    // Fifth call: no stuck __pending_post_payout_refund__ lessons (added in S38)
+    executeMock.mockResolvedValueOnce([[]]);
+    // Sixth call: UPDATE to cancelled
     executeMock.mockResolvedValueOnce([{ affectedRows: 1 }]);
 
     const { getDb } = await import("./db");
@@ -2110,16 +2122,15 @@ describe("S30-2: Recovery uses correct refund amounts and idempotency keys", () 
     }]]);
     executeMock.mockResolvedValueOnce([[]]); // __pending_refund__ scan (empty) — added in S31-4
     executeMock.mockResolvedValueOnce([[]]); // stuck payouts
+    executeMock.mockResolvedValueOnce([[]]); // no stuck __pending_reversal__ (added in S38)
+    executeMock.mockResolvedValueOnce([[]]); // no stuck __pending_post_payout_refund__ (added in S38)
     executeMock.mockResolvedValueOnce([{ affectedRows: 1 }]); // UPDATE
-
     const { getDb } = await import("./db");
     const { createRefund } = await import("./stripe");
     vi.mocked(getDb).mockResolvedValue({ execute: executeMock } as any);
     vi.mocked(createRefund).mockResolvedValue({ id: "re_decline_001" } as any);
-
     const { recoverStuckPendingStates } = await import("./reminderScheduler");
     await recoverStuckPendingStates();
-
     expect(createRefund).toHaveBeenCalledWith(
       "pi_decline_001",
       undefined, // full refund

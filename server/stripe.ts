@@ -223,6 +223,44 @@ export async function createRefund(
   return refund;
 }
 
+// ============ TRANSFER REVERSAL ============
+
+/**
+ * S38: Reverse a Stripe transfer to a connected account.
+ * Used for post-payout admin refunds: the coach's transfer must be reversed
+ * before the student's payment intent can be refunded.
+ *
+ * In the Separate Charges and Transfers model, the student's charge lives on
+ * the platform and the coach payout is a separate Transfer. To refund the
+ * student after the payout has been released, the Transfer must first be
+ * reversed so the funds return to the platform balance.
+ *
+ * @param transferId    - The Stripe transfer ID (e.g. "tr_xxx") to reverse.
+ * @param amountCents   - Amount to reverse in cents. Omit for full reversal.
+ * @param idempotencyKey - Deterministic key to make the call safe to retry.
+ * @returns The Stripe TransferReversal object.
+ */
+export async function createTransferReversal(
+  transferId: string,
+  amountCents?: number,
+  idempotencyKey?: string
+) {
+  const params: Record<string, any> = {};
+  if (amountCents !== undefined) {
+    params.amount = amountCents;
+  }
+  const options: Record<string, any> = {};
+  if (idempotencyKey) {
+    options.idempotencyKey = idempotencyKey;
+  }
+  const reversal = await stripe.transfers.createReversal(
+    transferId,
+    Object.keys(params).length ? params : undefined,
+    Object.keys(options).length ? options : undefined
+  );
+  return reversal;
+}
+
 // ============ CHECKOUT SESSION (ALTERNATIVE FLOW) ============
 
 /**
