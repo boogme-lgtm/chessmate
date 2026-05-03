@@ -886,3 +886,8 @@
 - [x] P37-3: sprint37.test.ts imports from ../shared/adminActionErrors (no duplication)
 - [x] P37-4: Pending Payout stats card now sums coachPayoutCents (coach net); Disputed Value card retains amountCents (gross) with label
 - [x] P37-5: 7 new stats-card tests in sprint37.test.ts (S37-S1/S2/S3): sumPendingPayoutCents, sumGrossAmountCents, and regression guard proving old amountCents path overcounts by platform fee
+## Sprint 37 Patch 2 — Normalized error matching
+- [x] P37P2-1: Normalized to lowercase at top of formatAdminActionError; matches both "not yet expired" and "not expired yet"
+- [x] P37P2-2: All branches use normalized matching; added payout-already-in-progress, payout-already-claimed, refund-in-progress, not-in-payable-state, coach-missing-Stripe-Connect branches
+- [x] P37P2-3: Added "no issue window set" branch matching payoutService: "Lesson has no issue window set — cannot safely release payout"
+- [x] P37P2-4: 16 exact-string describe blocks in sprint37.test.ts (S37-E1 through S37-E16) covering all payoutService and routers.ts error strings verbatim; 252 tests passing
