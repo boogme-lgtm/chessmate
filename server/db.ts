@@ -1792,14 +1792,16 @@ export async function releaseAdminRefundClaim(lessonId: number): Promise<void> {
  */
 export async function claimPostPayoutReversalSlot(
   lessonId: number,
-  intendedReversalAmountCents: number
+  intendedReversalAmountCents: number,
+  intendedStudentRefundCents: number  // S38P2: persist at claim time for stable retry/recovery
 ): Promise<boolean> {
   const db = await getDb();
   if (!db) return false;
   const result: any = await db.execute(sql`
     UPDATE lessons
     SET stripeReversalId = '__pending_reversal__',
-        stripeReversalAmountCents = ${intendedReversalAmountCents}
+        stripeReversalAmountCents = ${intendedReversalAmountCents},
+        stripeIntendedStudentRefundCents = ${intendedStudentRefundCents}
     WHERE id = ${lessonId}
       AND status = 'released'
       AND stripeReversalId IS NULL
@@ -1815,16 +1817,17 @@ export async function claimPostPayoutReversalSlot(
 export async function advanceToPostPayoutRefundSlot(
   lessonId: number,
   stripeReversalId: string
-): Promise<void> {
+): Promise<boolean> {  // S38P2: return CAS success
   const db = await getDb();
-  if (!db) return;
-  await db.execute(sql`
+  if (!db) return false;
+  const result: any = await db.execute(sql`
     UPDATE lessons
     SET stripeReversalId = ${stripeReversalId},
         stripePostPayoutRefundId = '__pending_post_payout_refund__'
     WHERE id = ${lessonId}
       AND stripeReversalId = '__pending_reversal__'
   `);
+  return result[0]?.affectedRows === 1;
 }
 
 /**
@@ -1836,10 +1839,10 @@ export async function finalizePostPayoutRefund(
   stripeRefundId: string,
   refundAmountCents: number,
   reason: string
-): Promise<void> {
+): Promise<boolean> {  // S38P2: return CAS success
   const db = await getDb();
-  if (!db) return;
-  await db.execute(sql`
+  if (!db) return false;
+  const result: any = await db.execute(sql`
     UPDATE lessons
     SET status = 'refunded',
         stripePostPayoutRefundId = ${stripeRefundId},
@@ -1849,6 +1852,7 @@ export async function finalizePostPayoutRefund(
     WHERE id = ${lessonId}
       AND stripePostPayoutRefundId = '__pending_post_payout_refund__'
   `);
+  return result[0]?.affectedRows === 1;
 }
 
 /**
@@ -1861,7 +1865,8 @@ export async function releasePostPayoutReversalClaim(lessonId: number): Promise<
   await db.execute(sql`
     UPDATE lessons
     SET stripeReversalId = NULL,
-        stripeReversalAmountCents = NULL
+        stripeReversalAmountCents = NULL,
+        stripeIntendedStudentRefundCents = NULL
     WHERE id = ${lessonId}
       AND stripeReversalId = '__pending_reversal__'
   `);
@@ -1912,4 +1917,37 @@ export async function claimPostPayoutRefundSlotAfterReversal(
       AND stripePostPayoutRefundId IS NULL
   `);
   return result[0]?.affectedRows === 1;
+}
+
+/**
+ * S38P2: Recovery helper — fetch lessons stuck in __pending_post_payout_refund__ state.
+ * Returns the stored stripeIntendedStudentRefundCents so recovery uses the original
+ * intended amount, not a re-computed value from a new request.
+ */
+export async function getStuckPostPayoutRefundLessons(stuckBeforeMs: number): Promise<Array<{
+  id: number;
+  stripeReversalId: string;
+  stripeIntendedStudentRefundCents: number;
+  amountCents: number;
+  coachPayoutCents: number;
+  adminOverrideReason: string | null;
+}>> {
+  const db = await getDb();
+  if (!db) return [];
+  const cutoff = new Date(Date.now() - stuckBeforeMs);
+  const rows: any = await db.execute(sql`
+    SELECT id, stripeReversalId, stripeIntendedStudentRefundCents,
+           amountCents, coachPayoutCents, adminOverrideReason
+    FROM lessons
+    WHERE stripePostPayoutRefundId = '__pending_post_payout_refund__'
+      AND updatedAt < ${cutoff}
+  `);
+  return (rows[0] ?? []).map((r: any) => ({
+    id: r.id,
+    stripeReversalId: r.stripeReversalId,
+    stripeIntendedStudentRefundCents: r.stripeIntendedStudentRefundCents ?? r.amountCents,
+    amountCents: r.amountCents,
+    coachPayoutCents: r.coachPayoutCents,
+    adminOverrideReason: r.adminOverrideReason ?? null,
+  }));
 }

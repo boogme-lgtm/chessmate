@@ -249,6 +249,11 @@ export const lessons = mysqlTable("lessons", {
   //   'trr_xxx'                       = reversal completed (real Stripe reversal ID stored)
   stripeReversalId: varchar("stripeReversalId", { length: 64 }),
   stripeReversalAmountCents: int("stripeReversalAmountCents"),
+  // S38P2: Persisted intended student refund amount at claim time.
+  // This is what the student will be refunded (gross charge amount or partial).
+  // Separate from stripeReversalAmountCents (coach net, capped at coachPayoutCents).
+  // Used for retry/recovery to ensure the refund amount is stable across retries.
+  stripeIntendedStudentRefundCents: int("stripeIntendedStudentRefundCents"),
   stripePostPayoutRefundId: varchar("stripePostPayoutRefundId", { length: 64 }),
 
   createdAt: timestamp("createdAt").defaultNow().notNull(),

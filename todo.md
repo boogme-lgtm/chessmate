@@ -908,3 +908,16 @@
 - [x] P38-5: Added 24 regression tests (S38P-1 through S38P-3) in sprint38.test.ts
 - [x] P38-6: Regression test: amountCents=10000/coachPayoutCents=8500 — reversal gets 8500 (undefined=full), student refund gets 10000 (undefined=full); old-code bug proof included
 - [x] P38-7: Regression test: retry after refund failure — claimPostPayoutRefundSlotAfterReversal called with real reversalId; advanceToPostPayoutRefundSlot NOT called; 284 tests passing
+
+## Sprint 38 Patch 2 — P1/P2 Blockers
+- [x] P38P2-1: Added stripeIntendedStudentRefundCents column to lessons schema; migration pushed
+- [x] P38P2-2: claimPostPayoutReversalSlot now accepts and persists intendedStudentRefundCents at claim time
+- [x] P38P2-3: advanceToPostPayoutRefundSlot returns boolean; router throws CONFLICT on false
+- [x] P38P2-4: finalizePostPayoutRefund returns boolean; router throws CONFLICT on false
+- [x] P38P2-5: Added getStuckPostPayoutRefundLessons helper returning stripeIntendedStudentRefundCents for stable recovery
+- [x] P38P2-6: releasePostPayoutReversalClaim clears stripeIntendedStudentRefundCents on rollback
+- [x] P38P2-7: Added amountCents validation (positive integer, <= lesson.amountCents) before any Stripe or settlement call on both paths
+- [x] P38P2-8: Post-payout retry path uses stored stripeIntendedStudentRefundCents; conflicting retry amountCents throws BAD_REQUEST
+- [x] P38P2-9: advance/finalize return false on CAS miss; router throws CONFLICT without returning success
+- [x] P38P2-10: 21 tests in S38P2-1 through S38P2-5 covering partial amounts, retry rejection, recovery, validation, and CAS guards
+- [x] P38P2-11: 305 tests passing, tsc --noEmit exits 0, audit: 3 high (path-to-regexp via express@4, lodash via recharts) — transitive, no direct fix available

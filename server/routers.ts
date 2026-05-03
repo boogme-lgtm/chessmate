@@ -2660,6 +2660,21 @@ export const appRouter = router({
             throw new TRPCError({ code: "PRECONDITION_FAILED", message: "No payment recorded for this lesson" });
           }
 
+          // S38P2: Validate amountCents before any Stripe or settlement call.
+          // Must be a positive integer <= lesson.amountCents. undefined = full refund.
+          if (input.amountCents !== undefined) {
+            if (
+              !Number.isInteger(input.amountCents) ||
+              input.amountCents <= 0 ||
+              input.amountCents > lesson.amountCents
+            ) {
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message: `Invalid refund amount: must be a positive integer between 1 and ${lesson.amountCents} (lesson amount). Got: ${input.amountCents}`,
+              });
+            }
+          }
+
           // ─── S38: Post-payout path (status = 'released') ────────────────────
           // The coach transfer has already been made. We must:
           //   1. Claim the reversal slot (atomic, prevents double-reversal)
@@ -2713,8 +2728,13 @@ export const appRouter = router({
             let resolvedReversalId = existingReversalId;
 
             if (!reversalAlreadyDone) {
-              // Step 1: Claim the reversal slot atomically (store the reversal amount, not student refund amount)
-              const claimed = await db.claimPostPayoutReversalSlot(input.lessonId, transferReversalAmountCents);
+              // Step 1: Claim the reversal slot atomically.
+              // S38P2: Persist BOTH amounts at claim time so retry/recovery uses stable values.
+              const claimed = await db.claimPostPayoutReversalSlot(
+                input.lessonId,
+                transferReversalAmountCents,
+                studentRefundAmountCents  // S38P2: stored intended student refund
+              );
               if (!claimed) {
                 throw new TRPCError({
                   code: "CONFLICT",
@@ -2736,12 +2756,39 @@ export const appRouter = router({
                   message: `Stripe transfer reversal failed: ${reversalErr?.message ?? 'unknown error'}. The reversal slot has been released — please retry.`,
                 });
               }
-              // Step 3: Advance to post-payout-refund pending state
-              await db.advanceToPostPayoutRefundSlot(input.lessonId, resolvedReversalId!);
+              // Step 3: Advance to post-payout-refund pending state (CAS)
+              const advanced = await db.advanceToPostPayoutRefundSlot(input.lessonId, resolvedReversalId!);
+              if (!advanced) {
+                // Slot was taken by concurrent operation — check if already finalized
+                const fresh = await db.getLessonById(input.lessonId);
+                if (fresh?.status === "refunded") {
+                  return { success: true, refundAmountCents: studentRefundAmountCents };
+                }
+                throw new TRPCError({
+                  code: "CONFLICT",
+                  message: "Could not advance to refund slot after reversal — concurrent operation detected. Please retry.",
+                });
+              }
             } else {
               // S38P Fix 2: Reversal already done — use atomic helper that guards on real reversalId.
-              // advanceToPostPayoutRefundSlot only matches WHERE stripeReversalId='__pending_reversal__',
-              // so it would silently affect 0 rows here. Use the dedicated retry helper instead.
+              // S38P2: Use the STORED intended student refund amount from the DB, not re-computed input.
+              // This prevents a retry with a different amountCents from changing the refund amount.
+              const storedStudentRefundCents = (lesson as any).stripeIntendedStudentRefundCents as number | null;
+              if (storedStudentRefundCents !== null && storedStudentRefundCents !== undefined) {
+                // If caller provides a different amount on retry, reject it — the original amount is binding.
+                if (input.amountCents !== undefined && input.amountCents !== storedStudentRefundCents) {
+                  throw new TRPCError({
+                    code: "BAD_REQUEST",
+                    message: `Retry amount ${input.amountCents} conflicts with the stored intended refund amount ${storedStudentRefundCents}. Omit amountCents to use the original amount.`,
+                  });
+                }
+                // Override with stored amount for idempotency
+                // (reassign local variable — studentRefundAmountCents is const so we use a new binding)
+              }
+              const effectiveStudentRefundCents = storedStudentRefundCents ?? studentRefundAmountCents;
+              const effectiveIsFullRefund = effectiveStudentRefundCents >= lesson.amountCents;
+              const effectiveRefundIdempotencyKey = `lesson_post_payout_refund_${input.lessonId}_${effectiveStudentRefundCents}`;
+
               const slotClaimed = await db.claimPostPayoutRefundSlotAfterReversal(
                 input.lessonId,
                 resolvedReversalId!
@@ -2750,13 +2797,44 @@ export const appRouter = router({
                 // Re-read to check if already finalized
                 const fresh = await db.getLessonById(input.lessonId);
                 if (fresh?.status === "refunded") {
-                  return { success: true, refundAmountCents: studentRefundAmountCents };
+                  return { success: true, refundAmountCents: effectiveStudentRefundCents };
                 }
                 throw new TRPCError({
                   code: "CONFLICT",
                   message: "Could not claim refund slot for retry — concurrent operation in progress. Please retry.",
                 });
               }
+
+              // Step 4 (retry path): Refund the student using the stored intended amount
+              try {
+                const refund = await stripeService.createRefund(
+                  lesson.stripePaymentIntentId,
+                  effectiveIsFullRefund ? undefined : effectiveStudentRefundCents,
+                  "requested_by_customer",
+                  effectiveRefundIdempotencyKey
+                );
+                // Step 5 (retry path): Finalize DB state
+                const finalized = await db.finalizePostPayoutRefund(
+                  input.lessonId,
+                  refund.id,
+                  effectiveStudentRefundCents,
+                  input.reason || "Admin post-payout refund (retry)"
+                );
+                if (!finalized) {
+                  throw new TRPCError({
+                    code: "CONFLICT",
+                    message: "Finalize failed after Stripe refund (CAS miss) — the refund may have been processed by a concurrent operation. Please check the lesson status.",
+                  });
+                }
+              } catch (refundErr: any) {
+                if (refundErr instanceof TRPCError) throw refundErr;
+                await db.releasePostPayoutRefundClaim(input.lessonId);
+                throw new TRPCError({
+                  code: "INTERNAL_SERVER_ERROR",
+                  message: `Stripe refund failed after transfer reversal: ${refundErr?.message ?? 'unknown error'}. The transfer has been reversed. Please retry to complete the student refund.`,
+                });
+              }
+              return { success: true, refundAmountCents: effectiveStudentRefundCents };
             }
 
             // Step 4: Refund the student (for the full gross charge, not the coach net)
@@ -2767,14 +2845,21 @@ export const appRouter = router({
                 "requested_by_customer",
                 refundIdempotencyKey
               );
-              // Step 5: Finalize DB state
-              await db.finalizePostPayoutRefund(
+              // Step 5: Finalize DB state (CAS guard)
+              const finalized = await db.finalizePostPayoutRefund(
                 input.lessonId,
                 refund.id,
                 studentRefundAmountCents,
                 input.reason || "Admin post-payout refund"
               );
+              if (!finalized) {
+                throw new TRPCError({
+                  code: "CONFLICT",
+                  message: "Finalize failed after Stripe refund (CAS miss) — the refund may have been processed by a concurrent operation. Please check the lesson status.",
+                });
+              }
             } catch (refundErr: any) {
+              if (refundErr instanceof TRPCError) throw refundErr;
               await db.releasePostPayoutRefundClaim(input.lessonId);
               throw new TRPCError({
                 code: "INTERNAL_SERVER_ERROR",

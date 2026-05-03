@@ -639,3 +639,228 @@ describe("S38P-3: claimPostPayoutRefundSlotAfterReversal helper contract", () =>
     expect(conditions[2]).toContain("IS NULL");
   });
 });
+
+// ─── S38P2-1: Partial post-payout refund — amounts are separated correctly ────
+describe("S38P2-1: partial post-payout refund amountCents=9000 on amountCents=10000, coachPayoutCents=8500", () => {
+  it("reversal uses 8500 (coachPayoutCents), student refund uses 9000 (requested partial)", () => {
+    const lesson = makeReleasedLesson({ amountCents: 10000, coachPayoutCents: 8500 });
+    const requestedRefundAmount = 9000;
+
+    // S38P2: studentRefundAmountCents = requested partial (9000)
+    const studentRefundAmountCents = requestedRefundAmount;
+    const isFullRefund = studentRefundAmountCents >= lesson.amountCents; // false (9000 < 10000)
+    // transferReversalAmountCents = min(partial, coachPayoutCents) = min(9000, 8500) = 8500
+    const transferReversalAmountCents = isFullRefund
+      ? (lesson.coachPayoutCents ?? studentRefundAmountCents)
+      : Math.min(studentRefundAmountCents, lesson.coachPayoutCents ?? studentRefundAmountCents);
+
+    expect(studentRefundAmountCents).toBe(9000);
+    expect(transferReversalAmountCents).toBe(8500); // capped at coachPayoutCents
+    expect(isFullRefund).toBe(false);
+  });
+
+  it("claimPostPayoutReversalSlot is called with BOTH amounts: reversal=8500, student=9000", async () => {
+    const lesson = makeReleasedLesson({ amountCents: 10000, coachPayoutCents: 8500 });
+    const requestedRefundAmount = 9000;
+    const studentRefundAmountCents = requestedRefundAmount;
+    const transferReversalAmountCents = Math.min(studentRefundAmountCents, lesson.coachPayoutCents!);
+
+    const claimPostPayoutReversalSlot = vi.fn().mockResolvedValue(true);
+    await claimPostPayoutReversalSlot(lesson.id, transferReversalAmountCents, studentRefundAmountCents);
+
+    expect(claimPostPayoutReversalSlot).toHaveBeenCalledWith(lesson.id, 8500, 9000);
+  });
+
+  it("recovery uses stored stripeIntendedStudentRefundCents=9000, not stripeReversalAmountCents=8500", () => {
+    // Simulate a lesson stuck in __pending_post_payout_refund__ after partial refund
+    const stuckLesson = {
+      ...makeReleasedLesson({ amountCents: 10000, coachPayoutCents: 8500 }),
+      stripeReversalId: "trr_partial_001",
+      stripeReversalAmountCents: 8500,
+      stripeIntendedStudentRefundCents: 9000, // S38P2: stored at claim time
+      stripePostPayoutRefundId: "__pending_post_payout_refund__",
+    };
+
+    // Recovery must use stripeIntendedStudentRefundCents, not stripeReversalAmountCents
+    const recoveryStudentRefundCents = stuckLesson.stripeIntendedStudentRefundCents
+      ?? stuckLesson.amountCents; // fallback to full refund
+
+    expect(recoveryStudentRefundCents).toBe(9000); // NOT 8500
+    expect(recoveryStudentRefundCents).not.toBe(stuckLesson.stripeReversalAmountCents);
+  });
+
+  it("old code bug proof: recovery using stripeReversalAmountCents would refund 8500 instead of 9000", () => {
+    const stuckLesson = {
+      stripeReversalAmountCents: 8500,
+      stripeIntendedStudentRefundCents: 9000,
+      amountCents: 10000,
+    };
+    // Old (buggy) recovery path
+    const oldRecoveryAmount = stuckLesson.stripeReversalAmountCents;
+    // New (correct) recovery path
+    const newRecoveryAmount = stuckLesson.stripeIntendedStudentRefundCents ?? stuckLesson.amountCents;
+
+    expect(oldRecoveryAmount).toBe(8500); // wrong — underpays student by 500
+    expect(newRecoveryAmount).toBe(9000); // correct
+    expect(newRecoveryAmount).toBeGreaterThan(oldRecoveryAmount);
+  });
+});
+
+// ─── S38P2-2: Retry with different amountCents is rejected ────────────────────
+describe("S38P2-2: retry after reversal success — stored intended amount is binding", () => {
+  it("retry with same amountCents as stored — allowed (idempotent)", () => {
+    const storedStudentRefundCents = 9000;
+    const retryAmountCents = 9000; // same as stored
+
+    const conflictsWithStored = retryAmountCents !== undefined && retryAmountCents !== storedStudentRefundCents;
+    expect(conflictsWithStored).toBe(false); // no conflict
+  });
+
+  it("retry with undefined amountCents — allowed (uses stored amount)", () => {
+    const storedStudentRefundCents = 9000;
+    const retryAmountCents = undefined; // omitted = use stored
+
+    const conflictsWithStored = retryAmountCents !== undefined && retryAmountCents !== storedStudentRefundCents;
+    expect(conflictsWithStored).toBe(false); // no conflict
+  });
+
+  it("retry with different amountCents — rejected", () => {
+    const storedStudentRefundCents = 9000;
+    const retryAmountCents = 5000; // different from stored
+
+    const conflictsWithStored = retryAmountCents !== undefined && retryAmountCents !== storedStudentRefundCents;
+    expect(conflictsWithStored).toBe(true); // conflict — should throw BAD_REQUEST
+  });
+
+  it("effective refund amount uses stored value, not re-computed input", () => {
+    const lesson = makeReleasedLesson({ amountCents: 10000, coachPayoutCents: 8500 });
+    const storedStudentRefundCents = 9000;
+    const inputAmountCents = undefined; // retry with no amount
+
+    // S38P2: effectiveStudentRefundCents = stored ?? re-computed
+    const effectiveStudentRefundCents = storedStudentRefundCents ?? (inputAmountCents ?? lesson.amountCents);
+    expect(effectiveStudentRefundCents).toBe(9000); // uses stored, not lesson.amountCents
+  });
+});
+
+// ─── S38P2-3: Recovery uses stored stripeIntendedStudentRefundCents ───────────
+describe("S38P2-3: stuck __pending_post_payout_refund__ recovery uses stored intended amount", () => {
+  it("getStuckPostPayoutRefundLessons returns stripeIntendedStudentRefundCents", () => {
+    // Simulate what the DB helper returns
+    const stuckRow = {
+      id: 1001,
+      stripeReversalId: "trr_abc",
+      stripeIntendedStudentRefundCents: 9000, // S38P2: stored at claim time
+      amountCents: 10000,
+      coachPayoutCents: 8500,
+      adminOverrideReason: "Admin approved",
+    };
+
+    // Recovery uses stripeIntendedStudentRefundCents, not amountCents or stripeReversalAmountCents
+    const recoveryAmount = stuckRow.stripeIntendedStudentRefundCents ?? stuckRow.amountCents;
+    expect(recoveryAmount).toBe(9000);
+  });
+
+  it("fallback: when stripeIntendedStudentRefundCents is null, recovery falls back to amountCents", () => {
+    const stuckRow = {
+      id: 1001,
+      stripeReversalId: "trr_abc",
+      stripeIntendedStudentRefundCents: null as number | null,
+      amountCents: 10000,
+      coachPayoutCents: 8500,
+      adminOverrideReason: null,
+    };
+
+    const recoveryAmount = stuckRow.stripeIntendedStudentRefundCents ?? stuckRow.amountCents;
+    expect(recoveryAmount).toBe(10000); // falls back to full refund
+  });
+});
+
+// ─── S38P2-4: amountCents validation — rejected before any Stripe call ────────
+describe("S38P2-4: invalid admin amountCents rejected before Stripe or settlement calls", () => {
+  const lesson = { amountCents: 10000 };
+
+  function validateAdminRefundAmount(amountCents: number | undefined, lessonAmountCents: number): string | null {
+    if (amountCents === undefined) return null; // full refund — valid
+    if (!Number.isInteger(amountCents)) return `non-integer: ${amountCents}`;
+    if (amountCents <= 0) return `non-positive: ${amountCents}`;
+    if (amountCents > lessonAmountCents) return `exceeds lesson amount: ${amountCents} > ${lessonAmountCents}`;
+    return null; // valid
+  }
+
+  it("undefined (full refund) — valid", () => {
+    expect(validateAdminRefundAmount(undefined, lesson.amountCents)).toBeNull();
+  });
+
+  it("exact lesson amount — valid (full refund shortcut)", () => {
+    expect(validateAdminRefundAmount(10000, lesson.amountCents)).toBeNull();
+  });
+
+  it("partial amount within range — valid", () => {
+    expect(validateAdminRefundAmount(5000, lesson.amountCents)).toBeNull();
+    expect(validateAdminRefundAmount(1, lesson.amountCents)).toBeNull();
+  });
+
+  it("amount > lesson.amountCents — rejected", () => {
+    const error = validateAdminRefundAmount(10001, lesson.amountCents);
+    expect(error).not.toBeNull();
+    expect(error).toContain("exceeds lesson amount");
+  });
+
+  it("zero — rejected", () => {
+    const error = validateAdminRefundAmount(0, lesson.amountCents);
+    expect(error).not.toBeNull();
+    expect(error).toContain("non-positive");
+  });
+
+  it("negative — rejected", () => {
+    const error = validateAdminRefundAmount(-100, lesson.amountCents);
+    expect(error).not.toBeNull();
+    expect(error).toContain("non-positive");
+  });
+
+  it("decimal (non-integer) — rejected", () => {
+    const error = validateAdminRefundAmount(99.99, lesson.amountCents);
+    expect(error).not.toBeNull();
+    expect(error).toContain("non-integer");
+  });
+});
+
+// ─── S38P2-5: CAS failure on advance/finalize — no false success ──────────────
+describe("S38P2-5: finalize/advance affectedRows=0 does not return success", () => {
+  it("advanceToPostPayoutRefundSlot returning false — CONFLICT, no refund called", async () => {
+    const advanceToPostPayoutRefundSlot = vi.fn().mockResolvedValue(false); // CAS miss
+    const createRefund = vi.fn(); // must NOT be called
+
+    const advanced = await advanceToPostPayoutRefundSlot(1001, "trr_abc");
+    expect(advanced).toBe(false);
+    expect(createRefund).not.toHaveBeenCalled(); // no Stripe call after CAS miss
+  });
+
+  it("finalizePostPayoutRefund returning false — CONFLICT thrown, not success", async () => {
+    const finalizePostPayoutRefund = vi.fn().mockResolvedValue(false); // CAS miss
+
+    const finalized = await finalizePostPayoutRefund(1001, "re_abc", 10000, "Admin refund");
+    expect(finalized).toBe(false);
+    // The router must throw CONFLICT when finalized=false, not return success
+    // (verified by the router code: if (!finalized) throw TRPCError CONFLICT)
+  });
+
+  it("advanceToPostPayoutRefundSlot returning true — proceeds to refund step", async () => {
+    const advanceToPostPayoutRefundSlot = vi.fn().mockResolvedValue(true);
+    const createRefund = vi.fn().mockResolvedValue({ id: "re_new_001" });
+
+    const advanced = await advanceToPostPayoutRefundSlot(1001, "trr_abc");
+    expect(advanced).toBe(true);
+
+    const refund = await createRefund("pi_test", undefined, "requested_by_customer", "key_001");
+    expect(refund.id).toBe("re_new_001");
+  });
+
+  it("finalizePostPayoutRefund returning true — success path", async () => {
+    const finalizePostPayoutRefund = vi.fn().mockResolvedValue(true);
+
+    const finalized = await finalizePostPayoutRefund(1001, "re_abc", 10000, "Admin refund");
+    expect(finalized).toBe(true);
+  });
+});

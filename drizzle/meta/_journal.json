@@ -134,6 +134,13 @@
       "when": 1777769870198,
       "tag": "0018_serious_legion",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "5",
+      "when": 1777771782414,
+      "tag": "0019_lame_shadow_king",
+      "breakpoints": true
     }
   ]
 }
