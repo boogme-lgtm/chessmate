@@ -937,3 +937,10 @@
 - [x] S39-2: Added 7 new branches to shared/adminActionErrors.ts with lowercase-normalized matching
 - [x] S39-3: Added 18 exact-string tests (S39-E1 through S39-E7 + priority ordering) in sprint37.test.ts
 - [x] S39-4: 327 tests passing, tsc --noEmit exits 0
+
+## Sprint 40 — Express v5 Upgrade (CVE fix)
+- [x] S40-1: Audited all Express usage; only breaking change was app.use("*") wildcard syntax in vite.ts
+- [x] S40-2: Updated express to ^5.2.1 and @types/express to ^5.0.0 (resolved to 5.0.6)
+- [x] S40-3: Regenerated pnpm-lock.yaml via pnpm install
+- [x] S40-4: Fixed app.use("*") → app.use("/{*splat}") in both dev and static catch-all handlers in vite.ts; no other changes needed
+- [x] S40-5: 327 tests passing, tsc --noEmit exits 0, path-to-regexp CVE gone from audit; remaining: lodash via recharts (transitive, no fix available)
