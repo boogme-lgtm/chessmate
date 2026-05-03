@@ -921,3 +921,13 @@
 - [x] P38P2-9: advance/finalize return false on CAS miss; router throws CONFLICT without returning success
 - [x] P38P2-10: 21 tests in S38P2-1 through S38P2-5 covering partial amounts, retry rejection, recovery, validation, and CAS guards
 - [x] P38P2-11: 305 tests passing, tsc --noEmit exits 0, audit: 3 high (path-to-regexp via express@4, lodash via recharts) — transitive, no direct fix available
+
+## Sprint 38 Patch 3 — Recovery uses wrong refund amount + ignores CAS returns
+- [x] P38P3-1: Fixed __pending_post_payout_refund__ recovery to use stripeIntendedStudentRefundCents ?? amountCents (not stripeReversalAmountCents) for Stripe refund amount, idempotency key, and finalization
+- [x] P38P3-2: Fixed __pending_reversal__ recovery: checks advanced===true before logging recovered; CAS miss logs warn instead
+- [x] P38P3-3: Fixed __pending_post_payout_refund__ recovery: checks finalized===true before logging recovered; CAS miss logs warn instead
+- [x] P38P3-4: S38P3-1: stuck row with intendedStudentRefundCents=9000 calls createRefund(9000) and finalizes 9000; regression proof included
+- [x] P38P3-5: S38P3-2: null stripeIntendedStudentRefundCents falls back to amountCents=10000 (full refund, undefined passed to Stripe)
+- [x] P38P3-6: S38P3-3: advance returning false → no log recovered, warns CAS missed; advance returning true → logs recovered
+- [x] P38P3-7: S38P3-4: finalize returning false → no log recovered, warns CAS missed; finalize returning true → logs recovered
+- [x] P38P3-8: 312 tests passing, tsc --noEmit exits 0, audit: 2 high (path-to-regexp via express@4, lodash via recharts) — transitive, no direct fix available

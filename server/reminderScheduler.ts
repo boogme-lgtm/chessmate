@@ -765,8 +765,14 @@ export async function recoverStuckPendingStates(): Promise<void> {
           console.error(`[Recovery] Stripe reversal re-attempt failed for lesson ${row.id}:`, stripeErr);
         }
         if (reversalSucceeded && reversalId) {
-          await advanceToPostPayoutRefundSlot(row.id, reversalId);
-          console.log(`[Recovery] Lesson ${row.id} __pending_reversal__ recovered — advanced to post-payout-refund state`);
+          // P38P3-2: Check CAS boolean — do not log "recovered" if DB update missed.
+          const advanced = await advanceToPostPayoutRefundSlot(row.id, reversalId);
+          if (advanced) {
+            console.log(`[Recovery] Lesson ${row.id} __pending_reversal__ recovered — advanced to post-payout-refund state`);
+          } else {
+            // CAS miss: lesson was already advanced or changed by a concurrent process.
+            console.warn(`[Recovery] Lesson ${row.id} __pending_reversal__ — Stripe reversal succeeded but DB advance CAS missed (already advanced by concurrent process)`);
+          }
         } else {
           await releasePostPayoutReversalClaim(row.id);
           console.error(`[Recovery] Lesson ${row.id} __pending_reversal__ recovery failed — slot released for admin retry`);
@@ -779,7 +785,8 @@ export async function recoverStuckPendingStates(): Promise<void> {
 
   // S38: Find lessons stuck in __pending_post_payout_refund__ for > 10 minutes
   const stuckPostPayoutRefundResult: any = await dbInstance.execute(sql`
-    SELECT id, stripePaymentIntentId, amountCents, stripeReversalAmountCents
+    SELECT id, stripePaymentIntentId, amountCents, stripeReversalAmountCents,
+           stripeIntendedStudentRefundCents
     FROM lessons
     WHERE stripePostPayoutRefundId = '__pending_post_payout_refund__'
       AND updatedAt < ${TEN_MINUTES_AGO}
@@ -796,7 +803,11 @@ export async function recoverStuckPendingStates(): Promise<void> {
           console.error(`[Recovery] Lesson ${row.id} stuck __pending_post_payout_refund__ — no payment intent, slot released`);
           continue;
         }
-        const refundAmountCents = row.stripeReversalAmountCents ?? row.amountCents;
+        // P38P3-1: Use stored intended student refund amount (not reversal amount).
+        // stripeIntendedStudentRefundCents is set at claim time and reflects the admin's
+        // original intent. Fall back to full amountCents only if the column is null
+        // (lessons claimed before this column was added).
+        const refundAmountCents = row.stripeIntendedStudentRefundCents ?? row.amountCents;
         const refundIdempotencyKey = `lesson_post_payout_refund_${row.id}_${refundAmountCents}`;
         let refundSucceeded = false;
         let refundId: string | null = null;
@@ -818,8 +829,16 @@ export async function recoverStuckPendingStates(): Promise<void> {
           }
         }
         if (refundSucceeded && refundId) {
-          await finalizePostPayoutRefund(row.id, refundId, refundAmountCents, 'Admin post-payout refund (recovered after process crash)');
-          console.log(`[Recovery] Lesson ${row.id} __pending_post_payout_refund__ recovered — refund finalized`);
+          // P38P3-3: Check CAS boolean — do not log "recovered" if DB update missed.
+          const finalized = await finalizePostPayoutRefund(row.id, refundId, refundAmountCents, 'Admin post-payout refund (recovered after process crash)');
+          if (finalized) {
+            console.log(`[Recovery] Lesson ${row.id} __pending_post_payout_refund__ recovered — refund finalized`);
+          } else {
+            // CAS miss: lesson was already finalized or changed by a concurrent process.
+            // Log a warning but do not release the slot — the lesson is likely already in
+            // a terminal state and a concurrent finalization succeeded.
+            console.warn(`[Recovery] Lesson ${row.id} __pending_post_payout_refund__ — Stripe refund succeeded but DB finalize CAS missed (already finalized by concurrent process)`);
+          }
         } else {
           await releasePostPayoutRefundClaim(row.id);
           console.error(`[Recovery] Lesson ${row.id} __pending_post_payout_refund__ recovery failed — slot released for admin retry`);
