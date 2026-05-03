@@ -950,3 +950,7 @@
 - [x] P40-2: Refresh audit-report.md to reflect current pnpm audit --prod output (21 vulns, 2 high, both lodash) — both lodash-es (via streamdown→mermaid→chevrotain) and lodash (via recharts)
 - [x] P40-3: Add wildcard regression scan test (server/sprint40.test.ts) that fails on bare app.get("*") or app.use("*")
 - [x] P40-4: 331 tests passing, tsc --noEmit exits 0, pnpm audit --prod: 21 vulns / 2 high (both lodash, transitive, no fix available)
+
+## Sprint 40 Patch 2 — audit-report.md severity correction
+- [x] P40P2-1: Verified pnpm audit --prod: follow-redirects is moderate (not low); low findings are mailparser (GHSA-7gmj-h9xc-mcxc) and nodemailer (GHSA-c7w3-x93f-qmm8) via resend
+- [x] P40P2-2: Corrected audit-report.md Low table to mailparser + nodemailer only; moved follow-redirects to Moderate section; headline counts unchanged (21 total: 2 high, 17 moderate, 2 low)

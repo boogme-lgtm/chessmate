@@ -20,14 +20,20 @@ Neither `recharts` nor `mermaid`/`streamdown` have released versions that drop o
 
 ## Moderate (17) — All Transitive
 
-Primarily via `streamdown → mermaid` (DOMPurify, d3, dagre, mdast-util-to-hast) and `recharts → lodash`. These are client-side rendering dependencies with no server-side attack surface in our usage.
+Primary sources:
+
+- **`streamdown` → `mermaid`**: multiple `dompurify` XSS/prototype-pollution advisories, `lodash-es` prototype pollution, `mdast-util-to-hast` unsanitized class attribute — all client-side rendering with no server-side attack surface.
+- **`recharts`**: `lodash` prototype pollution advisories — client-side charting only.
+- **`resend`**: `nodemailer` SMTP command injection (GHSA-vvjj-xcjg-gr5g) via `mailparser`.
+- **`axios`**: `follow-redirects@1.15.11` leaks custom authentication headers on cross-origin redirect (GHSA-r4q5-vmmm-2653).
+- **`resend` → `svix`**: `uuid@10.0.0` missing buffer bounds check in v3/v5/v6.
 
 ## Low (2)
 
-| Package | Advisory | Via |
-|---------|----------|-----|
-| `nodemailer@7.0.11` | SMTP command injection (GHSA-c7w3-x93f-qmm8) | `resend@6.9.1` → `mailparser` |
-| `follow-redirects@1.15.11` | Exposure of credentials | `axios@1.15.2` |
+| Package | Advisory | Via | Advisory ID |
+|---------|----------|-----|-------------|
+| `mailparser@3.9.1` | Cross-site Scripting via HTML sanitization bypass | `resend@6.9.1` → `mailparser` | GHSA-7gmj-h9xc-mcxc |
+| `nodemailer@7.0.11` | SMTP command injection via `mailparser` | `resend@6.9.1` → `mailparser` → `nodemailer` | GHSA-c7w3-x93f-qmm8 |
 
 ## Non-Exploitable Assessment
 
@@ -38,5 +44,5 @@ None of the 2 remaining high-severity findings are directly exploitable in our c
 ## Actionable Follow-ups
 
 1. **lodash/lodash-es** — Monitor `recharts` and `streamdown`/`mermaid` upstream for releases that upgrade or remove their lodash dependency. Consider replacing `recharts` with a lodash-free charting library (e.g., `victory`, `nivo`) if the advisory persists and becomes a compliance concern.
-2. **resend SDK** — `mailparser` pulls in vulnerable `nodemailer`. We do not parse untrusted emails. Monitor for resend SDK updates.
-3. **follow-redirects** — Transitive via `axios`. Upgrade `axios` if a patched version of `follow-redirects` is released.
+2. **follow-redirects** (moderate) — Transitive via `axios@1.15.2`. Upgrade `axios` if a patched version of `follow-redirects` is released upstream.
+3. **resend SDK** — `mailparser` pulls in vulnerable `nodemailer` (moderate) and is itself flagged low. We do not parse untrusted emails. Monitor for resend SDK updates.
