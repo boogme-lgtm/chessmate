@@ -75,6 +75,48 @@ export function formatAdminActionError(message: string): string {
     return "Payout was claimed by a concurrent request. Please refresh and retry.";
   }
 
+  // ── S38 Post-payout reversal slot ────────────────────────────────────────
+  // routers.ts: "Could not claim reversal slot — concurrent operation in progress. Please retry."
+  if (n.includes("claim reversal slot")) {
+    return "Could not start the transfer reversal — a concurrent operation is in progress. Please wait a moment and retry.";
+  }
+
+  // ── S38 Stripe transfer reversal failed ──────────────────────────────────
+  // routers.ts: "Stripe transfer reversal failed: <msg>. The reversal slot has been released — please retry."
+  if (n.includes("transfer reversal failed")) {
+    return "The Stripe transfer reversal failed. The slot has been released — please retry. If the problem persists, check the Stripe dashboard.";
+  }
+
+  // ── S38 Could not advance to refund slot after reversal ───────────────────
+  // routers.ts: "Could not advance to refund slot after reversal — concurrent operation detected. Please retry."
+  if (n.includes("advance to refund slot after reversal")) {
+    return "Transfer reversed successfully, but could not advance to the refund step — a concurrent operation was detected. Please retry.";
+  }
+
+  // ── S38 Retry amount conflicts with stored intended amount ────────────────
+  // routers.ts: "Retry amount X conflicts with the stored intended refund amount Y. Omit amountCents to use the original amount."
+  if (n.includes("conflicts with the stored intended refund amount")) {
+    return "The refund amount you entered conflicts with the original intended refund amount for this lesson. Leave the amount blank to use the original amount.";
+  }
+
+  // ── S38 Could not claim refund slot for retry ─────────────────────────────
+  // routers.ts: "Could not claim refund slot for retry — concurrent operation in progress. Please retry."
+  if (n.includes("claim refund slot for retry")) {
+    return "Could not claim the refund slot for retry — a concurrent operation is in progress. Please wait a moment and retry.";
+  }
+
+  // ── S38 Stripe refund failed after transfer reversal ─────────────────────
+  // routers.ts: "Stripe refund failed after transfer reversal: <msg>. The transfer has been reversed. Please retry to complete the student refund."
+  if (n.includes("refund failed after transfer reversal")) {
+    return "The Stripe refund failed after the transfer was already reversed. The coach transfer has been reversed — please retry to complete the student refund. If the problem persists, check the Stripe dashboard.";
+  }
+
+  // ── S38 Finalize CAS miss after Stripe refund ─────────────────────────────
+  // routers.ts: "Finalize failed after Stripe refund (CAS miss) — the refund may have been processed by a concurrent operation. Please check the lesson status."
+  if (n.includes("finalize failed after stripe refund") || (n.includes("cas miss") && n.includes("refund"))) {
+    return "The Stripe refund was processed, but the lesson status could not be finalized (possible concurrent operation). Please check the lesson status before retrying.";
+  }
+
   // ── Concurrent settlement / atomic refund-slot race ───────────────────────
   // routers.ts refundStudent: "Could not claim refund slot — concurrent settlement in progress. Please retry."
   if (n.includes("refund slot") || n.includes("concurrent settlement")) {

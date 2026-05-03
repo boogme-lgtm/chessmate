@@ -271,3 +271,122 @@ describe("Sprint 37 — Pending Payout stats card uses coachPayoutCents, not amo
     });
   });
 });
+
+// ─── Sprint 39 — S38 post-payout error string coverage ───────────────────────
+// These tests use the EXACT verbatim strings emitted by routers.ts so that
+// any future rename of a backend message will immediately break a test.
+
+describe("S39: formatAdminActionError — S38 post-payout error strings", () => {
+  describe("S39-E1: Could not claim reversal slot", () => {
+    it("maps exact backend string to friendly copy", () => {
+      const msg = "Could not claim reversal slot — concurrent operation in progress. Please retry.";
+      expect(formatAdminActionError(msg)).toBe(
+        "Could not start the transfer reversal — a concurrent operation is in progress. Please wait a moment and retry."
+      );
+    });
+    it("is case-insensitive", () => {
+      const msg = "COULD NOT CLAIM REVERSAL SLOT — concurrent operation in progress.";
+      expect(formatAdminActionError(msg)).toBe(
+        "Could not start the transfer reversal — a concurrent operation is in progress. Please wait a moment and retry."
+      );
+    });
+  });
+
+  describe("S39-E2: Stripe transfer reversal failed", () => {
+    it("maps exact backend string with dynamic error message", () => {
+      const msg = "Stripe transfer reversal failed: No such transfer: 'tr_xxx'. The reversal slot has been released — please retry.";
+      expect(formatAdminActionError(msg)).toBe(
+        "The Stripe transfer reversal failed. The slot has been released — please retry. If the problem persists, check the Stripe dashboard."
+      );
+    });
+    it("matches when Stripe error message is 'unknown error'", () => {
+      const msg = "Stripe transfer reversal failed: unknown error. The reversal slot has been released — please retry.";
+      expect(formatAdminActionError(msg)).toBe(
+        "The Stripe transfer reversal failed. The slot has been released — please retry. If the problem persists, check the Stripe dashboard."
+      );
+    });
+  });
+
+  describe("S39-E3: Could not advance to refund slot after reversal", () => {
+    it("maps exact backend string", () => {
+      const msg = "Could not advance to refund slot after reversal — concurrent operation detected. Please retry.";
+      expect(formatAdminActionError(msg)).toBe(
+        "Transfer reversed successfully, but could not advance to the refund step — a concurrent operation was detected. Please retry."
+      );
+    });
+  });
+
+  describe("S39-E4: Retry amount conflicts with stored intended refund amount", () => {
+    it("maps exact backend string with dynamic amounts", () => {
+      const msg = "Retry amount 9000 conflicts with the stored intended refund amount 8500. Omit amountCents to use the original amount.";
+      expect(formatAdminActionError(msg)).toBe(
+        "The refund amount you entered conflicts with the original intended refund amount for this lesson. Leave the amount blank to use the original amount."
+      );
+    });
+    it("matches for any numeric amounts in the message", () => {
+      const msg = "Retry amount 5000 conflicts with the stored intended refund amount 10000. Omit amountCents to use the original amount.";
+      expect(formatAdminActionError(msg)).toBe(
+        "The refund amount you entered conflicts with the original intended refund amount for this lesson. Leave the amount blank to use the original amount."
+      );
+    });
+  });
+
+  describe("S39-E5: Could not claim refund slot for retry", () => {
+    it("maps exact backend string", () => {
+      const msg = "Could not claim refund slot for retry — concurrent operation in progress. Please retry.";
+      expect(formatAdminActionError(msg)).toBe(
+        "Could not claim the refund slot for retry — a concurrent operation is in progress. Please wait a moment and retry."
+      );
+    });
+    it("copy contains 'for retry' (S39-E5 branch, not generic refund-slot branch)", () => {
+      const msg = "Could not claim refund slot for retry — concurrent operation in progress. Please retry.";
+      const result = formatAdminActionError(msg);
+      expect(result).toContain("for retry");
+    });
+  });
+
+  describe("S39-E6: Stripe refund failed after transfer reversal", () => {
+    it("maps exact backend string with dynamic error message", () => {
+      const msg = "Stripe refund failed after transfer reversal: Card declined. The transfer has been reversed. Please retry to complete the student refund.";
+      expect(formatAdminActionError(msg)).toBe(
+        "The Stripe refund failed after the transfer was already reversed. The coach transfer has been reversed — please retry to complete the student refund. If the problem persists, check the Stripe dashboard."
+      );
+    });
+    it("matches when error message is 'unknown error'", () => {
+      const msg = "Stripe refund failed after transfer reversal: unknown error. The transfer has been reversed. Please retry to complete the student refund.";
+      expect(formatAdminActionError(msg)).toBe(
+        "The Stripe refund failed after the transfer was already reversed. The coach transfer has been reversed — please retry to complete the student refund. If the problem persists, check the Stripe dashboard."
+      );
+    });
+  });
+
+  describe("S39-E7: Finalize failed after Stripe refund (CAS miss)", () => {
+    it("maps exact backend string", () => {
+      const msg = "Finalize failed after Stripe refund (CAS miss) — the refund may have been processed by a concurrent operation. Please check the lesson status.";
+      expect(formatAdminActionError(msg)).toBe(
+        "The Stripe refund was processed, but the lesson status could not be finalized (possible concurrent operation). Please check the lesson status before retrying."
+      );
+    });
+    it("also matches lowercase 'cas miss' with 'refund' in message", () => {
+      const msg = "cas miss — refund may have been processed concurrently";
+      expect(formatAdminActionError(msg)).toBe(
+        "The Stripe refund was processed, but the lesson status could not be finalized (possible concurrent operation). Please check the lesson status before retrying."
+      );
+    });
+  });
+
+  describe("S39: priority ordering — S38 branches tested before generic refund-slot branch", () => {
+    it("'claim reversal slot' is matched before generic 'concurrent settlement'", () => {
+      const msg = "Could not claim reversal slot — concurrent operation in progress.";
+      const result = formatAdminActionError(msg);
+      expect(result).toContain("transfer reversal");
+      expect(result).not.toContain("concurrent settlement");
+    });
+
+    it("'refund failed after transfer reversal' is matched before generic 'refund slot'", () => {
+      const msg = "Stripe refund failed after transfer reversal: timeout. The transfer has been reversed.";
+      const result = formatAdminActionError(msg);
+      expect(result).toContain("coach transfer has been reversed");
+    });
+  });
+});

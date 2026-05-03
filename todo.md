@@ -931,3 +931,9 @@
 - [x] P38P3-6: S38P3-3: advance returning false → no log recovered, warns CAS missed; advance returning true → logs recovered
 - [x] P38P3-7: S38P3-4: finalize returning false → no log recovered, warns CAS missed; finalize returning true → logs recovered
 - [x] P38P3-8: 312 tests passing, tsc --noEmit exits 0, audit: 2 high (path-to-regexp via express@4, lodash via recharts) — transitive, no direct fix available
+
+## Sprint 39 — S38 Error String Coverage in adminActionErrors.ts
+- [x] S39-1: Audited exact S38 error strings from routers.ts post-payout path
+- [x] S39-2: Added 7 new branches to shared/adminActionErrors.ts with lowercase-normalized matching
+- [x] S39-3: Added 18 exact-string tests (S39-E1 through S39-E7 + priority ordering) in sprint37.test.ts
+- [x] S39-4: 327 tests passing, tsc --noEmit exits 0
