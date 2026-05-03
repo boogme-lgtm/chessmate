@@ -2695,26 +2695,37 @@ export const appRouter = router({
               existingReversalId !== "__pending_reversal__" &&
               existingReversalId !== "__pending_post_payout_refund__";
 
-            const refundAmountCents = input.amountCents ?? lesson.amountCents;
-            const reversalIdempotencyKey = `lesson_post_payout_reversal_${input.lessonId}_${refundAmountCents}`;
-            const refundIdempotencyKey = `lesson_post_payout_refund_${input.lessonId}_${refundAmountCents}`;
+            // S38P Fix 1: Separate student refund amount from transfer reversal amount.
+            // - studentRefundAmountCents: what the student gets back (gross charge, amountCents)
+            // - transferReversalAmountCents: what the coach transfer is reversed for (net payout, coachPayoutCents)
+            // For a full refund: refund student for amountCents, reverse coach for coachPayoutCents.
+            // For a partial refund: reverse min(partialAmount, coachPayoutCents) from transfer.
+            const studentRefundAmountCents = input.amountCents ?? lesson.amountCents;
+            const isFullRefund = studentRefundAmountCents >= lesson.amountCents;
+            const transferReversalAmountCents = isFullRefund
+              ? (lesson.coachPayoutCents ?? studentRefundAmountCents)
+              : Math.min(studentRefundAmountCents, lesson.coachPayoutCents ?? studentRefundAmountCents);
+
+            // Idempotency keys encode the actual amounts for each operation
+            const reversalIdempotencyKey = `lesson_post_payout_reversal_${input.lessonId}_${transferReversalAmountCents}`;
+            const refundIdempotencyKey = `lesson_post_payout_refund_${input.lessonId}_${studentRefundAmountCents}`;
 
             let resolvedReversalId = existingReversalId;
 
             if (!reversalAlreadyDone) {
-              // Step 1: Claim the reversal slot atomically
-              const claimed = await db.claimPostPayoutReversalSlot(input.lessonId, refundAmountCents);
+              // Step 1: Claim the reversal slot atomically (store the reversal amount, not student refund amount)
+              const claimed = await db.claimPostPayoutReversalSlot(input.lessonId, transferReversalAmountCents);
               if (!claimed) {
                 throw new TRPCError({
                   code: "CONFLICT",
                   message: "Could not claim reversal slot — concurrent operation in progress. Please retry.",
                 });
               }
-              // Step 2: Reverse the Stripe transfer
+              // Step 2: Reverse the Stripe transfer for coachPayoutCents (not amountCents)
               try {
                 const reversal = await stripeService.createTransferReversal(
                   lesson.stripeTransferId,
-                  refundAmountCents === lesson.coachPayoutCents ? undefined : refundAmountCents,
+                  isFullRefund ? undefined : transferReversalAmountCents,
                   reversalIdempotencyKey
                 );
                 resolvedReversalId = reversal.id;
@@ -2728,15 +2739,31 @@ export const appRouter = router({
               // Step 3: Advance to post-payout-refund pending state
               await db.advanceToPostPayoutRefundSlot(input.lessonId, resolvedReversalId!);
             } else {
-              // Reversal already done; advance to refund slot for retry
-              await db.advanceToPostPayoutRefundSlot(input.lessonId, resolvedReversalId!);
+              // S38P Fix 2: Reversal already done — use atomic helper that guards on real reversalId.
+              // advanceToPostPayoutRefundSlot only matches WHERE stripeReversalId='__pending_reversal__',
+              // so it would silently affect 0 rows here. Use the dedicated retry helper instead.
+              const slotClaimed = await db.claimPostPayoutRefundSlotAfterReversal(
+                input.lessonId,
+                resolvedReversalId!
+              );
+              if (!slotClaimed) {
+                // Re-read to check if already finalized
+                const fresh = await db.getLessonById(input.lessonId);
+                if (fresh?.status === "refunded") {
+                  return { success: true, refundAmountCents: studentRefundAmountCents };
+                }
+                throw new TRPCError({
+                  code: "CONFLICT",
+                  message: "Could not claim refund slot for retry — concurrent operation in progress. Please retry.",
+                });
+              }
             }
 
-            // Step 4: Refund the student
+            // Step 4: Refund the student (for the full gross charge, not the coach net)
             try {
               const refund = await stripeService.createRefund(
                 lesson.stripePaymentIntentId,
-                refundAmountCents === lesson.amountCents ? undefined : refundAmountCents,
+                isFullRefund ? undefined : studentRefundAmountCents,
                 "requested_by_customer",
                 refundIdempotencyKey
               );
@@ -2744,7 +2771,7 @@ export const appRouter = router({
               await db.finalizePostPayoutRefund(
                 input.lessonId,
                 refund.id,
-                refundAmountCents,
+                studentRefundAmountCents,
                 input.reason || "Admin post-payout refund"
               );
             } catch (refundErr: any) {
@@ -2754,7 +2781,7 @@ export const appRouter = router({
                 message: `Stripe refund failed after transfer reversal: ${refundErr?.message ?? 'unknown error'}. The transfer has been reversed. Please retry to complete the student refund.`,
               });
             }
-            return { success: true, refundAmountCents };
+            return { success: true, refundAmountCents: studentRefundAmountCents };
           }
 
           // ─── Pre-payout path (status = 'disputed' | 'completed') ────────────

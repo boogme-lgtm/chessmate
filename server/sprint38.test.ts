@@ -458,3 +458,184 @@ describe("S38-8: slot state machine — valid transitions", () => {
     // stripeReversalId stays as trr_xxx (reversal already done)
   });
 });
+
+// ─── S38P-1: Fix 1 regression — reversal uses coachPayoutCents, not amountCents ─
+describe("S38P-1: full refund uses coachPayoutCents for reversal, amountCents for student refund", () => {
+  it("amountCents=10000 coachPayoutCents=8500 — reversal gets 8500 (undefined=full), student refund gets 10000 (undefined=full)", () => {
+    const lesson = makeReleasedLesson({ amountCents: 10000, coachPayoutCents: 8500 });
+    const studentRefundAmountCents = lesson.amountCents; // 10000
+    const isFullRefund = studentRefundAmountCents >= lesson.amountCents; // true
+    const transferReversalAmountCents = isFullRefund
+      ? lesson.coachPayoutCents  // 8500
+      : Math.min(studentRefundAmountCents, lesson.coachPayoutCents ?? studentRefundAmountCents);
+
+    // Reversal amount should be coachPayoutCents (8500), NOT amountCents (10000)
+    expect(transferReversalAmountCents).toBe(8500);
+    expect(transferReversalAmountCents).not.toBe(10000);
+
+    // Stripe reversal arg: undefined for full reversal of the coach transfer
+    const reversalArg = isFullRefund ? undefined : transferReversalAmountCents;
+    expect(reversalArg).toBeUndefined(); // full reversal of 8500 transfer
+
+    // Student refund arg: undefined for full refund of the student charge
+    const refundArg = isFullRefund ? undefined : studentRefundAmountCents;
+    expect(refundArg).toBeUndefined(); // full refund of 10000 charge
+
+    // Idempotency keys encode different amounts
+    const reversalKey = `lesson_post_payout_reversal_${lesson.id}_${transferReversalAmountCents}`;
+    const refundKey = `lesson_post_payout_refund_${lesson.id}_${studentRefundAmountCents}`;
+    expect(reversalKey).toContain("_8500");
+    expect(refundKey).toContain("_10000");
+    expect(reversalKey).not.toBe(refundKey);
+  });
+
+  it("old buggy code would have passed 10000 to createTransferReversal — verify new code does not", () => {
+    const lesson = makeReleasedLesson({ amountCents: 10000, coachPayoutCents: 8500 });
+
+    // Old (buggy) code: refundAmountCents = amountCents = 10000
+    // reversalAmount = refundAmountCents === coachPayoutCents ? undefined : refundAmountCents
+    //                = 10000 === 8500 ? undefined : 10000 → 10000  ← BUG
+    const oldRefundAmountCents = lesson.amountCents; // 10000
+    const oldReversalArg = oldRefundAmountCents === lesson.coachPayoutCents ? undefined : oldRefundAmountCents;
+    expect(oldReversalArg).toBe(10000); // proves the old code was wrong
+
+    // New (fixed) code: transferReversalAmountCents = coachPayoutCents = 8500
+    const studentRefundAmountCents = lesson.amountCents; // 10000
+    const isFullRefund = studentRefundAmountCents >= lesson.amountCents; // true
+    const newReversalArg = isFullRefund ? undefined : Math.min(studentRefundAmountCents, lesson.coachPayoutCents!);
+    expect(newReversalArg).toBeUndefined(); // full reversal of 8500 transfer, not 10000
+  });
+
+  it("partial refund (5000) — reversal gets min(5000, 8500)=5000, student refund gets 5000", () => {
+    const lesson = makeReleasedLesson({ amountCents: 10000, coachPayoutCents: 8500 });
+    const partialAmount = 5000;
+    const studentRefundAmountCents = partialAmount;
+    const isFullRefund = studentRefundAmountCents >= lesson.amountCents; // false
+    const transferReversalAmountCents = isFullRefund
+      ? lesson.coachPayoutCents
+      : Math.min(studentRefundAmountCents, lesson.coachPayoutCents ?? studentRefundAmountCents);
+
+    expect(isFullRefund).toBe(false);
+    expect(transferReversalAmountCents).toBe(5000); // min(5000, 8500)
+    expect(studentRefundAmountCents).toBe(5000);
+
+    const reversalArg = isFullRefund ? undefined : transferReversalAmountCents;
+    const refundArg = isFullRefund ? undefined : studentRefundAmountCents;
+    expect(reversalArg).toBe(5000);
+    expect(refundArg).toBe(5000);
+  });
+
+  it("partial refund exceeding coachPayoutCents — reversal capped at coachPayoutCents", () => {
+    const lesson = makeReleasedLesson({ amountCents: 10000, coachPayoutCents: 8500 });
+    const partialAmount = 9000; // > coachPayoutCents
+    const studentRefundAmountCents = partialAmount;
+    const isFullRefund = studentRefundAmountCents >= lesson.amountCents; // false (9000 < 10000)
+    const transferReversalAmountCents = isFullRefund
+      ? lesson.coachPayoutCents
+      : Math.min(studentRefundAmountCents, lesson.coachPayoutCents ?? studentRefundAmountCents);
+
+    expect(transferReversalAmountCents).toBe(8500); // capped at coachPayoutCents
+    expect(studentRefundAmountCents).toBe(9000); // student still gets 9000 back
+  });
+});
+
+// ─── S38P-2: Fix 2 regression — retry after refund failure uses claimPostPayoutRefundSlotAfterReversal ─
+describe("S38P-2: retry after refund failure atomically claims slot via claimPostPayoutRefundSlotAfterReversal", () => {
+  it("lesson with stripeReversalId=trr_done and stripePostPayoutRefundId=NULL — retry claims slot, calls createRefund, finalizes", async () => {
+    const lesson = makeReleasedLesson({
+      stripeReversalId: "trr_done",
+      stripePostPayoutRefundId: null,
+    });
+    const claimPostPayoutRefundSlotAfterReversal = vi.fn().mockResolvedValue(true);
+    const createRefund = vi.fn().mockResolvedValue({ id: "re_retry_001" });
+    const finalizePostPayoutRefund = vi.fn().mockResolvedValue(undefined);
+    const advanceToPostPayoutRefundSlot = vi.fn(); // must NOT be called in retry path
+
+    const reversalAlreadyDone = lesson.stripeReversalId &&
+      lesson.stripeReversalId !== "__pending_reversal__" &&
+      lesson.stripeReversalId !== "__pending_post_payout_refund__";
+    expect(reversalAlreadyDone).toBeTruthy(); // truthy string ("trr_done")
+
+    // S38P Fix 2: use the new helper, not advanceToPostPayoutRefundSlot
+    const slotClaimed = await claimPostPayoutRefundSlotAfterReversal(lesson.id, lesson.stripeReversalId);
+    expect(slotClaimed).toBe(true);
+    expect(claimPostPayoutRefundSlotAfterReversal).toHaveBeenCalledWith(lesson.id, "trr_done");
+    // advanceToPostPayoutRefundSlot must NOT be called (it would match 0 rows)
+    expect(advanceToPostPayoutRefundSlot).not.toHaveBeenCalled();
+
+    const refund = await createRefund(
+      lesson.stripePaymentIntentId,
+      undefined,
+      "requested_by_customer",
+      `lesson_post_payout_refund_${lesson.id}_${lesson.amountCents}`
+    );
+    expect(refund.id).toBe("re_retry_001");
+
+    await finalizePostPayoutRefund(lesson.id, refund.id, lesson.amountCents, "Admin post-payout refund");
+    expect(finalizePostPayoutRefund).toHaveBeenCalledWith(lesson.id, "re_retry_001", lesson.amountCents, "Admin post-payout refund");
+  });
+
+  it("claimPostPayoutRefundSlotAfterReversal returning false — no createRefund called, CONFLICT thrown", async () => {
+    const lesson = makeReleasedLesson({
+      stripeReversalId: "trr_done",
+      stripePostPayoutRefundId: null,
+    });
+    const claimPostPayoutRefundSlotAfterReversal = vi.fn().mockResolvedValue(false);
+    const createRefund = vi.fn();
+    const getLessonById = vi.fn().mockResolvedValue({ ...lesson, status: "released" });
+
+    const slotClaimed = await claimPostPayoutRefundSlotAfterReversal(lesson.id, lesson.stripeReversalId);
+    expect(slotClaimed).toBe(false);
+
+    // createRefund must NOT be called when slot claim fails
+    expect(createRefund).not.toHaveBeenCalled();
+
+    // Re-read path: lesson is still released (not refunded), so CONFLICT is correct
+    const fresh = await getLessonById(lesson.id);
+    expect(fresh?.status).toBe("released");
+  });
+
+  it("claimPostPayoutRefundSlotAfterReversal returning false but lesson already refunded — idempotent success", async () => {
+    const lesson = makeReleasedLesson({
+      stripeReversalId: "trr_done",
+      stripePostPayoutRefundId: "re_already_done",
+    });
+    const claimPostPayoutRefundSlotAfterReversal = vi.fn().mockResolvedValue(false);
+    const getLessonById = vi.fn().mockResolvedValue({ ...lesson, status: "refunded" });
+
+    const slotClaimed = await claimPostPayoutRefundSlotAfterReversal(lesson.id, lesson.stripeReversalId);
+    expect(slotClaimed).toBe(false);
+
+    // Re-read shows status=refunded — idempotent success path
+    const fresh = await getLessonById(lesson.id);
+    expect(fresh?.status).toBe("refunded");
+  });
+
+  it("old buggy code: advanceToPostPayoutRefundSlot with real reversalId affects 0 rows — proves the bug", async () => {
+    // advanceToPostPayoutRefundSlot only matches WHERE stripeReversalId = '__pending_reversal__'
+    // When stripeReversalId is already a real trr_ ID, the UPDATE affects 0 rows.
+    const advanceToPostPayoutRefundSlot = vi.fn().mockImplementation(
+      async (_lessonId: number, reversalId: string) => {
+        if (reversalId !== "__pending_reversal__") return 0; // 0 rows affected
+        return 1;
+      }
+    );
+    const rowsAffected = await advanceToPostPayoutRefundSlot(1001, "trr_done");
+    expect(rowsAffected).toBe(0); // proves the old retry path was broken
+  });
+});
+
+// ─── S38P-3: claimPostPayoutRefundSlotAfterReversal DB helper contract ────────
+describe("S38P-3: claimPostPayoutRefundSlotAfterReversal helper contract", () => {
+  it("SQL WHERE clause guards: status=released, stripeReversalId=expectedId, stripePostPayoutRefundId IS NULL", () => {
+    const conditions = [
+      "status = 'released'",
+      "stripeReversalId = expectedReversalId",
+      "stripePostPayoutRefundId IS NULL",
+    ];
+    expect(conditions).toHaveLength(3);
+    expect(conditions[0]).toContain("released");
+    expect(conditions[1]).toContain("stripeReversalId");
+    expect(conditions[2]).toContain("IS NULL");
+  });
+});

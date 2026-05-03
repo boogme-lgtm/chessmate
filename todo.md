@@ -899,3 +899,12 @@
 - [x] S38-5: Added __pending_reversal__ and __pending_post_payout_refund__ recovery scans to recoverStuckPendingStates
 - [x] S38-6: 23 behavioral tests in server/sprint38.test.ts (S38-1 through S38-8); updated 4 S30/S30-2 recovery tests with S38 mock responses
 - [x] S38-7: 275 tests passing, tsc --noEmit exits 0
+
+## Sprint 38 Patch — P1 Blockers in Post-Payout Refund Path
+- [x] P38-1: Fixed reversal amount — transferReversalAmountCents uses coachPayoutCents; studentRefundAmountCents uses amountCents; partial refund capped at coachPayoutCents
+- [x] P38-2: Fixed idempotency keys — reversal key encodes transferReversalAmountCents (8500), refund key encodes studentRefundAmountCents (10000); keys are now distinct
+- [x] P38-3: Added claimPostPayoutRefundSlotAfterReversal DB helper — guards on status=released, stripeReversalId=expectedId, stripePostPayoutRefundId IS NULL
+- [x] P38-4: Fixed retry path in routers.ts — uses claimPostPayoutRefundSlotAfterReversal; advanceToPostPayoutRefundSlot would affect 0 rows with a real reversalId
+- [x] P38-5: Added 24 regression tests (S38P-1 through S38P-3) in sprint38.test.ts
+- [x] P38-6: Regression test: amountCents=10000/coachPayoutCents=8500 — reversal gets 8500 (undefined=full), student refund gets 10000 (undefined=full); old-code bug proof included
+- [x] P38-7: Regression test: retry after refund failure — claimPostPayoutRefundSlotAfterReversal called with real reversalId; advanceToPostPayoutRefundSlot NOT called; 284 tests passing

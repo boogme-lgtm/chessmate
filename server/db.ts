@@ -1883,3 +1883,33 @@ export async function releasePostPayoutRefundClaim(lessonId: number): Promise<vo
       AND stripePostPayoutRefundId = '__pending_post_payout_refund__'
   `);
 }
+
+/**
+ * S38P Fix 2: Claim the post-payout refund slot when the transfer reversal is already done.
+ * This is the correct retry helper for the case where stripeReversalId holds a real trr_ ID
+ * (reversal succeeded) but stripePostPayoutRefundId is still NULL (refund failed or never ran).
+ *
+ * advanceToPostPayoutRefundSlot cannot be used here because it only matches
+ * WHERE stripeReversalId = '__pending_reversal__', which would affect 0 rows.
+ *
+ * Guards:
+ *   - status = 'released'           (lesson must still be in released state)
+ *   - stripeReversalId = expectedId  (must match the real reversal ID we already have)
+ *   - stripePostPayoutRefundId IS NULL (no concurrent refund in progress)
+ */
+export async function claimPostPayoutRefundSlotAfterReversal(
+  lessonId: number,
+  expectedReversalId: string
+): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  const result: any = await db.execute(sql`
+    UPDATE lessons
+    SET stripePostPayoutRefundId = '__pending_post_payout_refund__'
+    WHERE id = ${lessonId}
+      AND status = 'released'
+      AND stripeReversalId = ${expectedReversalId}
+      AND stripePostPayoutRefundId IS NULL
+  `);
+  return result[0]?.affectedRows === 1;
+}
