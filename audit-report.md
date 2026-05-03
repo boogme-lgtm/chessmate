@@ -1,42 +1,42 @@
-# pnpm audit --prod (May 1, 2026 — post-R3 patch)
+# pnpm audit --prod (May 2, 2026 — post-Sprint-40 Express 5 upgrade)
 
-**Summary:** 24 vulnerabilities found  
-**Severity:** 3 low | 18 moderate | 3 high
+**Summary:** 21 vulnerabilities found
+**Severity:** 2 low | 17 moderate | 2 high
 
-## Changes from Round 2
+## Changes from Previous Report (Sprint 40)
 
-- **axios** upgraded from 1.12.2 to 1.15.2. The direct high-severity advisory (SSRF via crafted URL) is resolved.
-- Total vulnerabilities reduced from 27 to 24 (4 high → 3 high).
+- **express** upgraded from `4.21.2` to `5.2.1`. The `path-to-regexp@0.1.12` ReDoS high-severity advisory (GHSA-37ch-88jc-xwx2) is **resolved** — Express 5 bundles `path-to-regexp@8.x` which is not affected.
+- Total vulnerabilities reduced from 24 to 21 (3 high → 2 high, 3 low → 2 low).
+- The `cookie@0.7.2` low advisory (via `express@4.21.2`) is also gone.
 
-## High Severity (3) — All Transitive
+## High Severity (2) — Both Transitive, No Fix Available
 
-| Package | Advisory | Via | Patched |
-|---------|----------|-----|---------|
-| path-to-regexp@0.1.12 | ReDoS via multiple route params (GHSA-37ch-88jc-xwx2) | express@4.21.2 | >=0.1.13 |
-| lodash-es@4.17.21 | Code Injection via `_.template` (GHSA-r5fr-rjxr-66jc) | streamdown → mermaid → langium → chevrotain | >=4.18.0 |
-| lodash@4.17.21 | Code Injection via `_.template` (GHSA-r5fr-rjxr-66jc) | recharts@2.15.4 | >=4.18.0 |
+| Package | Advisory | Dependency Chain | Patched Version |
+|---------|----------|-----------------|-----------------|
+| `lodash-es@4.17.21` | Code Injection via `_.template` (GHSA-r5fr-rjxr-66jc) | `streamdown` → `mermaid` → `langium` → `chevrotain` → `@chevrotain/gast` | ≥4.18.0 (upstream has not released a fix) |
+| `lodash@4.17.21` | Code Injection via `_.template` (GHSA-r5fr-rjxr-66jc) | `recharts@2.15.4` | ≥4.18.0 (upstream has not released a fix) |
 
-## Moderate (18) — All Transitive
+Neither `recharts` nor `mermaid`/`streamdown` have released versions that drop or upgrade their lodash dependency. No `pnpm audit fix` is available.
+
+## Moderate (17) — All Transitive
 
 Primarily via `streamdown → mermaid` (DOMPurify, d3, dagre, mdast-util-to-hast) and `recharts → lodash`. These are client-side rendering dependencies with no server-side attack surface in our usage.
 
-## Low (3)
+## Low (2)
 
 | Package | Advisory | Via |
 |---------|----------|-----|
-| nodemailer@7.0.11 | SMTP command injection (GHSA-c7w3-x93f-qmm8) | resend@6.9.1 → mailparser |
-| follow-redirects@1.15.11 | Exposure of credentials (GHSA-xxx) | axios@1.15.2 |
-| cookie@0.7.2 | Accepts out-of-spec characters (GHSA-xxx) | express@4.21.2 |
-
-## Actionable Follow-ups
-
-1. **Express 5 migration** — Express 5 is now stable and the default on npm (`npm info express version` → 5.x). Migrating resolves the `path-to-regexp` ReDoS advisory. This is an actionable task, not a "wait for stable" item.
-2. **lodash/lodash-es** — Deep transitive via mermaid and recharts. No user-controlled `_.template` calls exist in our code. Monitor upstream for patches; consider replacing recharts with a lodash-free charting library if the advisory persists.
-3. **resend SDK** — `mailparser` pulls in vulnerable `nodemailer`. We don't parse untrusted emails. Monitor for resend SDK updates.
+| `nodemailer@7.0.11` | SMTP command injection (GHSA-c7w3-x93f-qmm8) | `resend@6.9.1` → `mailparser` |
+| `follow-redirects@1.15.11` | Exposure of credentials | `axios@1.15.2` |
 
 ## Non-Exploitable Assessment
 
-None of the remaining 3 high-severity findings are directly exploitable in our codebase:
+None of the 2 remaining high-severity findings are directly exploitable in our codebase:
 
-- **path-to-regexp**: Only Express's internal routing uses it. Our routes are static strings, not user-controlled patterns. ReDoS requires attacker-controlled route definitions.
-- **lodash/lodash-es `_.template`**: Code injection requires passing attacker-controlled input to `_.template()`. Neither our code nor our transitive dependencies expose this to user input.
+- **`lodash`/`lodash-es` `_.template`**: Code injection requires passing attacker-controlled input to `_.template()`. Neither our application code nor any of the transitive dependencies (`recharts`, `mermaid`, `streamdown`) expose this function to user-supplied input. The lodash instances are used internally for utility operations only.
+
+## Actionable Follow-ups
+
+1. **lodash/lodash-es** — Monitor `recharts` and `streamdown`/`mermaid` upstream for releases that upgrade or remove their lodash dependency. Consider replacing `recharts` with a lodash-free charting library (e.g., `victory`, `nivo`) if the advisory persists and becomes a compliance concern.
+2. **resend SDK** — `mailparser` pulls in vulnerable `nodemailer`. We do not parse untrusted emails. Monitor for resend SDK updates.
+3. **follow-redirects** — Transitive via `axios`. Upgrade `axios` if a patched version of `follow-redirects` is released.

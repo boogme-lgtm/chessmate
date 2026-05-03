@@ -944,3 +944,9 @@
 - [x] S40-3: Regenerated pnpm-lock.yaml via pnpm install
 - [x] S40-4: Fixed app.use("*") → app.use("/{*splat}") in both dev and static catch-all handlers in vite.ts; no other changes needed
 - [x] S40-5: 327 tests passing, tsc --noEmit exits 0, path-to-regexp CVE gone from audit; remaining: lodash via recharts (transitive, no fix available)
+
+## Sprint 40 Patch — Express 5 cleanup
+- [x] P40-1: Fix app.get("*") in server/index.ts to Express 5 syntax or retire the file
+- [x] P40-2: Refresh audit-report.md to reflect current pnpm audit --prod output (21 vulns, 2 high, both lodash) — both lodash-es (via streamdown→mermaid→chevrotain) and lodash (via recharts)
+- [x] P40-3: Add wildcard regression scan test (server/sprint40.test.ts) that fails on bare app.get("*") or app.use("*")
+- [x] P40-4: 331 tests passing, tsc --noEmit exits 0, pnpm audit --prod: 21 vulns / 2 high (both lodash, transitive, no fix available)
