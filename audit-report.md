@@ -21,7 +21,7 @@ Neither `recharts` nor `mermaid`/`streamdown` have released versions that drop o
 
 Primary sources:
 
-- **`streamdown` → `mermaid@11.12.0`** (10 advisories): 7 × `dompurify` XSS/prototype-pollution bypasses (ADD_ATTR predicate, USE_PROFILES pollution, ADD_TAGS form bypass, FORBID_TAGS bypass, SAFE_FOR_TEMPLATES bypass, Prototype Pollution to XSS, mutation-XSS); 1 × `mdast-util-to-hast` unsanitised class attribute (via `react-markdown`); 2 × `mermaid` direct advisories (Gantt chart infinite loop DoS, improper sanitisation of `classDefs`/`classDef` in state diagrams). All are client-side rendering with no server-side attack surface.
+- **`streamdown` → `mermaid@11.12.0`** (10 advisories): 7 × `dompurify` XSS/prototype-pollution bypasses (ADD_ATTR predicate, USE_PROFILES pollution, ADD_TAGS form bypass, FORBID_TAGS bypass, SAFE_FOR_TEMPLATES bypass, Prototype Pollution to XSS, mutation-XSS); 1 × `mdast-util-to-hast` unsanitised class attribute (via `react-markdown`); 4 × `mermaid` direct advisories (Gantt chart infinite loop DoS, `classDefs` CSS injection, configuration CSS injection, `classDef` state-diagram HTML injection). All are client-side rendering with no server-side attack surface.
 - **`streamdown` → `mermaid` → `lodash-es`**: Prototype Pollution via array functions (separate from the high Code Injection advisory above).
 - **`recharts@2.15.4` → `lodash`**: Prototype Pollution via array functions.
 - **`resend@6.9.1` → `mailparser` → `nodemailer`**: SMTP command injection (GHSA-vvjj-xcjg-gr5g).
