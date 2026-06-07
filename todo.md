@@ -954,3 +954,12 @@
 ## Sprint 40 Patch 2 — audit-report.md severity correction
 - [x] P40P2-1: Verified pnpm audit --prod: follow-redirects is moderate (not low); low findings are mailparser (GHSA-7gmj-h9xc-mcxc) and nodemailer (GHSA-c7w3-x93f-qmm8) via resend
 - [x] P40P2-2: Corrected audit-report.md Low table to mailparser + nodemailer only; moved follow-redirects to Moderate section; headline counts unchanged (21 total: 2 high, 17 moderate, 2 low)
+
+## Sprint 41 — Silence watch-mode TypeScript false positive
+- [x] S41-1: Diagnosed root cause: tsBuildInfoFile stored at ./node_modules/typescript/tsbuildinfo — stale incremental cache from previous session caused Manus LSP daemon to report clearLessonCheckoutSession as missing
+- [x] S41-2: Reproduced: watch-mode tsc --noEmit --watch (PID 1533) was running against the Jun 1 stale cache; fresh tsc --noEmit exits clean
+- [x] S41-3: Fix: moved tsBuildInfoFile from ./node_modules/typescript/tsbuildinfo to ./.tsbuildinfo (project root, covered by *.tsbuildinfo in .gitignore)
+- [x] S41-4: Verified: tsc --noEmit exits 0, tsc --watch exits 0 errors with new path, .tsbuildinfo is gitignored
+- [x] S41-5: Added server/sprint41.test.ts — type-level guard (S41-1) + 5 behavioral tests (S41-2a through S41-2e) for clearLessonCheckoutSession call behavior in handleCheckoutCompleted
+- [x] S41-6: Opportunistic upgrades: axios 1.15.2 → 1.17.0 (resolved 5 high CVEs), @aws-sdk/client-s3 + presigner 3.1040.0 → 3.1063.0 (resolved fast-xml-builder high CVE)
+- [x] S41-7: Updated audit-report.md: 26 total / 2 high / 22 moderate / 2 low; 337 tests passing, tsc --noEmit exits 0
