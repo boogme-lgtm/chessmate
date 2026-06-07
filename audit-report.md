@@ -5,9 +5,8 @@
 
 ## Changes from Previous Report (Sprint 40 patch 2 → Sprint 41)
 
-- **`axios`** upgraded from `1.15.2` to `1.17.0`. Resolves 5 high advisories: `shouldBypassProxy` bypass (GHSA-jr5f-v2jv-69x6), MITM via `PROXY_URL` (GHSA-wf5p-g6vw-rhxx), ReDoS (GHSA-4w2v-q235-vp99), Proxy-Authorization leak to origin (GHSA-c7h5-3x7p-4h8c), Proxy-Authorization leak on redirect (GHSA-jr5f-v2jv-69x6). `follow-redirects` advisory (GHSA-r4q5-vmmm-2653) is now moderate-only.
-- **`@aws-sdk/client-s3`** and **`@aws-sdk/s3-request-presigner`** upgraded from `3.1040.0` to `3.1063.0`. Resolves `fast-xml-builder@1.1.5` high advisory (GHSA-xxxx — attribute value quote bypass); new version bundles `fast-xml-builder@1.1.7+`.
-- New advisories appeared in the npm advisory database since the Sprint 40 audit run (axios and fast-xml-builder), increasing the raw count from 21 to 26 before the upgrades. After the upgrades the count settled at 26 (some moderate advisories for `dompurify` and `lodash` were newly published).
+- **`axios`** upgraded from `1.15.2` to `1.17.0`. Resolves 5 high advisories (shouldBypassProxy bypass, MITM via PROXY_URL, ReDoS, two Proxy-Authorization leaks). `axios@1.17.0` resolves `follow-redirects@1.16.0`; **`follow-redirects` no longer appears in `pnpm audit --prod`**.
+- **`@aws-sdk/client-s3`** and **`@aws-sdk/s3-request-presigner`** upgraded from `3.1040.0` to `3.1063.0`. Resolves `fast-xml-builder@1.1.5` high advisory (attribute value quote bypass); new version bundles `fast-xml-builder@1.1.7+`.
 
 ## High Severity (2) — Both Transitive, No Fix Available
 
@@ -22,11 +21,13 @@ Neither `recharts` nor `mermaid`/`streamdown` have released versions that drop o
 
 Primary sources:
 
-- **`streamdown` → `mermaid`**: multiple `dompurify` XSS/prototype-pollution advisories, `lodash-es` prototype pollution, `mdast-util-to-hast` unsanitized class attribute — all client-side rendering with no server-side attack surface.
-- **`recharts`**: `lodash` prototype pollution advisories — client-side charting only.
-- **`resend`**: `nodemailer` SMTP command injection (GHSA-vvjj-xcjg-gr5g) via `mailparser`.
-- **`axios@1.17.0`**: `follow-redirects@1.15.11` leaks custom authentication headers on cross-origin redirect (GHSA-r4q5-vmmm-2653) — transitive, no fix available from `follow-redirects` upstream yet.
-- **`resend` → `svix`**: `uuid@10.0.0` missing buffer bounds check in v3/v5/v6.
+- **`streamdown` → `mermaid@11.12.0`** (10 advisories): 7 × `dompurify` XSS/prototype-pollution bypasses (ADD_ATTR predicate, USE_PROFILES pollution, ADD_TAGS form bypass, FORBID_TAGS bypass, SAFE_FOR_TEMPLATES bypass, Prototype Pollution to XSS, mutation-XSS); 1 × `mdast-util-to-hast` unsanitised class attribute (via `react-markdown`); 2 × `mermaid` direct advisories (Gantt chart infinite loop DoS, improper sanitisation of `classDefs`/`classDef` in state diagrams). All are client-side rendering with no server-side attack surface.
+- **`streamdown` → `mermaid` → `lodash-es`**: Prototype Pollution via array functions (separate from the high Code Injection advisory above).
+- **`recharts@2.15.4` → `lodash`**: Prototype Pollution via array functions.
+- **`resend@6.9.1` → `mailparser` → `nodemailer`**: SMTP command injection (GHSA-vvjj-xcjg-gr5g).
+- **`express@5.2.1` → `qs@6.15.1`** (via `body-parser@2.2.2` and directly): remotely triggerable DoS — `qs.stringify` crashes on null/undefined entries in comma-format arrays when `encodeValuesOnly` is set. Patched in `qs@6.15.2`; blocked on Express 5 releasing an update.
+- **`express-rate-limit@8.3.2` → `ip-address@10.1.0`**: XSS in `Address6` HTML-emitting methods. No fix available from `ip-address` upstream yet.
+- **`resend@6.9.1` → `svix` → `uuid@10.0.0`**: missing buffer bounds check in v3/v5/v6.
 
 ## Low (2)
 
@@ -44,5 +45,6 @@ None of the 2 remaining high-severity findings are directly exploitable in our c
 ## Actionable Follow-ups
 
 1. **lodash/lodash-es** — Monitor `recharts` and `streamdown`/`mermaid` upstream for releases that upgrade or remove their lodash dependency. Consider replacing `recharts` with a lodash-free charting library (e.g., `victory`, `nivo`) if the advisory persists and becomes a compliance concern.
-2. **follow-redirects** (moderate) — Transitive via `axios@1.17.0`. No patched version of `follow-redirects` is available upstream yet; monitor for a `follow-redirects@1.16+` release.
-3. **resend SDK** — `mailparser` pulls in vulnerable `nodemailer` (moderate) and is itself flagged low. We do not parse untrusted emails. Monitor for resend SDK updates.
+2. **`qs` via Express 5** — `qs@6.15.1` is pinned by `express@5.2.1`. Watch for an Express 5.x patch that bumps `qs` to `≥6.15.2`.
+3. **`ip-address` via `express-rate-limit`** — XSS in HTML-emitting methods; not reachable from our server-side usage. Watch for `ip-address@10.1.1+` or an `express-rate-limit` update.
+4. **resend SDK** — `mailparser` pulls in vulnerable `nodemailer` (moderate) and is itself flagged low. We do not parse untrusted emails. Monitor for resend SDK updates.

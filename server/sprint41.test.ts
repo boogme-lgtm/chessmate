@@ -1,10 +1,11 @@
 /**
  * Sprint 41 regression tests
  *
- * 1. Type-level guard: asserts that db.clearLessonCheckoutSession is exported
- *    from server/db.ts with the correct signature. This test fails at compile
- *    time (tsc) and at runtime if the function is removed or renamed, which
- *    is the root cause of the watch-mode false positive that Sprint 41 fixed.
+ * 1. Runtime export guard: asserts that db.clearLessonCheckoutSession is
+ *    exported from server/db.ts and is callable. This test fails at runtime
+ *    if the function is removed or renamed. NOTE: tsconfig.json excludes
+ *    **\/*.test.ts, so tsc does not type-check this file; the compile-time
+ *    signature guard lives in server/db.typecheck.ts (included by tsc).
  *
  * 2. Behavioral tests for the checkout-session cleanup path in
  *    handleCheckoutCompleted (webhooks.ts):
@@ -32,21 +33,17 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { clearLessonCheckoutSession } from "./db";
 
 // ---------------------------------------------------------------------------
-// S41-1: Type-level guard — clearLessonCheckoutSession must be exported from db
+// S41-1: Runtime export guard — clearLessonCheckoutSession must be exported
+//        from db. The compile-time signature check lives in db.typecheck.ts.
 // ---------------------------------------------------------------------------
 
-describe("S41-1: db.clearLessonCheckoutSession type guard", () => {
-  it("clearLessonCheckoutSession is exported from server/db with correct signature", async () => {
-    // Dynamic import so the test fails at runtime (not just compile time) if
-    // the export is removed. The TypeScript import above already fails at
-    // compile time if the type is wrong.
+describe("S41-1: db.clearLessonCheckoutSession runtime export guard", () => {
+  it("clearLessonCheckoutSession is exported from server/db and is callable", async () => {
+    // Dynamic import proves the export exists at runtime. tsc does not
+    // type-check *.test.ts files (excluded in tsconfig.json), so the
+    // compile-time signature assertion is in server/db.typecheck.ts instead.
     const db = await import("./db");
     expect(typeof db.clearLessonCheckoutSession).toBe("function");
-
-    // The function accepts (lessonId: number) — arity check is skipped here
-    // because vi.mock() replaces the module with auto-mocked stubs (length=0).
-    // The TypeScript import at the top of this file already enforces the
-    // correct signature at compile time.
   });
 });
 
