@@ -197,3 +197,62 @@ export async function releaseLessonPayoutToCoach(
 
   return { success: true, transferId: result.transferId! };
 }
+
+export type BulkPayoutResult = {
+  total: number;
+  releasedCount: number;
+  failedCount: number;
+  released: { lessonId: number; transferId: string; alreadyReleased: boolean }[];
+  failed: { lessonId: number; reason: string }[];
+};
+
+/**
+ * Release payouts for ALL currently-eligible lessons in one pass.
+ *
+ * This is a thin orchestration over releaseLessonPayoutToCoach — it does NOT
+ * introduce any new money path. Eligibility is owned entirely by the server:
+ * the eligible set comes from db.getCompletedLessonsReadyForPayout() (status
+ * 'completed', issue window expired, no transfer yet), and each lesson is then
+ * independently re-validated and atomically claimed inside
+ * releaseLessonPayoutToCoach.
+ *
+ * Safety properties (inherited per-lesson, not re-implemented here):
+ *   - No adminOverrideReason is ever passed, so disputed lessons are never
+ *     force-released by the bulk path (and they aren't in the eligible set).
+ *   - Each lesson is claimed via claimLessonPayoutSlot CAS before any Stripe
+ *     call; a concurrent single-release cannot double-transfer.
+ *   - Deterministic idempotency keys mean re-running this is safe — already
+ *     released lessons return { alreadyReleased: true } and are counted as
+ *     successes, not re-transferred.
+ *   - One lesson failing (conflict / precondition / Stripe error) does not
+ *     abort the rest; it is recorded in `failed` with its reason.
+ *
+ * Processing is sequential so we never fire N concurrent transfers at Stripe.
+ */
+export async function releaseAllEligiblePayouts(): Promise<BulkPayoutResult> {
+  const lessons = await db.getCompletedLessonsReadyForPayout();
+
+  const released: BulkPayoutResult["released"] = [];
+  const failed: BulkPayoutResult["failed"] = [];
+
+  for (const lesson of lessons) {
+    const result = await releaseLessonPayoutToCoach({ lessonId: lesson.id });
+    if (result.success) {
+      released.push({
+        lessonId: lesson.id,
+        transferId: result.transferId,
+        alreadyReleased: result.alreadyReleased ?? false,
+      });
+    } else {
+      failed.push({ lessonId: lesson.id, reason: result.reason });
+    }
+  }
+
+  return {
+    total: lessons.length,
+    releasedCount: released.length,
+    failedCount: failed.length,
+    released,
+    failed,
+  };
+}
