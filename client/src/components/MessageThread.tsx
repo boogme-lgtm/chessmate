@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, Send, FileText } from "lucide-react";
+import { Loader2, Send, FileText, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
@@ -37,6 +37,24 @@ export default function MessageThread({
   const [draft, setDraft] = useState("");
   const [contentType, setContentType] = useState<"text" | "pgn">("text");
   const listEndRef = useRef<HTMLDivElement>(null);
+  const pgnFileRef = useRef<HTMLInputElement>(null);
+
+  // S44-4: load a .pgn file from disk into the draft textarea. No upload —
+  // the PGN text is sent as a normal message string, same as the paste flow.
+  const handlePgnFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = typeof reader.result === "string" ? reader.result : "";
+      setDraft(text.trim());
+      setContentType("pgn");
+    };
+    reader.onerror = () => toast.error("Could not read that file.");
+    reader.readAsText(file);
+    // Reset so selecting the same file again re-triggers onChange.
+    e.target.value = "";
+  };
 
   const thread = trpc.messages.getForLesson.useQuery(
     { lessonId },
@@ -79,7 +97,7 @@ export default function MessageThread({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto border border-border/60 rounded-md p-3 space-y-3 bg-background/50">
+        <div className="flex-1 min-h-0 overflow-y-auto border border-border/60 rounded-md p-3 space-y-3 bg-background/50">
           {thread.isLoading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -126,7 +144,7 @@ export default function MessageThread({
           <div ref={listEndRef} />
         </div>
 
-        <div className="space-y-2">
+        <div className="space-y-2 shrink-0">
           <div className="flex items-center gap-2">
             <Button
               variant={contentType === "text" ? "default" : "outline"}
@@ -142,17 +160,37 @@ export default function MessageThread({
             >
               PGN
             </Button>
+            {contentType === "pgn" && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 ml-auto"
+                  onClick={() => pgnFileRef.current?.click()}
+                >
+                  <Upload className="h-3.5 w-3.5" />
+                  Browse file
+                </Button>
+                <input
+                  ref={pgnFileRef}
+                  type="file"
+                  accept=".pgn,application/x-chess-pgn,text/plain"
+                  className="hidden"
+                  onChange={handlePgnFile}
+                />
+              </>
+            )}
           </div>
           <Textarea
             placeholder={
               contentType === "pgn"
-                ? "Paste a PGN (e.g. 1. e4 e5 2. Nf3 Nc6 ...)"
+                ? "Paste a PGN (e.g. 1. e4 e5 2. Nf3 Nc6 ...) or use Browse file"
                 : "Type a message…"
             }
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             rows={contentType === "pgn" ? 5 : 3}
-            className="resize-none"
+            className="resize-none max-h-[30vh] overflow-y-auto"
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey && contentType === "text") {
                 e.preventDefault();

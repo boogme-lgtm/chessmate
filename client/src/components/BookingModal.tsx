@@ -48,8 +48,10 @@ export default function BookingModal({ open, onOpenChange, coach }: BookingModal
   const [selectedSlot, setSelectedSlot] = useState<TimeSlot | null>(null);
   const [selectedDuration, setSelectedDuration] = useState<number>(60);
   const [notes, setNotes] = useState("");
+  const [bookedLessonId, setBookedLessonId] = useState<number | null>(null);
 
   const createBooking = trpc.lesson.book.useMutation();
+  const createCheckout = trpc.payment.createCheckout.useMutation();
 
   const profile = coach.profile;
   const hourlyRateCents = profile?.hourlyRateCents || 5000;
@@ -80,28 +82,36 @@ export default function BookingModal({ open, onOpenChange, coach }: BookingModal
     if (!selectedSlot) return;
 
     try {
-      setStep("payment");
-
       // Create the booking — status starts as 'pending_payment'.
       // Student pays first, then coach accepts/declines (payment-first model).
-      await createBooking.mutateAsync({
+      const result = await createBooking.mutateAsync({
         coachId: coach.id,
         scheduledAt: selectedSlot.start,
         durationMinutes: selectedDuration,
         topic: notes || undefined,
       });
 
-      toast.success("Booking created! Complete payment to send it to your coach.");
-
-      // Close modal after short delay so the user sees the success state
-      setTimeout(() => {
-        onOpenChange(false);
-        resetModal();
-      }, 2000);
-
+      // Persist the lesson id so "Pay Now" can start checkout, then show the
+      // persistent payment prompt (no auto-dismiss — the student must choose).
+      setBookedLessonId(result.lessonId);
+      setStep("payment");
     } catch (error: any) {
       toast.error(error.message || "Failed to create booking");
       setStep("details");
+    }
+  };
+
+  const handlePayNow = async () => {
+    if (!bookedLessonId) return;
+    try {
+      const { url } = await createCheckout.mutateAsync({ lessonId: bookedLessonId });
+      if (url) {
+        window.location.href = url;
+      } else {
+        toast.error("Could not start checkout. Please pay from your dashboard.");
+      }
+    } catch (error: any) {
+      toast.error(error.message || "Could not start checkout. Please pay from your dashboard.");
     }
   };
 
@@ -110,6 +120,7 @@ export default function BookingModal({ open, onOpenChange, coach }: BookingModal
     setSelectedSlot(null);
     setSelectedDuration(60);
     setNotes("");
+    setBookedLessonId(null);
   };
 
   const handleClose = () => {
@@ -124,12 +135,12 @@ export default function BookingModal({ open, onOpenChange, coach }: BookingModal
           <DialogTitle>
             {step === "calendar" && "Select a Time"}
             {step === "details" && "Booking Details"}
-            {step === "payment" && "Request Sent"}
+            {step === "payment" && "Complete Your Payment"}
           </DialogTitle>
           <DialogDescription>
             {step === "calendar" && `Choose an available time slot with ${coach.name}`}
             {step === "details" && "Review your booking and add any notes for your coach"}
-            {step === "payment" && "Booking created successfully!"}
+            {step === "payment" && "Your lesson is reserved — payment is required to confirm it"}
           </DialogDescription>
         </DialogHeader>
 
@@ -222,18 +233,68 @@ export default function BookingModal({ open, onOpenChange, coach }: BookingModal
           </div>
         )}
 
-        {/* Step 3: Booking created — student needs to pay */}
-        {step === "payment" && (
-          <div className="py-12 text-center space-y-4">
-            <div className="flex justify-center">
-              <CheckCircle2 className="h-16 w-16 text-green-600" />
+        {/* Step 3: Booking created — persistent payment prompt (S44-1) */}
+        {step === "payment" && selectedSlot && (
+          <div className="space-y-6">
+            <div className="flex items-center gap-3">
+              <CheckCircle2 className="h-10 w-10 text-green-600 shrink-0" />
+              <div>
+                <h3 className="text-lg font-semibold">Lesson reserved</h3>
+                <p className="text-sm text-muted-foreground">
+                  Complete payment to confirm. Until you pay, this stays in{" "}
+                  <span className="font-medium">Awaiting Payment</span> on your dashboard
+                  and {coach.name} is not notified.
+                </p>
+              </div>
             </div>
-            <div>
-              <h3 className="text-lg font-semibold mb-2">Booking created!</h3>
-              <p className="text-sm text-muted-foreground max-w-md mx-auto">
-                Head to your dashboard to complete payment. Once paid, {coach.name}
-                will be notified and can confirm your lesson.
-              </p>
+
+            {/* Lesson summary */}
+            <div className="p-4 bg-muted/50 rounded-lg space-y-2">
+              <div className="flex justify-between">
+                <span className="text-sm text-muted-foreground">Coach</span>
+                <span className="font-medium">{coach.name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-muted-foreground">Date & Time</span>
+                <span className="font-medium">
+                  {format(selectedSlot.start, "EEEE, MMMM d 'at' h:mm a")}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-muted-foreground">Duration</span>
+                <span className="font-medium">{selectedDuration} minutes</span>
+              </div>
+              <Separator className="my-2" />
+              <div className="flex justify-between text-lg">
+                <span className="font-semibold">Total</span>
+                <span className="font-bold">${calculatePrice(selectedDuration)}</span>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex flex-col sm:flex-row gap-3">
+              <Button
+                variant="outline"
+                onClick={handleClose}
+                className="flex-1"
+                disabled={createCheckout.isPending}
+              >
+                Pay Later
+              </Button>
+              <Button
+                onClick={handlePayNow}
+                disabled={createCheckout.isPending}
+                className="flex-1"
+              >
+                {createCheckout.isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Redirecting…
+                  </>
+                ) : (
+                  "Pay Now"
+                )}
+              </Button>
             </div>
           </div>
         )}
