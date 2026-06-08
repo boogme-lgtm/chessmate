@@ -966,13 +966,21 @@
 
 ## Sprint 44 — E2E Booking Test Fixes
 
-- [ ] S44-1: Post-booking: replace disappearing toast with a persistent modal/dialog directing student to complete payment immediately (no friction between booking and payment)
-- [ ] S44-2: Lesson card shows "Coach #1" instead of coach's real name — resolve coach name on student dashboard lesson cards
-- [ ] S44-3: Dashboard does not refresh lesson status after payment completes — "Awaiting Payment" badge persists even after Stripe checkout succeeds
-- [ ] S44-4: PGN message tab: add a "Browse / Upload file" button so students can attach .pgn files directly instead of copy-paste only
-- [ ] S44-5: Messaging modal PGN tab: textarea overflows modal — cannot scroll down to reach the Send button when PGN is long
-- [ ] S44-6: Booking confirmation email not sent to student after lesson is booked
-- [ ] S44-7: Booking notification email not sent to coach when a new lesson is booked with them
-- [ ] S44-8: Payment confirmation email not sent to student after Stripe checkout completes
+- [x] S44-1: Post-booking: replace disappearing toast with a persistent modal/dialog directing student to complete payment immediately (no friction between booking and payment)
+- [x] S44-2: Lesson card shows "Coach #1" instead of coach's real name — resolve coach name on student dashboard lesson cards
+- [x] S44-3: Dashboard does not refresh lesson status after payment completes — "Awaiting Payment" badge persists even after Stripe checkout succeeds
+- [x] S44-4: PGN message tab: add a "Browse / Upload file" button so students can attach .pgn files directly instead of copy-paste only
+- [x] S44-5: Messaging modal PGN tab: textarea overflows modal — cannot scroll down to reach the Send button when PGN is long
+- [x] S44-6: Booking confirmation email not sent to student after lesson is booked
+- [x] S44-7: Booking notification email not sent to coach when a new lesson is booked with them (kept post-payment in webhook per payment-first model)
+- [x] S44-8: Payment confirmation email not sent to student after Stripe checkout completes (already implemented in webhook; added test)
 - [ ] S44-9: (Future sprint) Logged-in users see public marketing landing page — need personalized dashboard landing for authenticated students/coaches
 - [ ] S44-10: (Future sprint) Replace Manus OAuth with native/white-label auth so Manus branding is not visible to users
+
+## Sprint 44 Patch — Email Diagnostics
+
+- [ ] S44P-1: Add startup warning to emailService.ts if RESEND_API_KEY is empty
+- [ ] S44P-2: Add pre-send log line in sendEmail showing recipient address and subject
+- [ ] S44P-3: Add admin.system.testEmail tRPC procedure + "Send Test Email" button in admin panel
+- [ ] S44P-4: Add explicit log/warn in lesson.book when student email is missing or send is attempted
+- [ ] S44P-5: Add explicit log/warn in webhook handler when student or coach lookup returns null
