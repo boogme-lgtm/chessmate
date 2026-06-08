@@ -9,7 +9,7 @@
  * Final eligibility is enforced server-side.
  */
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -162,12 +162,19 @@ interface LessonRowAction {
   isDisputed: boolean;
 }
 
+interface PartyInfo {
+  name: string | null;
+  email: string;
+}
+
 interface LessonTableRowProps {
   lesson: any;
   isDisputed: boolean;
   onAction: (action: LessonRowAction) => void;
   isPendingRelease: boolean;
   isPendingRefund: boolean;
+  student?: PartyInfo;
+  coach?: PartyInfo;
 }
 
 function LessonTableRow({
@@ -176,6 +183,8 @@ function LessonTableRow({
   onAction,
   isPendingRelease,
   isPendingRefund,
+  student,
+  coach,
 }: LessonTableRowProps) {
   const issueWindowEndsAt = lesson.issueWindowEndsAt
     ? new Date(lesson.issueWindowEndsAt)
@@ -185,8 +194,20 @@ function LessonTableRow({
     <tr className="border-b border-border last:border-0 hover:bg-accent/30 transition-colors">
       <td className="py-3 px-4 text-sm font-mono text-muted-foreground">#{lesson.id}</td>
       <td className="py-3 px-4 text-sm">
-        <div className="font-medium">Student #{lesson.studentId}</div>
-        <div className="text-xs text-muted-foreground">Coach #{lesson.coachId}</div>
+        <div className="font-medium">
+          {student?.name || student?.email || `Student #${lesson.studentId}`}
+        </div>
+        <div className="text-xs text-muted-foreground">
+          {student?.email && student?.name ? `${student.email} · ` : ""}
+          <span className="font-mono">#{lesson.studentId}</span>
+        </div>
+        <div className="mt-1 text-xs text-muted-foreground">
+          Coach:{" "}
+          <span className="text-foreground">
+            {coach?.name || coach?.email || `#${lesson.coachId}`}
+          </span>{" "}
+          <span className="font-mono">#{lesson.coachId}</span>
+        </div>
       </td>
       <td className="py-3 px-4 text-sm">
         {lesson.scheduledAt
@@ -319,6 +340,33 @@ export default function AdminDisputesPanel() {
     error: payoutError,
     refetch: refetchPayouts,
   } = trpc.admin.disputes.pendingPayouts.useQuery(undefined, { enabled: user?.role === "admin" });
+
+  // ── Resolve student/coach IDs → names ────────────────────────────────────────
+  // Collect every user id referenced across both tabs, batch-fetch their
+  // display info, and expose a lookup map to the rows.
+  const userIds = useMemo(() => {
+    const ids = new Set<number>();
+    for (const l of disputedLessons ?? []) {
+      if (l.studentId) ids.add(l.studentId);
+      if (l.coachId) ids.add(l.coachId);
+    }
+    for (const l of payoutReadyLessons ?? []) {
+      if (l.studentId) ids.add(l.studentId);
+      if (l.coachId) ids.add(l.coachId);
+    }
+    return Array.from(ids);
+  }, [disputedLessons, payoutReadyLessons]);
+
+  const { data: userList } = trpc.admin.users.getByIds.useQuery(
+    { ids: userIds },
+    { enabled: user?.role === "admin" && userIds.length > 0 }
+  );
+
+  const userMap = useMemo(() => {
+    const m = new Map<number, { name: string | null; email: string }>();
+    for (const u of userList ?? []) m.set(u.id, { name: u.name, email: u.email });
+    return m;
+  }, [userList]);
 
   // ── Mutations ──────────────────────────────────────────────────────────────
   const releasePayoutMutation = trpc.admin.disputes.releasePayout.useMutation({
@@ -599,6 +647,8 @@ export default function AdminDisputesPanel() {
                             lesson={lesson}
                             isDisputed={true}
                             onAction={openAction}
+                            student={userMap.get(lesson.studentId)}
+                            coach={userMap.get(lesson.coachId)}
                             isPendingRelease={
                               releasePayoutMutation.isPending &&
                               pendingAction?.lessonId === lesson.id &&
@@ -672,6 +722,8 @@ export default function AdminDisputesPanel() {
                             lesson={lesson}
                             isDisputed={false}
                             onAction={openAction}
+                            student={userMap.get(lesson.studentId)}
+                            coach={userMap.get(lesson.coachId)}
                             isPendingRelease={
                               releasePayoutMutation.isPending &&
                               pendingAction?.lessonId === lesson.id &&

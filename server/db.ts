@@ -1,4 +1,4 @@
-import { eq, and, desc, sql, gte, lte, isNotNull, isNull } from "drizzle-orm";
+import { eq, and, desc, sql, gte, lte, isNotNull, isNull, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import {
@@ -132,6 +132,28 @@ export async function getUserById(id: number) {
 
   const result = await db.select().from(users).where(eq(users.id, id)).limit(1);
   return result.length > 0 ? result[0] : undefined;
+}
+
+/**
+ * Batch-fetch minimal display info (id, name, email) for a set of user IDs.
+ * Used by the admin disputes panel to resolve raw student/coach IDs to names.
+ * De-duplicates input IDs; returns only the rows that exist.
+ */
+export async function getUsersByIds(
+  ids: number[]
+): Promise<{ id: number; name: string | null; email: string }[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  const uniqueIds = Array.from(new Set(ids.filter((id) => Number.isInteger(id) && id > 0)));
+  if (uniqueIds.length === 0) return [];
+
+  const result = await db
+    .select({ id: users.id, name: users.name, email: users.email })
+    .from(users)
+    .where(inArray(users.id, uniqueIds));
+
+  return result;
 }
 
 export async function updateUserStripeCustomerId(userId: number, stripeCustomerId: string) {

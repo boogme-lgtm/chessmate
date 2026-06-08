@@ -2919,7 +2919,24 @@ export const appRouter = router({
           return { success: true, refundAmountCents };
         }),
     }),
-    
+
+    // Admin user lookup — batch-resolve user IDs to display name + email.
+    // Used by the disputes panel to render student/coach names instead of raw IDs.
+    users: router({
+      getByIds: protectedProcedure
+        .input(z.object({ ids: z.array(z.number().int().positive()).max(200) }))
+        .use(({ ctx, next }) => {
+          if (ctx.user.role !== "admin") {
+            throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
+          }
+          return next({ ctx });
+        })
+        .query(async ({ input }) => {
+          if (input.ids.length === 0) return [];
+          return await db.getUsersByIds(input.ids);
+        }),
+    }),
+
     // Waitlist management
     waitlist: router({
       // Get all waitlist entries
