@@ -773,6 +773,121 @@ export function getNurtureEmail5(name: string, email: string): string {
 /**
  * Booking Confirmation Email for Student
  */
+/**
+ * Booking RESERVED email for the student — sent at booking time (pending_payment),
+ * BEFORE payment. Prompts the student to complete payment to confirm the lesson.
+ * This is distinct from getStudentBookingConfirmationEmail (the post-payment receipt).
+ */
+export function getStudentBookingReservedEmail(
+  studentName: string,
+  coachName: string,
+  lessonDate: string,
+  lessonTime: string,
+  duration: number,
+  amount: string,
+  lessonId: number
+): string {
+  const frontendUrl = process.env.VITE_FRONTEND_URL || 'http://localhost:3000';
+
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Complete Your Lesson Payment</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #0a0a0a; color: #ffffff;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #0a0a0a;">
+    <tr>
+      <td align="center" style="padding: 40px 20px;">
+        <table width="600" cellpadding="0" cellspacing="0" style="background-color: #1a1a1a; border-radius: 8px; overflow: hidden;">
+          <!-- Header -->
+          <tr>
+            <td style="padding: 40px 40px 20px 40px; text-align: center;">
+              <img src="https://files.manuscdn.com/user_upload_by_module/session_file/310519663188415081/xRYfqyUGHSJUlDcu.png" alt="BooGMe" style="height: 48px; width: auto; margin-bottom: 20px;" />
+              <h1 style="margin: 0; font-size: 32px; font-weight: 300; color: #ffffff; letter-spacing: -0.5px;">
+                Lesson Reserved
+              </h1>
+            </td>
+          </tr>
+
+          <!-- Content -->
+          <tr>
+            <td style="padding: 0 40px 40px 40px;">
+              <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">
+                Hi ${studentName},
+              </p>
+
+              <p style="margin: 0 0 30px 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">
+                Your lesson with <strong>${coachName}</strong> is reserved. To confirm it,
+                please complete your payment. Your coach is notified and can accept the
+                lesson <strong>only after payment is received</strong>.
+              </p>
+
+              <!-- Lesson Details Card -->
+              <div style="background-color: #2a2a2a; padding: 25px; margin: 30px 0; border-radius: 8px; border-left: 4px solid #8b4513;">
+                <h2 style="margin: 0 0 20px 0; font-size: 20px; font-weight: 600; color: #ffffff;">
+                  Lesson Details
+                </h2>
+                <table width="100%" cellpadding="8" cellspacing="0">
+                  <tr>
+                    <td style="font-size: 15px; color: #a0a0a0; padding: 8px 0;">Coach:</td>
+                    <td style="font-size: 15px; color: #ffffff; font-weight: 600; padding: 8px 0; text-align: right;">${coachName}</td>
+                  </tr>
+                  <tr>
+                    <td style="font-size: 15px; color: #a0a0a0; padding: 8px 0;">Date:</td>
+                    <td style="font-size: 15px; color: #ffffff; font-weight: 600; padding: 8px 0; text-align: right;">${lessonDate}</td>
+                  </tr>
+                  <tr>
+                    <td style="font-size: 15px; color: #a0a0a0; padding: 8px 0;">Time:</td>
+                    <td style="font-size: 15px; color: #ffffff; font-weight: 600; padding: 8px 0; text-align: right;">${lessonTime}</td>
+                  </tr>
+                  <tr>
+                    <td style="font-size: 15px; color: #a0a0a0; padding: 8px 0;">Duration:</td>
+                    <td style="font-size: 15px; color: #ffffff; font-weight: 600; padding: 8px 0; text-align: right;">${duration} minutes</td>
+                  </tr>
+                  <tr>
+                    <td style="font-size: 15px; color: #a0a0a0; padding: 8px 0; border-top: 1px solid #3a3a3a;">Amount Due:</td>
+                    <td style="font-size: 18px; color: #8b4513; font-weight: 700; padding: 8px 0; text-align: right; border-top: 1px solid #3a3a3a;">${amount}</td>
+                  </tr>
+                </table>
+              </div>
+
+              <!-- CTA Button -->
+              <div style="text-align: center; margin: 40px 0;">
+                <a href="${frontendUrl}/dashboard" style="display: inline-block; padding: 14px 32px; background-color: #8b4513; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 600;">
+                  Complete Payment
+                </a>
+              </div>
+
+              <p style="margin: 30px 0 0 0; font-size: 14px; line-height: 1.6; color: #a0a0a0; text-align: center;">
+                This reservation is not confirmed until payment is complete. You can pay
+                anytime from your dashboard.
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding: 30px 40px; background-color: #0f0f0f; text-align: center;">
+              <p style="margin: 0 0 10px 0; font-size: 14px; color: #808080;">
+                BooGMe - AI-Powered Chess Coaching Marketplace
+              </p>
+              <p style="margin: 0; font-size: 12px; color: #606060;">
+                Questions? Reply to this email or visit our <a href="${frontendUrl}/help" style="color: #8b4513; text-decoration: none;">Help Center</a>
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `;
+}
+
 export function getStudentBookingConfirmationEmail(
   studentName: string,
   coachName: string,

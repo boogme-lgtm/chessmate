@@ -20,10 +20,23 @@ export default function LessonPaymentSuccess() {
   const searchParams = new URLSearchParams(location.split('?')[1]);
   const paymentStatus = searchParams.get('payment');
 
+  const utils = trpc.useUtils();
+
   const { data: lesson, isLoading } = trpc.booking.getBookingById.useQuery(
     { id: lessonId! },
     { enabled: !!lessonId && paymentStatus !== 'cancelled' }
   );
+
+  // S44-3: After a successful payment, the lesson status changes via the Stripe
+  // webhook (pending_payment → payment_collected). Invalidate the student's lesson
+  // list so the dashboard re-fetches and shows the updated status instead of a
+  // stale "Awaiting Payment" when the user navigates back.
+  useEffect(() => {
+    if (lessonId && paymentStatus !== 'cancelled') {
+      utils.lesson.myLessons.invalidate();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lessonId, paymentStatus]);
 
   // Show cancel page if payment was cancelled (after all hooks)
   if (paymentStatus === 'cancelled') {

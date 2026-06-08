@@ -444,14 +444,18 @@ export async function getLessonsByStudent(studentId: number, limit: number = 50)
   const db = await getDb();
   if (!db) return [];
 
-  // Use raw SQL to avoid Drizzle transaction isolation issues
+  // Use raw SQL to avoid Drizzle transaction isolation issues.
+  // LEFT JOIN users to resolve the coach's display name (coachName) so the
+  // student dashboard can render "Lesson with <Coach>" instead of a raw ID.
   const result: any = await db.execute(sql`
-    SELECT * FROM lessons 
-    WHERE studentId = ${studentId} 
-    ORDER BY scheduledAt DESC 
+    SELECT l.*, u.name AS coachName
+    FROM lessons l
+    LEFT JOIN users u ON u.id = l.coachId
+    WHERE l.studentId = ${studentId}
+    ORDER BY l.scheduledAt DESC
     LIMIT ${limit}
   `);
-  
+
   return result[0] || [];
 }
 

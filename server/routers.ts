@@ -18,6 +18,7 @@ import {
   getCoachCancellationEmail,
   getCoachNewBookingRequestEmail,
   getStudentCoachConfirmedEmail,
+  getStudentBookingReservedEmail,
 } from "./emailService";
 import { sendNurtureEmails, sendNurtureEmailsManual } from "./nurtureEmailScheduler";
 import { resendWelcomeEmails } from "./resendWelcomeEmails";
@@ -1116,8 +1117,42 @@ export const appRouter = router({
           await db.updateUserType(ctx.user.id, "both");
         }
 
-        // Coach is NOT notified at booking time. They will be notified
-        // only after the student completes payment (webhook → payment_collected).
+        // S44-6: Send the student a booking-RESERVED email prompting payment.
+        // Fire-and-forget — never block or fail the booking on email errors.
+        // NOTE: the coach is intentionally NOT emailed here. Per the payment-first
+        // model the coach is only notified after payment (webhook → payment_collected),
+        // because confirmAsCoach requires status 'payment_collected' — a booking-time
+        // accept link would dead-end.
+        (async () => {
+          try {
+            const [student, coach] = await Promise.all([
+              db.getUserById(ctx.user.id),
+              db.getUserById(input.coachId),
+            ]);
+            if (!student?.email) return;
+            const lessonDate = new Date(input.scheduledAt).toLocaleDateString("en-US", {
+              weekday: "long", year: "numeric", month: "long", day: "numeric",
+            });
+            const lessonTime = new Date(input.scheduledAt).toLocaleTimeString("en-US", {
+              hour: "numeric", minute: "2-digit", hour12: true,
+            });
+            await sendEmail({
+              to: student.email,
+              subject: `Complete payment to confirm your lesson with ${coach?.name || "your coach"}`,
+              html: getStudentBookingReservedEmail(
+                student.name || "Student",
+                coach?.name || "Your Coach",
+                lessonDate,
+                lessonTime,
+                input.durationMinutes,
+                `$${(amountCents / 100).toFixed(2)}`,
+                lesson.id
+              ),
+            });
+          } catch (err) {
+            console.error(`[lesson.book] Failed to send booking-reserved email for lesson ${lesson.id}:`, err);
+          }
+        })();
 
         // Return complete lesson object to avoid transaction isolation issues
         return { success: true, lessonId: lesson.id, lesson };

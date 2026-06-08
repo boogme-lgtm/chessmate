@@ -105,7 +105,23 @@ export function StudentDashboardContent({ user }: { user: any }) {
 
   const { data: lessons, isLoading } = trpc.lesson.myLessons.useQuery(
     { limit: 50 },
-    { enabled: !!user }
+    {
+      enabled: !!user,
+      // S44-3: keep status fresh after returning from Stripe checkout.
+      // Always refetch on mount/focus, and poll briefly while any lesson is in a
+      // transient state (awaiting payment, or paid+awaiting coach) so a webhook
+      // that lands a moment after the redirect still flips the UI without a manual
+      // refresh. Polling only runs while the tab is focused (react-query default).
+      refetchOnMount: "always",
+      refetchOnWindowFocus: true,
+      refetchInterval: (query) => {
+        const data = query.state.data as any[] | undefined;
+        const hasTransient = (data || []).some(
+          (l) => l.status === "pending_payment" || l.status === "payment_collected"
+        );
+        return hasTransient ? 8000 : false;
+      },
+    }
   );
 
   const lessonIds = (lessons || []).map((l: any) => l.id);
@@ -576,7 +592,7 @@ function LessonCard({ lesson, isPast = false, unreadCount = 0 }: LessonCardProps
             <div className="flex-1">
               <div className="flex items-center gap-3 mb-3">
                 <h3 className="text-lg font-semibold">
-                  Lesson with Coach #{lesson.coachId}
+                  Lesson with {lesson.coachName || `Coach #${lesson.coachId}`}
                 </h3>
                 {getStatusBadge()}
               </div>
@@ -843,7 +859,7 @@ function LessonCard({ lesson, isPast = false, unreadCount = 0 }: LessonCardProps
         open={showMessageThread}
         onOpenChange={setShowMessageThread}
         lessonId={lesson.id}
-        otherPartyName={`Coach #${lesson.coachId}`}
+        otherPartyName={lesson.coachName || `Coach #${lesson.coachId}`}
       />
     </>
   );
