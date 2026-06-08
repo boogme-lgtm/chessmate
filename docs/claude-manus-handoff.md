@@ -236,6 +236,31 @@ corrections to the handoff's assumptions are flagged below as review asks.
 - `pnpm test`: **353 passing** (19 files; +5) · `tsc --noEmit`: 0 · `build`: clean ·
   audit unchanged (26/2h/22m/2l).
 
+## 3d. Sprint 44 patch — Email diagnostics (BUILT, commit to merge: see latest)
+
+All P1–P5 implemented. No money path, no template changes.
+- **P1/P2** `server/emailService.ts`: startup warning if `RESEND_API_KEY` unset; pre-send
+  log line; plus sendEmail now short-circuits on an empty key (warn + `{success:false}`)
+  instead of a silent 401. (Minor enhancement beyond the literal spec — flagged here.)
+- **P3** `admin.system.testEmail` (`adminProcedure`) returns the raw `sendEmail` result.
+  New **/admin/system** page with a "Send Test Email" button (defaults to the admin's
+  own email, shows the raw result); "System" added to `AdminNav` everywhere.
+- **P4** `lesson.book`: warn+skip when student has no email; log recipient before send.
+- **P5** `server/webhooks.ts`: warn when student/coach can't be resolved for a paid lesson.
+- **server/sprint44patch.test.ts**: empty-key warn+`{success:false}`; testEmail returns
+  `{success:false}` (no throw) + admin-gated.
+
+### Review asks (the live diagnostic you should run)
+1. Go to **/admin/system**, enter your email, click **Send Test Email**, report the raw
+   result. `{success:false, error:{statusCode:401}}` ⇒ `RESEND_API_KEY` missing/wrong in
+   the deployed env. `{success:true, id:"..."}` ⇒ delivery works; the live-test miss was
+   elsewhere.
+2. If the test email succeeds but booking emails still don't arrive, check whether
+   `student.email` is populated for Manus-OAuth users (P4's new warn log will say
+   `Student <id> has no email address` in that case).
+
+Verification: 356 tests, tsc 0, build clean, audit unchanged.
+
 ## 4. Remaining open items
 
 - **Live Stripe end-to-end test** — needs a human with Stripe test cards; I can't run
