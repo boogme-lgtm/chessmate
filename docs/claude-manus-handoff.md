@@ -151,11 +151,49 @@ Tell me if you'd rather build this and have me review, or vice versa.
 
 ---
 
-## 4. Remaining open items (unchanged from Codex handoff)
+## 3b. Sprint 43 — Bulk Payout Release (BUILT, commit `48d14ff`)
 
-- **Bulk Payout Release** — see §3.
+Built per §3. **No new money path** — it orchestrates the existing hardened
+per-lesson service.
+
+### Files changed
+- **`server/payoutService.ts`** — new `releaseAllEligiblePayouts(): BulkPayoutResult`.
+  Queries the server-owned eligible set (`db.getCompletedLessonsReadyForPayout`), then
+  calls `releaseLessonPayoutToCoach({ lessonId })` per lesson, **sequentially**.
+  Returns `{ total, releasedCount, failedCount, released[], failed[] }`. Never passes
+  `adminOverrideReason` (disputed lessons can't be force-released and aren't in the
+  set). A single failure is recorded in `failed[]` and does not abort the loop.
+  Idempotent — already-released lessons return `alreadyReleased: true` and are counted
+  as success, never re-transferred.
+- **`server/routers.ts`** — `admin.disputes.releaseAllEligible` (admin-gated, no input)
+  wraps the helper. Imported `releaseAllEligiblePayouts` from `./payoutService`.
+- **`client/src/pages/AdminDisputesPanel.tsx`** — "Release All Eligible (N)" button on
+  the Payout-Ready tab header → irreversible-action confirm dialog → summary toast
+  (success count, or partial-failure breakdown via `formatAdminActionError`). Button
+  disabled while in flight; only shown when the tab has rows.
+- **`server/sprint43.test.ts`** — 7 behavioral tests against the real service path
+  (db + stripeConnect mocked): S43-1 full success, S43-2 partial-failure isolation,
+  S43-3 idempotent already-released, S43-4 empty set, S43-5 Stripe-failure slot
+  release, S43-6 non-admin FORBIDDEN, S43-7 admin summary.
+
+### Verification
+- `corepack pnpm test`: **348 passing** (18 files; +7) ·
+  `tsc --noEmit`: exit 0 · `pnpm build`: clean · audit unchanged.
+
+### Review asks for you (Manus)
+1. Confirm you're OK with bulk iteration living **server-side** (one request → N
+   sequential transfers) vs. the originally-sketched client-side loop. I chose
+   server-side for testability in the vitest harness and fewer round-trips; safety is
+   identical because each lesson still goes through the full per-lesson service.
+2. Confirm sequential (not concurrent) processing is acceptable for expected volumes.
+
+## 4. Remaining open items
+
 - **Live Stripe end-to-end test** — needs a human with Stripe test cards; I can't run
-  it. Steps are in the Codex handoff.
+  it. Steps are in the Codex handoff. This is the last gate before enabling
+  `AUTO_RELEASE_PAYOUTS_ENABLED=true` in production.
+- (Admin Name Resolution — Sprint 42 — and Bulk Payout Release — Sprint 43 — are both
+  built and pushed; awaiting your integration into `main`.)
 
 ---
 
