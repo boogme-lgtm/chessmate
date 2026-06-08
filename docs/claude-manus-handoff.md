@@ -1,0 +1,170 @@
+# Claude → Manus Handoff: Sprint 42 (Admin Name Resolution)
+
+Last updated: 2026-06-08
+Author: Claude Code
+Branch: `claude/code-audit-review-icD40` (HEAD `d47d89e`)
+
+This is the first Claude→Manus handoff in the Codex+Manus review loop. It explains
+exactly what I did so you can review it, integrate it into `main`, and continue the
+back-and-forth. I followed the conventions in `docs/...` / the Codex handoff:
+name exact files/functions, state behavior, require behavioral tests + verification.
+
+---
+
+## 0. Branch / sync state (read this first)
+
+There are two active lines of work and we must not let them silently diverge:
+
+- **`origin/main`** — your authoritative build (Sprint 27→41).
+- **`claude/code-audit-review-icD40`** — my working branch. I cannot push to `main`
+  directly, so my completed work lands here and needs to be merged into `main` by
+  you / the maintainer.
+
+What I did before any feature work:
+
+1. `git merge origin/main` into my branch. The only conflicts were two add/add
+   collisions on homepage-v2 scaffolding files that *both* sides had created:
+   - `client/src/components/BgMark.tsx`
+   - `client/src/components/hero/QuizResultMockup.tsx`
+   Both were functionally identical; I kept **main's** (prettier-formatted) version
+   for each. Merge commit: `de02843`.
+2. My branch now contains all of Sprint 27→41 **plus** my Sprint 42 work, and is
+   `0` commits behind `origin/main`.
+
+**Proposed sync discipline going forward** (please confirm):
+- You keep committing sprints to `main`.
+- Before each new task I `git merge origin/main` into my branch so I'm current.
+- My finished work (a single squashed/merged feature commit) gets pulled into `main`
+  by the maintainer. I will always state the exact commit SHA to merge.
+
+> Note: a stray 111 KB file literally named `design claude` is present in `main`'s
+> tree (came in via your history, looks like an accidental commit). I left it
+> untouched. Flagging in case you want to remove it.
+
+---
+
+## 1. Verification baseline (re-confirmed on merged branch)
+
+I re-ran the full baseline after the merge, before writing any code. All three match
+the Codex handoff numbers exactly:
+
+| Check | Result |
+|---|---|
+| `corepack pnpm test` | **337 passing** (16 files) — pre-Sprint-42 |
+| `corepack pnpm exec tsc --noEmit` | exit 0 |
+| `corepack pnpm audit --prod` | 26 total / 2 high / 22 moderate / 2 low |
+
+The 2 high advisories remain the documented transitive `lodash` / `lodash-es`
+issues via `recharts` and `streamdown → mermaid`. No regressions introduced.
+
+I also spot-reviewed the core money paths against the 10 invariants
+(`payoutService.releaseLessonPayoutToCoach`, `claimLessonPayoutSlot`,
+`finalizeLessonPayout`, `releaseLessonPayoutSlot`, `claimLessonCoachDecision`).
+All CAS helpers are correctly conditional (`WHERE ... IS NULL` / sentinel guards),
+Stripe is only called after a slot is claimed, idempotency keys are deterministic,
+and terminal state is written only after Stripe success. No issues found.
+
+---
+
+## 2. Sprint 42 — what I built (Admin Name Resolution)
+
+**Goal (from the Codex handoff "Open Items"):** the Admin Disputes Panel showed raw
+numeric student/coach IDs. Resolve them to display names + emails via a batched
+admin-only procedure.
+
+**This is read-only. No money path, no state machine, no Stripe call was touched.**
+
+Feature commit: **`d47d89e`** (merge this into `main`).
+
+### Files changed
+
+**`server/db.ts`**
+- New: `getUsersByIds(ids: number[]): Promise<{id, name, email}[]>`
+  - De-dupes input, filters non-positive/non-integer ids, returns only existing rows.
+  - Uses drizzle `inArray` (added `inArray` to the existing `drizzle-orm` import).
+
+**`server/routers.ts`**
+- New sub-router `admin.users` with one procedure:
+  - `admin.users.getByIds` — `protectedProcedure` + the same
+    `if (ctx.user.role !== "admin") throw FORBIDDEN` `.use()` middleware the rest of
+    the admin router uses.
+  - Input: `{ ids: z.array(z.number().int().positive()).max(200) }`.
+  - Short-circuits `[]` for an empty list (no DB hit); otherwise delegates to
+    `db.getUsersByIds`.
+  - Placed immediately after the `disputes` sub-router, before `waitlist`.
+
+**`client/src/pages/AdminDisputesPanel.tsx`**
+- Collects every `studentId` + `coachId` across **both** tabs (disputed +
+  payout-ready) into a de-duped list via `useMemo`.
+- Calls `trpc.admin.users.getByIds` (enabled only for admins with a non-empty id
+  list) and builds a `Map<number, {name, email}>`.
+- `LessonTableRow` now takes optional `student` / `coach` props and renders names +
+  emails in the Parties cell, with raw IDs kept as secondary mono debug text.
+- Graceful fallback to `Student #N` / `#N` when a name is unresolved.
+
+**`server/sprint42.test.ts`** (new) — 4 behavioral tests via `appRouter.createCaller`:
+- `S42-1` admin caller gets mapped rows; asserts `db.getUsersByIds` called with ids.
+- `S42-2` non-admin caller → `FORBIDDEN`, and db is **not** called.
+- `S42-3` empty id list short-circuits, db **not** called.
+- `S42-4` missing ids are omitted (only existing rows returned).
+
+### Verification after my change
+
+| Check | Result |
+|---|---|
+| `corepack pnpm test` | **341 passing** (17 files; +4 new) |
+| `corepack pnpm exec tsc --noEmit` | exit 0 |
+| `corepack pnpm build` | clean |
+| `corepack pnpm audit --prod` | unchanged (26 / 2 / 22 / 2) |
+
+### Review asks for you (Manus)
+
+1. Confirm the `admin.users.getByIds` placement and the 200-id cap are acceptable.
+2. Confirm you're OK reusing this generic lookup elsewhere (e.g. admin applications),
+   or whether you'd prefer it scoped under `admin.disputes`.
+3. Any preference on showing email vs. name-only in the Parties cell for PII reasons?
+
+---
+
+## 3. Next agreed task — Bulk Payout Release (spec, not yet built)
+
+From the Codex open items. I plan to implement this next unless you want it.
+
+**Goal:** a "Release All Eligible" action on the Payout-Ready tab that iterates the
+visible payout-ready lessons and calls the **existing** `admin.disputes.releasePayout`
+mutation for each — **no new backend money path**.
+
+**Constraints (must preserve invariants 1–10):**
+- Reuse `releaseLessonPayoutToCoach` via the existing procedure only.
+- Per-lesson sequential calls; surface a progress count and a partial-failure summary
+  (e.g. "7 of 9 released, 2 failed: #id — reason").
+- Only the payout-ready tab (status `completed`, window expired); never auto-release
+  disputed lessons (those require a per-lesson admin override reason).
+- Idempotent/safe under double-click; disable the button while running.
+- No client-trusted amounts/eligibility — server still enforces everything.
+
+**Proposed test (`server/sprint43.test.ts`):** behavioral test that a bulk helper
+calls `releasePayout` once per eligible lesson, aggregates successes/conflicts, and
+does not throw on individual `CONFLICT`/`PRECONDITION_FAILED` results.
+
+Tell me if you'd rather build this and have me review, or vice versa.
+
+---
+
+## 4. Remaining open items (unchanged from Codex handoff)
+
+- **Bulk Payout Release** — see §3.
+- **Live Stripe end-to-end test** — needs a human with Stripe test cards; I can't run
+  it. Steps are in the Codex handoff.
+
+---
+
+## 5. Collaboration protocol going forward
+
+1. Whoever implements names exact files/functions and writes behavioral tests that
+   exercise the production path (not source-string assertions).
+2. Always run and report `pnpm test`, `pnpm exec tsc --noEmit`, and `pnpm audit --prod`.
+3. State changed files, the exact commit SHA, and remaining risks.
+4. Reviewer returns concrete findings or a precise prompt; implementer patches; repeat
+   until no deploy blocker remains.
+5. Keep money-path changes behind the 10 invariants in the Codex handoff §"Invariants".
