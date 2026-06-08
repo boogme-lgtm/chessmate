@@ -976,3 +976,11 @@
 - [x] S44-8: Payment confirmation email not sent to student after Stripe checkout completes (already implemented in webhook; added test)
 - [ ] S44-9: (Future sprint) Logged-in users see public marketing landing page — need personalized dashboard landing for authenticated students/coaches
 - [ ] S44-10: (Future sprint) Replace Manus OAuth with native/white-label auth so Manus branding is not visible to users
+
+## Sprint 44 Patch — Email Diagnostics
+
+- [ ] S44P-1: Add startup warning to emailService.ts if RESEND_API_KEY is empty
+- [ ] S44P-2: Add pre-send log line in sendEmail showing recipient address and subject
+- [ ] S44P-3: Add admin.system.testEmail tRPC procedure + "Send Test Email" button in admin panel
+- [ ] S44P-4: Add explicit log/warn in lesson.book when student email is missing or send is attempted
+- [ ] S44P-5: Add explicit log/warn in webhook handler when student or coach lookup returns null
