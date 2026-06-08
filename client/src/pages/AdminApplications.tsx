@@ -34,6 +34,28 @@ import {
 import { toast } from "sonner";
 import { getCountryName } from "@shared/countries";
 import { format } from "date-fns";
+import { Link } from "wouter";
+
+function AdminNav({ active }: { active: "applications" | "waitlist" | "disputes" }) {
+  const links = [
+    { href: "/admin/applications", label: "Applications", key: "applications" },
+    { href: "/admin/waitlist", label: "Waitlist", key: "waitlist" },
+    { href: "/admin/disputes", label: "Disputes & Payouts", key: "disputes" },
+  ] as const;
+  return (
+    <nav className="flex gap-2 mb-8 border-b border-border pb-4">
+      {links.map((l) => (
+        <Link key={l.key} href={l.href}>
+          <span className={`px-4 py-2 rounded-md text-sm font-medium transition-colors cursor-pointer ${
+            active === l.key
+              ? "bg-primary text-primary-foreground"
+              : "text-muted-foreground hover:text-foreground hover:bg-accent"
+          }`}>{l.label}</span>
+        </Link>
+      ))}
+    </nav>
+  );
+}
 
 type ApplicationStatus = "pending" | "under_review" | "approved" | "rejected" | "withdrawn";
 
@@ -202,6 +224,8 @@ export default function AdminApplications() {
             Review and manage coach applications
           </p>
         </div>
+
+        <AdminNav active="applications" />
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

@@ -24,6 +24,8 @@ import { resendWelcomeEmails } from "./resendWelcomeEmails";
 import { storagePut } from "./storage";
 import { sendEmail as sendSimpleEmail, getCoachWelcomeEmail } from "./email";
 import { notifyOwner } from "./_core/notification";
+import { transferToCoach } from "./stripeConnect";
+import { releaseLessonPayoutToCoach } from "./payoutService";
 
 /**
  * Send cancellation confirmation emails to both student and coach.
@@ -176,7 +178,11 @@ export const appRouter = router({
       .mutation(async ({ ctx, input }) => {
         const user = await db.getUserById(ctx.user.id);
         if (!user) throw new TRPCError({ code: "NOT_FOUND" });
-        if (user.password && input.password) {
+        // P2-1: If user has a password (non-OAuth), REQUIRE it for deletion
+        if (user.password) {
+          if (!input.password) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Password is required to delete your account" });
+          }
           const { comparePassword } = await import("./auth");
           const valid = await comparePassword(input.password, user.password);
           if (!valid) {
@@ -206,14 +212,28 @@ export const appRouter = router({
       return { code };
     }),
 
-    recordSignup: publicProcedure
-      .input(z.object({ code: z.string().min(1), userId: z.number() }))
-      .mutation(async ({ input }) => {
+    // P2-2 + R2-4: Bind referral recording to authenticated user with duplicate prevention
+    recordSignup: protectedProcedure
+      .input(z.object({ code: z.string().min(1) }))
+      .mutation(async ({ ctx, input }) => {
         const ref = await db.getReferralCodeByCode(input.code);
         if (!ref) return { success: false };
-        await db.createReferral({ referralCodeId: ref.id, referredUserId: input.userId });
+        // Prevent self-referral
+        if (ref.coachId === ctx.user.id) return { success: false };
+
+        // R2-4: Handle duplicate gracefully — unique constraint on referredUserId
+        // means the same user can only be referred once (idempotent).
+        try {
+          await db.createReferral({ referralCodeId: ref.id, referredUserId: ctx.user.id });
+        } catch (err: any) {
+          // MySQL duplicate entry error (ER_DUP_ENTRY = 1062)
+          if (err?.errno === 1062 || err?.code === 'ER_DUP_ENTRY') {
+            return { success: true, alreadyReferred: true };
+          }
+          throw err;
+        }
         await db.incrementReferralCodeUses(ref.id);
-        return { success: true };
+        return { success: true, alreadyReferred: false };
       }),
 
     validateCode: publicProcedure
@@ -708,40 +728,54 @@ export const appRouter = router({
 
     // Start Stripe Connect onboarding
     startOnboarding: protectedProcedure.mutation(async ({ ctx }) => {
-      const user = await db.getUserById(ctx.user.id);
-      if (!user) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
-      }
+      try {
+        console.log("[Onboarding] Starting for user:", ctx.user.id);
+        const user = await db.getUserById(ctx.user.id);
+        if (!user) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
+        }
 
-      let accountId = user.stripeConnectAccountId;
+        let accountId = user.stripeConnectAccountId;
 
-      // Create Connect account if doesn't exist
-      if (!accountId) {
-        // Stripe requires ISO 3166-1 alpha-2 codes. New records already store
-        // codes; legacy records may still have full country names which
-        // toCountryCode normalizes. Unresolved values fall back to "US".
-        const countryCode = toCountryCode(user.country, "US");
-        const account = await stripeService.createConnectAccount(
-          user.email || "",
-          user.id,
-          countryCode
+        // Create Connect account if doesn't exist
+        if (!accountId) {
+          // Stripe requires ISO 3166-1 alpha-2 codes. New records store codes;
+          // legacy records may have full country names — toCountryCode handles both.
+          const countryCode = toCountryCode(user.country, "US");
+          console.log("[Onboarding] Creating Connect account for:", user.email, "country:", user.country, "->", countryCode);
+          const account = await stripeService.createConnectAccount(
+            user.email || "",
+            user.id,
+            countryCode
+          );
+          accountId = account.id;
+          console.log("[Onboarding] Connect account created:", accountId);
+          await db.updateUserStripeConnectAccount(user.id, accountId, false);
+        } else {
+          console.log("[Onboarding] Using existing Connect account:", accountId);
+        }
+
+        // Generate onboarding link
+        const baseUrl = ENV.frontendUrl || (ENV.isProduction 
+          ? "https://boogme.com" 
+          : "http://localhost:3000");
+        console.log("[Onboarding] Using baseUrl:", baseUrl);
+        
+        const onboardingLink = await stripeService.createConnectOnboardingLink(
+          accountId,
+          `${baseUrl}/coach/onboarding/refresh`,
+          `${baseUrl}/coach/onboarding/complete`
         );
-        accountId = account.id;
-        await db.updateUserStripeConnectAccount(user.id, accountId, false);
+        console.log("[Onboarding] Link generated successfully");
+        return { url: onboardingLink.url };
+      } catch (err: any) {
+        console.error("[Onboarding] ERROR:", err.message, "type:", err.type, "code:", err.code, "statusCode:", err.statusCode);
+        if (err instanceof TRPCError) throw err;
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Stripe onboarding failed: ${err.message}`,
+        });
       }
-
-      // Generate onboarding link
-      const baseUrl = ENV.isProduction 
-        ? "https://boogme.com" 
-        : "http://localhost:3000";
-      
-      const onboardingLink = await stripeService.createConnectOnboardingLink(
-        accountId,
-        `${baseUrl}/coach/onboarding/refresh`,
-        `${baseUrl}/coach/onboarding/complete`
-      );
-
-      return { url: onboardingLink.url };
     }),
 
     /**
@@ -827,7 +861,8 @@ export const appRouter = router({
         experienceYears: z.number().min(0).max(50).optional(),
         languages: z.array(z.string()).optional(),
         hourlyRateCents: z.number().min(500).max(100000).optional(),
-        pricingTier: z.enum(["free", "pro", "elite"]).optional(),
+        // P1-1: pricingTier removed from client input — tier changes are server-owned
+        // (subscription billing or admin-only). Coaches cannot self-select lower fees.
         availabilitySchedule: z.record(z.string(), z.object({
           enabled: z.boolean(),
           slots: z.array(z.object({ start: z.string(), end: z.string() })),
@@ -884,13 +919,9 @@ export const appRouter = router({
         if (input.onboardingCompleted) coachUpdate.onboardingCompletedAt = new Date();
         if (input.profileActive) coachUpdate.profileActivatedAt = new Date();
         if (input.guidelinesAgreed) coachUpdate.guidelinesAgreedAt = new Date();
-        // Keep legacy commissionRate in sync with the new pricingTier so old
-        // booking code paths that read commissionRate stay consistent.
-        // TODO: implement tier subscription billing for Pro/Elite — until
-        // then all coaches effectively run on Free tier pricing in production.
-        if (input.pricingTier) {
-          coachUpdate.commissionRate = PRICING_TIERS[input.pricingTier as PricingTier].platformFeePercent;
-        }
+        // P1-1: pricingTier is server-owned. Coaches cannot change their commission
+        // rate through profile updates. Tier changes happen only through subscription
+        // billing or admin action. All coaches default to Free tier until billing is live.
 
         if (Object.keys(coachUpdate).length > 0) {
           await db.updateCoachProfile(ctx.user.id, coachUpdate as any);
@@ -1064,7 +1095,9 @@ export const appRouter = router({
         const commissionCents = breakdown.platformFeeCents;
         const coachPayoutCents = breakdown.coachPayoutCents;
 
-        // Create lesson (db.createLesson auto-sets confirmationDeadline to now+24h)
+        // Create lesson as pending_payment — student must pay before coach is notified.
+        // confirmationDeadline is set by db.createLesson (now+24h) but only
+        // starts mattering after payment_collected when the coach sees it.
         const lesson = await db.createLesson({
           studentId: ctx.user.id,
           coachId: input.coachId,
@@ -1075,7 +1108,7 @@ export const appRouter = router({
           amountCents,
           commissionCents,
           coachPayoutCents,
-          status: "pending_confirmation",
+          status: "pending_payment",
         });
 
         // If a coach is booking a lesson as a student for the first time, promote to "both"
@@ -1083,45 +1116,8 @@ export const appRouter = router({
           await db.updateUserType(ctx.user.id, "both");
         }
 
-        // Best-effort "new booking request" email to the coach.
-        (async () => {
-          try {
-            const [coach, student] = await Promise.all([
-              db.getUserById(input.coachId),
-              db.getUserById(ctx.user.id),
-            ]);
-            if (!coach?.email) return;
-            const lessonDate = new Date(input.scheduledAt).toLocaleDateString("en-US", {
-              weekday: "long", year: "numeric", month: "long", day: "numeric",
-            });
-            const lessonTime = new Date(input.scheduledAt).toLocaleTimeString("en-US", {
-              hour: "numeric", minute: "2-digit", hour12: true,
-            });
-            const deadline = new Date(Date.now() + 24 * 60 * 60 * 1000);
-            const confirmByDate = deadline.toLocaleDateString("en-US", {
-              weekday: "long", month: "long", day: "numeric",
-            });
-            const confirmByTime = deadline.toLocaleTimeString("en-US", {
-              hour: "numeric", minute: "2-digit", hour12: true,
-            });
-            await sendEmail({
-              to: coach.email,
-              subject: `New lesson request from ${student?.name || "a student"}`,
-              html: getCoachNewBookingRequestEmail({
-                coachName: coach.name || "Coach",
-                studentName: student?.name || "Student",
-                lessonDate,
-                lessonTime,
-                durationMinutes: input.durationMinutes,
-                coachPayout: `$${(coachPayoutCents / 100).toFixed(2)}`,
-                confirmByDate,
-                confirmByTime,
-              }),
-            });
-          } catch (err) {
-            console.error(`[lesson.book] Failed to send coach new-booking email for lesson ${lesson.id}:`, err);
-          }
-        })();
+        // Coach is NOT notified at booking time. They will be notified
+        // only after the student completes payment (webhook → payment_collected).
 
         // Return complete lesson object to avoid transaction isolation issues
         return { success: true, lessonId: lesson.id, lesson };
@@ -1156,15 +1152,23 @@ export const appRouter = router({
         if (lesson.coachId !== ctx.user.id) {
           throw new TRPCError({ code: "FORBIDDEN", message: "Not your lesson" });
         }
-        if (lesson.status !== "pending_confirmation") {
+        // Payment-first model: coach can only accept PAID booking requests.
+        if (lesson.status !== "payment_collected") {
           throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Lesson cannot be confirmed in its current state" });
         }
 
-        await db.updateLessonStatus(input.lessonId, "confirmed", {
-          coachConfirmedAt: new Date(),
-        });
+        // S29-1: Atomic CAS — claim the lesson from payment_collected → confirmed in one UPDATE.
+        // If a concurrent decline request won the race first, this returns false and we reject.
+        // Emails are only sent AFTER the CAS succeeds.
+        const claimed = await db.claimLessonCoachDecision(input.lessonId, "confirmed");
+        if (!claimed) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "This lesson was already acted on by a concurrent request. Please refresh and try again.",
+          });
+        }
 
-        // Notify the student that they can now complete payment.
+        // CAS won — send confirmation email now (after state transition is committed)
         (async () => {
           try {
             const [student, coach] = await Promise.all([
@@ -1180,7 +1184,7 @@ export const appRouter = router({
             });
             await sendEmail({
               to: student.email,
-              subject: `${coach?.name || "Your coach"} accepted your lesson — complete payment`,
+              subject: `${coach?.name || "Your coach"} accepted your lesson — you're all set!`,
               html: getStudentCoachConfirmedEmail({
                 studentName: student.name || "Student",
                 coachName: coach?.name || "Your Coach",
@@ -1199,7 +1203,9 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    // Decline lesson (coach)
+    // Decline lesson (coach) — payment-first model
+    // Coach decline always triggers a FULL refund (100%) regardless of timing,
+    // because the student paid upfront and the coach is choosing not to accept.
     declineAsCoach: coachProcedure
       .input(z.object({
         lessonId: z.number(),
@@ -1213,22 +1219,79 @@ export const appRouter = router({
         if (lesson.coachId !== ctx.user.id) {
           throw new TRPCError({ code: "FORBIDDEN", message: "Not your lesson" });
         }
-        if (lesson.status !== "pending_confirmation") {
+        // Payment-first model: coach can only decline PAID booking requests.
+        if (lesson.status !== "payment_collected") {
           throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Lesson cannot be declined in its current state" });
         }
 
-        const result = await db.cancelLesson(input.lessonId, 'coach', input.reason || 'Declined by coach');
-        // Best-effort cancellation confirmation emails. Awaited so errors are
-        // visible in logs, but wrapped in try/catch inside the helper so they
-        // can't fail the mutation.
+        // S29-1: Atomic CAS — claim the lesson from payment_collected → decline_pending.
+        // This prevents a concurrent confirmAsCoach from also acting on the same lesson.
+        // If the accept request won the race first, this returns false and we reject.
+        const claimed = await db.claimLessonCoachDecision(input.lessonId, "decline_pending");
+        if (!claimed) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "This lesson was already acted on by a concurrent request. Please refresh and try again.",
+          });
+        }
+
+        // Full refund — coach decline is always 100% regardless of timing
+        const refundAmountCents = lesson.amountCents;
+
+        // No payment intent — data integrity issue; finalize decline without refund
+        if (!lesson.stripePaymentIntentId) {
+          await db.finalizeCoachDecline(
+            input.lessonId,
+            0,
+            `${input.reason || 'Declined by coach'} (WARNING: no stripePaymentIntentId — manual refund required)`
+          );
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Lesson declined but no payment intent found — contact support to process your refund manually",
+          });
+        }
+
+        // Attempt full Stripe refund.
+        // If it fails, release the CAS claim back to payment_collected so admin can retry.
+        // S31-2: Deterministic idempotency key — same key used in recovery so Stripe deduplicates.
+        let refundSucceeded = false;
+        try {
+          await stripeService.createRefund(
+            lesson.stripePaymentIntentId,
+            undefined, // full refund
+            "requested_by_customer",
+            `lesson_decline_refund_${input.lessonId}`
+          );
+          refundSucceeded = true;
+        } catch (stripeErr) {
+          console.error(`[declineAsCoach] Stripe refund failed for lesson ${input.lessonId}:`, stripeErr);
+        }
+
+        if (!refundSucceeded) {
+          // Release the CAS claim — lesson returns to payment_collected for admin retry.
+          await db.releaseCoachDeclineClaim(input.lessonId);
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Decline recorded but refund could not be processed. Our team will retry your refund automatically.",
+          });
+        }
+
+        // Refund succeeded — finalize to declined (decline_pending → declined)
+        await db.finalizeCoachDecline(
+          input.lessonId,
+          refundAmountCents,
+          input.reason || "Declined by coach"
+        );
+
+        // Best-effort email notifications (only sent after successful refund + state finalized)
         await sendCancellationEmails(
           input.lessonId,
           'coach',
           input.reason || 'Declined by coach',
-          result.refundAmountCents,
-          result.refundPercentage,
+          refundAmountCents,
+          100, // always 100% refund on coach decline
         );
-        return { success: true, refundAmountCents: result.refundAmountCents };
+        return { success: true, refundAmountCents };
       }),
 
     // Cancel lesson (student)
@@ -1246,22 +1309,68 @@ export const appRouter = router({
           throw new TRPCError({ code: "FORBIDDEN", message: "Not your lesson" });
         }
 
-        const result = await db.cancelLesson(input.lessonId, 'student', input.reason);
+        // S29-4: Atomic CAS — claim the lesson into cancel_pending before calling Stripe.
+        // This prevents concurrent cancellation attempts and ensures the refund policy
+        // is calculated and locked atomically with the status transition.
+        const claimed = await db.claimLessonCancellation(input.lessonId, 'student', input.reason);
+        if (!claimed) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "This lesson cannot be cancelled in its current state. It may have already been cancelled or completed.",
+          });
+        }
+
+        const { refundAmountCents, refundPercentage } = claimed;
+
+        // Attempt Stripe refund if one is due
+        // S31-2: Deterministic idempotency key — same key used in recovery so Stripe deduplicates.
+        let refundSucceeded = false;
+        if (refundAmountCents > 0 && lesson.stripePaymentIntentId) {
+          try {
+            await stripeService.createRefund(
+              lesson.stripePaymentIntentId,
+              refundAmountCents,
+              "requested_by_customer",
+              `lesson_cancel_refund_${input.lessonId}`
+            );
+            refundSucceeded = true;
+          } catch (stripeErr) {
+            console.error(`[cancel] Stripe refund failed for lesson ${input.lessonId}:`, stripeErr);
+          }
+
+          if (!refundSucceeded) {
+            // Stripe failed — finalize to cancelled but flag the refund failure.
+            // The lesson is still cancelled (student cannot re-book), but admin must retry the refund.
+            await db.releaseCancellationWithRefundFailed(input.lessonId);
+            throw new TRPCError({
+              code: "INTERNAL_SERVER_ERROR",
+              message: "Your lesson has been cancelled but the refund could not be processed. Our team will retry your refund automatically.",
+            });
+          }
+        }
+
+        // Finalize to cancelled (refund succeeded, or no refund was due)
+        await db.finalizeCancellation(input.lessonId, refundSucceeded || refundAmountCents === 0);
+
+        // Only send refund-success emails after confirmed Stripe success (or no-refund case)
         await sendCancellationEmails(
           input.lessonId,
           'student',
           input.reason,
-          result.refundAmountCents,
-          result.refundPercentage,
+          refundAmountCents,
+          refundPercentage,
         );
         return {
           success: true,
-          refundAmountCents: result.refundAmountCents,
-          refundPercentage: result.refundPercentage,
+          refundAmountCents,
+          refundPercentage,
         };
       }),
 
-    // Confirm completion (student) - releases payment
+    // Confirm completion (student) — payment-first model
+    // Payment was already captured at checkout. This starts the 24-hour
+    // issue window. Coach payout is NOT released here — it happens after
+    // the issue window expires without a dispute.
     confirmCompletion: protectedProcedure
       .input(z.object({
         lessonId: z.number(),
@@ -1276,24 +1385,40 @@ export const appRouter = router({
         if (lesson.studentId !== ctx.user.id) {
           throw new TRPCError({ code: "FORBIDDEN", message: "Not your lesson" });
         }
-        if (!["confirmed", "paid"].includes(lesson.status)) {
-          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Lesson cannot be completed in its current state" });
+        // Payment-first model: only confirmed lessons (coach accepted + student paid)
+        // can be marked as completed.
+        if (lesson.status !== "confirmed") {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Lesson must be confirmed before it can be completed" });
+        }
+        // Require a valid payment intent — cannot release funds without one
+        if (!lesson.stripePaymentIntentId) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Payment not recorded for this lesson" });
         }
 
-        // Capture payment (release from escrow)
-        if (lesson.stripePaymentIntentId) {
-          await stripeService.capturePaymentIntent(lesson.stripePaymentIntentId);
+        // Require the lesson end time to have passed.
+        // Use scheduledAt + durationMinutes + 15 min grace period.
+        // This prevents students from confirming completion before the lesson happens,
+        // which would start the 24h issue window prematurely.
+        const durationMs = (lesson.durationMinutes ?? 60) * 60 * 1000;
+        const gracePeriodMs = 15 * 60 * 1000; // 15 minutes
+        const lessonEndTime = new Date(lesson.scheduledAt).getTime() + durationMs + gracePeriodMs;
+        if (Date.now() < lessonEndTime) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "The lesson has not ended yet. Please wait until the lesson is complete before confirming.",
+          });
         }
 
-        // Update lesson status
-        const refundWindowEnds = new Date();
-        refundWindowEnds.setHours(refundWindowEnds.getHours() + 48);
+        // NO capturePaymentIntent — payment was already captured at checkout.
+        // Start the 24-hour issue window instead.
+        const issueWindowEnds = new Date();
+        issueWindowEnds.setHours(issueWindowEnds.getHours() + 24);
 
-        await db.updateLessonStatus(input.lessonId, "released", {
+        await db.updateLessonStatus(input.lessonId, "completed", {
           studentConfirmedAt: new Date(),
           completedAt: new Date(),
-          refundWindowEndsAt: refundWindowEnds,
-          payoutAt: new Date(),
+          issueWindowEndsAt: issueWindowEnds,
+          // DO NOT set payoutAt — payout happens after issue window
         });
 
         // Create review if provided. Also flip visibility on both reviews
@@ -1319,7 +1444,61 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    // Request refund (within 48-hour window)
+    // Raise issue (student) — within 24-hour issue window after completion
+    // Pauses coach payout and marks lesson as disputed for admin resolution.
+    raiseIssue: protectedProcedure
+      .input(z.object({
+        lessonId: z.number(),
+        reason: z.string().min(1, "Please describe the issue"),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const lesson = await db.getLessonById(input.lessonId);
+        if (!lesson) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
+        }
+        if (lesson.studentId !== ctx.user.id) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Not your lesson" });
+        }
+        // Can only raise issues on completed lessons (during issue window)
+        if (lesson.status !== "completed") {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Issues can only be raised for completed lessons" });
+        }
+        // Check 24-hour issue window
+        if (lesson.issueWindowEndsAt && new Date() > lesson.issueWindowEndsAt) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "The 24-hour issue window has expired",
+          });
+        }
+
+        // Mark as disputed — payout is paused until admin resolves
+        await db.updateLessonStatus(input.lessonId, "disputed", {
+          cancellationReason: input.reason,
+        });
+
+        // Notify admin/owner about the dispute
+        try {
+          const student = await db.getUserById(ctx.user.id);
+          await notifyOwner({
+            title: `Lesson Dispute: #${input.lessonId}`,
+            content: `Student ${student?.name || ctx.user.id} raised an issue for lesson #${input.lessonId}: ${input.reason}`,
+          });
+        } catch (err) {
+          console.error(`[raiseIssue] Failed to notify owner for lesson ${input.lessonId}:`, err);
+        }
+
+        return { success: true };
+      }),
+
+    // LEGACY: Request refund (within 48-hour window) — kept for backward compatibility
+    // S30-3: DISABLED — requestRefund is a legacy endpoint that allowed students to refund
+    // lessons in 'released' status. However, 'released' means the coach payout has already been
+    // transferred via Stripe. Refunding after a completed transfer requires a Stripe transfer
+    // reversal, which is not yet implemented. This endpoint is disabled to prevent double-settlement.
+    //
+    // For pre-completion issues: use lesson.raiseIssue (starts a dispute before payout).
+    // For post-payout refunds: an admin must perform a manual transfer reversal in Stripe Dashboard,
+    // then use admin.disputes.refundStudent.
     requestRefund: protectedProcedure
       .input(z.object({
         lessonId: z.number(),
@@ -1334,30 +1513,16 @@ export const appRouter = router({
           throw new TRPCError({ code: "FORBIDDEN", message: "Not your lesson" });
         }
 
-        if (lesson.status !== "released") {
-          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Lesson is not in a refundable state" });
-        }
-
-        // Check refund window
-        if (lesson.refundWindowEndsAt && new Date() > lesson.refundWindowEndsAt) {
-          throw new TRPCError({
-            code: "PRECONDITION_FAILED",
-            message: "Refund window has expired",
-          });
-        }
-
-        // Process full refund (this is post-completion dispute, full refund is appropriate)
-        if (lesson.stripePaymentIntentId) {
-          await stripeService.createRefund(
-            lesson.stripePaymentIntentId,
-            lesson.amountCents,
-            "requested_by_customer"
-          );
-        }
-
-        await db.updateLessonStatus(input.lessonId, "refunded");
-
-        return { success: true, refundAmountCents: lesson.amountCents };
+        // S30-3: Block all requests — released lessons have a completed Stripe transfer.
+        // Post-payout refunds require a transfer reversal, which is not yet implemented.
+        // Students with issues should use raiseIssue before the payout window closes.
+        throw new TRPCError({
+          code: "METHOD_NOT_SUPPORTED",
+          message:
+            "Post-payout refunds are not available through this endpoint. " +
+            "If you experienced an issue with your lesson, please contact support. " +
+            "For disputes before payout, use the 'Report an Issue' option on your lesson.",
+        });
       }),
   }),
 
@@ -1781,7 +1946,6 @@ export const appRouter = router({
       .input(z.object({
         contentItemId: z.number(),
         stripePaymentIntentId: z.string(),
-        amountPaidCents: z.number().int().nonnegative(),
       }))
       .mutation(async ({ ctx, input }) => {
         const database = await db.getDb();
@@ -1798,12 +1962,85 @@ export const appRouter = router({
           return { success: true, alreadyOwned: true };
         }
 
-        await database.execute(sql`
-          INSERT INTO content_purchases
-            (contentItemId, userId, unlockMethod, amountPaidCents, stripePaymentIntentId)
-          VALUES
-            (${input.contentItemId}, ${ctx.user.id}, 'purchase', ${input.amountPaidCents}, ${input.stripePaymentIntentId})
+        // P1-2 + R2-3: Verify the PaymentIntent with Stripe before recording the purchase.
+        // Do NOT trust client-supplied amount or status.
+        const { stripe } = await import("./stripe");
+        let paymentIntent;
+        try {
+          paymentIntent = await stripe.paymentIntents.retrieve(input.stripePaymentIntentId);
+        } catch (err) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid payment intent ID" });
+        }
+
+        // Verify payment succeeded
+        if (paymentIntent.status !== "succeeded") {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Payment has not succeeded" });
+        }
+
+        // R2-3: HARD-require metadata fields — missing metadata = reject (not soft check)
+        const metaUserId = paymentIntent.metadata?.user_id;
+        const metaContentId = paymentIntent.metadata?.content_item_id;
+        const metaType = paymentIntent.metadata?.type;
+
+        if (!metaUserId) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "PaymentIntent missing required metadata: user_id" });
+        }
+        if (metaUserId !== String(ctx.user.id)) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Payment does not belong to this user" });
+        }
+        if (!metaContentId) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "PaymentIntent missing required metadata: content_item_id" });
+        }
+        if (metaContentId !== String(input.contentItemId)) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Payment does not match this content item" });
+        }
+        if (!metaType || metaType !== "content_purchase") {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "PaymentIntent missing or invalid metadata: type (must be 'content_purchase')" });
+        }
+
+        // R2-3: Verify amount and currency against the content_items table
+        const contentItemResult: any = await database.execute(sql`
+          SELECT priceCents, currency FROM content_items
+          WHERE id = ${input.contentItemId}
+          LIMIT 1
         `);
+        const contentItem = contentItemResult[0]?.[0];
+        if (!contentItem) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Content item not found" });
+        }
+        const expectedCurrency = (contentItem.currency || "USD").toLowerCase();
+        const actualCurrency = (paymentIntent.currency || "").toLowerCase();
+        if (paymentIntent.amount !== contentItem.priceCents) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Payment amount mismatch: expected ${contentItem.priceCents}, got ${paymentIntent.amount}`,
+          });
+        }
+        if (actualCurrency !== expectedCurrency) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Payment currency mismatch: expected ${expectedCurrency}, got ${actualCurrency}`,
+          });
+        }
+
+        // R2-3: Insert with DB unique constraint handling for idempotency.
+        // The schema now has a unique index on stripePaymentIntentId.
+        // A duplicate key error means this payment was already recorded — treat as idempotent success.
+        const amountPaidCents = paymentIntent.amount;
+        try {
+          await database.execute(sql`
+            INSERT INTO content_purchases
+              (contentItemId, userId, unlockMethod, amountPaidCents, stripePaymentIntentId)
+            VALUES
+              (${input.contentItemId}, ${ctx.user.id}, 'purchase', ${amountPaidCents}, ${input.stripePaymentIntentId})
+          `);
+        } catch (insertErr: any) {
+          // MySQL duplicate entry error code: ER_DUP_ENTRY (1062)
+          if (insertErr?.errno === 1062 || insertErr?.code === 'ER_DUP_ENTRY') {
+            return { success: true, alreadyOwned: true };
+          }
+          throw insertErr;
+        }
         return { success: true, alreadyOwned: false };
       }),
   }),
@@ -1826,36 +2063,173 @@ export const appRouter = router({
           throw new TRPCError({ code: "FORBIDDEN", message: "Not your lesson" });
         }
 
-        // Get coach info
-        const coach = await db.getUserById(lesson.coachId);
-        if (!coach?.stripeConnectAccountId) {
+        // Payment-first model: checkout is allowed only from pending_payment.
+        // Student pays upfront; coach is notified only after payment_collected.
+        if (lesson.status !== "pending_payment") {
           throw new TRPCError({
             code: "PRECONDITION_FAILED",
-            message: "Coach has not completed payment setup",
+            message: `Cannot create checkout: lesson is in '${lesson.status}' state (must be 'pending_payment')`,
           });
         }
 
-        const student = await db.getUserById(ctx.user.id);
-        // Use VITE_FRONTEND_URL which works in both dev and production
-        const baseUrl = process.env.VITE_FRONTEND_URL || "http://localhost:3000";
+        // R5-2: Idempotency guard with race-safe session creation.
+        // Handle existing stripeCheckoutSessionId by value:
+        //   - "__pending__": another request is creating a session right now
+        //   - real session ID: check Stripe status (open/complete/expired)
+        // R6-2: Track the fresh attempt value after clearing expired/invalid sessions.
+        // This ensures the idempotency key uses the incremented value, not the stale in-memory one.
+        let freshAttempt: number | null = null;
 
-        // Look up coach's pricing tier so checkout uses tier-based fee.
-        const coachProfile = await db.getCoachProfileByUserId(lesson.coachId);
+        if (lesson.stripeCheckoutSessionId) {
+          // R5-2: If the slot contains "__pending__", another request is in-flight.
+          // Do NOT call Stripe retrieve, do NOT clear. Return CONFLICT immediately.
+          if (lesson.stripeCheckoutSessionId === "__pending__") {
+            throw new TRPCError({
+              code: "CONFLICT",
+              message: "Checkout is already being created for this lesson. Please try again shortly.",
+            });
+          }
 
-        const session = await stripeService.createLessonCheckoutSession({
-          lessonPriceCents: lesson.amountCents,
-          currency: lesson.currency || "USD",
-          lessonId: lesson.id,
-          studentId: ctx.user.id,
-          studentEmail: student?.email || "",
-          coachName: coach.name || "Coach",
-          coachConnectAccountId: coach.stripeConnectAccountId,
-          coachPricingTier: coachProfile?.pricingTier,
-          successUrl: `${baseUrl}/lessons/${lesson.id}?payment=success`,
-          cancelUrl: `${baseUrl}/lessons/${lesson.id}?payment=cancelled`,
-        });
+          // R7-2: Store the expected session ID for conditional atomic clear.
+          const expectedSessionId = lesson.stripeCheckoutSessionId!;
+          let shouldClear = false;
 
-        return { url: session.url };
+          try {
+            const existingSession = await stripeService.retrieveCheckoutSession(expectedSessionId);
+            if (existingSession.status === "open") {
+              // Session is still payable — return it instead of creating a new one
+              return { url: existingSession.url };
+            }
+            if (existingSession.status === "complete") {
+              // Payment completed but webhook hasn't processed yet.
+              // Do NOT clear — the webhook will handle the transition.
+              throw new TRPCError({
+                code: "PRECONDITION_FAILED",
+                message: "Payment is already processing for this lesson. Please wait for confirmation.",
+              });
+            }
+            // Session is expired — safe to conditionally clear
+            shouldClear = true;
+          } catch (err) {
+            // Re-throw TRPCErrors (our own errors above)
+            if (err instanceof TRPCError) throw err;
+            // Distinguish resource-not-found from transient errors
+            const stripeErr = err as any;
+            const isResourceMissing =
+              stripeErr?.type === "StripeInvalidRequestError" ||
+              stripeErr?.statusCode === 404 ||
+              stripeErr?.code === "resource_missing";
+            if (isResourceMissing) {
+              // Session definitively does not exist in Stripe — safe to conditionally clear
+              shouldClear = true;
+            } else {
+              // Transient error (network, rate limit, auth, 5xx) — do NOT clear the live session
+              throw new TRPCError({
+                code: "PRECONDITION_FAILED",
+                message: "Unable to verify checkout status. Please try again shortly.",
+              });
+            }
+          }
+
+          if (shouldClear) {
+            // R7-2: Conditional atomic clear — only clears if session ID still matches.
+            // If another request already cleared it and claimed __pending__, this returns cleared=false.
+            const clearResult = await db.clearLessonCheckoutSessionIfMatches(lesson.id, expectedSessionId);
+            if (!clearResult.cleared) {
+              // Another request already cleared/replaced the session — re-read and respond
+              const refreshed = await db.getLessonById(lesson.id);
+              if (refreshed?.stripeCheckoutSessionId === "__pending__") {
+                throw new TRPCError({
+                  code: "CONFLICT",
+                  message: "Another checkout is being created for this lesson. Please try again shortly.",
+                });
+              }
+              if (refreshed?.stripeCheckoutSessionId) {
+                // Another request already created a new session — try to return it
+                try {
+                  const newSession = await stripeService.retrieveCheckoutSession(refreshed.stripeCheckoutSessionId);
+                  if (newSession.status === "open") {
+                    return { url: newSession.url };
+                  }
+                } catch { /* fall through */ }
+              }
+              throw new TRPCError({
+                code: "CONFLICT",
+                message: "Another checkout is being created for this lesson. Please try again shortly.",
+              });
+            }
+            freshAttempt = clearResult.checkoutAttempt;
+          }
+        }
+
+        // R4-2: Atomic compare-and-set to prevent concurrent session creation.
+        // Only set stripeCheckoutSessionId if it's currently NULL (no other request won the race).
+        const claimed = await db.claimLessonCheckoutSlot(lesson.id);
+        if (!claimed) {
+          // Another concurrent request already claimed the slot.
+          // Re-read the lesson to return the session that won the race.
+          const updatedLesson = await db.getLessonById(lesson.id);
+          if (updatedLesson?.stripeCheckoutSessionId && updatedLesson.stripeCheckoutSessionId !== "__pending__") {
+            try {
+              const raceWinnerSession = await stripeService.retrieveCheckoutSession(updatedLesson.stripeCheckoutSessionId);
+              if (raceWinnerSession.status === "open") {
+                return { url: raceWinnerSession.url };
+              }
+            } catch { /* fall through to error */ }
+          }
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "Another checkout is being created for this lesson. Please try again.",
+          });
+        }
+
+        try {
+          // Get coach info
+          const coach = await db.getUserById(lesson.coachId);
+          if (!coach?.stripeConnectAccountId) {
+            // Release the slot since we can't proceed
+            await db.clearLessonCheckoutSession(lesson.id);
+            throw new TRPCError({
+              code: "PRECONDITION_FAILED",
+              message: "Coach has not completed payment setup",
+            });
+          }
+
+          const student = await db.getUserById(ctx.user.id);
+          // Use VITE_FRONTEND_URL which works in both dev and production
+          const baseUrl = process.env.VITE_FRONTEND_URL || "http://localhost:3000";
+
+          // Look up coach's pricing tier so checkout uses tier-based fee.
+          const coachProfile = await db.getCoachProfileByUserId(lesson.coachId);
+
+          // R6-2: Use the fresh attempt value if we cleared an expired/invalid session,
+          // otherwise use the in-memory value (which is still current for first-time checkouts).
+          const attempt = freshAttempt ?? (lesson.checkoutAttempt ?? 0);
+          const session = await stripeService.createLessonCheckoutSession({
+            lessonPriceCents: lesson.amountCents,
+            currency: lesson.currency || "USD",
+            lessonId: lesson.id,
+            studentId: ctx.user.id,
+            studentEmail: student?.email || "",
+            coachName: coach.name || "Coach",
+            coachConnectAccountId: coach.stripeConnectAccountId,
+            coachPricingTier: coachProfile?.pricingTier,
+            successUrl: `${baseUrl}/lessons/${lesson.id}?payment=success`,
+            cancelUrl: `${baseUrl}/lessons/${lesson.id}?payment=cancelled`,
+            idempotencyKey: `lesson_checkout_${lesson.id}_v${attempt}`,
+          });
+
+          // Persist the actual session ID (overwrite the placeholder)
+          await db.setLessonCheckoutSession(lesson.id, session.id);
+
+          return { url: session.url };
+        } catch (err) {
+          // If session creation fails, release the slot
+          if (!(err instanceof TRPCError)) {
+            await db.clearLessonCheckoutSession(lesson.id);
+          }
+          throw err;
+        }
       }),
   }),
 
@@ -2194,6 +2568,355 @@ export const appRouter = router({
             successCount,
             failCount,
           };
+        }),
+    }),
+
+    // ============ DISPUTE RESOLUTION & PAYOUT MANAGEMENT ============
+    disputes: router({
+      // List disputed lessons for admin review
+      list: protectedProcedure
+        .use(({ ctx, next }) => {
+          if (ctx.user.role !== "admin") {
+            throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
+          }
+          return next({ ctx });
+        })
+        .query(async () => {
+          return await db.getLessonsByStatus("disputed");
+        }),
+
+      // List completed lessons ready for payout release (issue window expired, no dispute)
+      pendingPayouts: protectedProcedure
+        .use(({ ctx, next }) => {
+          if (ctx.user.role !== "admin") {
+            throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
+          }
+          return next({ ctx });
+        })
+        .query(async () => {
+          return await db.getCompletedLessonsReadyForPayout();
+        }),
+
+      // Release coach payout — transfers funds from platform to coach's connected account.
+      //
+      // For 'completed' lessons: enforces issueWindowEndsAt <= now (window must have expired).
+      // For 'disputed' lessons: admin override is allowed (explicit decision after review).
+      // Atomic CAS prevents double-transfer under concurrent calls.
+      releasePayout: protectedProcedure
+        .input(z.object({
+          lessonId: z.number(),
+          adminOverrideReason: z.string().optional(), // required for disputed lessons
+        }))
+        .use(({ ctx, next }) => {
+          if (ctx.user.role !== "admin") {
+            throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
+          }
+          return next({ ctx });
+        })
+        .mutation(async ({ input }) => {
+          // Sprint 35: The override decision is now fully owned by the service.
+          // The service reads the lesson itself and computes skipWindow from its
+          // own read — no stale-flag risk. We pass adminOverrideReason directly.
+          const result = await releaseLessonPayoutToCoach({
+            lessonId: input.lessonId,
+            adminOverrideReason: input.adminOverrideReason,
+          });
+
+          if (result.success) {
+            return result;
+          }
+          if ('conflict' in result) {
+            throw new TRPCError({ code: "CONFLICT", message: result.reason });
+          }
+          if ('precondition' in result) {
+            // Map NOT_FOUND specifically
+            if (result.reason === "Lesson not found") {
+              throw new TRPCError({ code: "NOT_FOUND", message: result.reason });
+            }
+            throw new TRPCError({ code: "PRECONDITION_FAILED", message: result.reason });
+          }
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: result.reason });
+        }),
+
+      // Admin: full refund to student (for disputed lessons)
+      refundStudent: protectedProcedure
+        .input(z.object({
+          lessonId: z.number(),
+          amountCents: z.number().optional(), // undefined = full refund
+          reason: z.string().optional(),
+        }))
+        .use(({ ctx, next }) => {
+          if (ctx.user.role !== "admin") {
+            throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
+          }
+          return next({ ctx });  
+        })
+        .mutation(async ({ input }) => {
+          const lesson = await db.getLessonById(input.lessonId);
+          if (!lesson) {
+            throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
+          }
+          if (!lesson.stripePaymentIntentId) {
+            throw new TRPCError({ code: "PRECONDITION_FAILED", message: "No payment recorded for this lesson" });
+          }
+
+          // S38P2: Validate amountCents before any Stripe or settlement call.
+          // Must be a positive integer <= lesson.amountCents. undefined = full refund.
+          if (input.amountCents !== undefined) {
+            if (
+              !Number.isInteger(input.amountCents) ||
+              input.amountCents <= 0 ||
+              input.amountCents > lesson.amountCents
+            ) {
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message: `Invalid refund amount: must be a positive integer between 1 and ${lesson.amountCents} (lesson amount). Got: ${input.amountCents}`,
+              });
+            }
+          }
+
+          // ─── S38: Post-payout path (status = 'released') ────────────────────
+          // The coach transfer has already been made. We must:
+          //   1. Claim the reversal slot (atomic, prevents double-reversal)
+          //   2. Reverse the Stripe transfer (funds return to platform)
+          //   3. Refund the student's payment intent
+          //   4. Finalize DB state
+          if (lesson.status === "released") {
+            if (!lesson.stripeTransferId) {
+              throw new TRPCError({
+                code: "PRECONDITION_FAILED",
+                message: "Lesson is marked released but has no transfer ID — cannot reverse. Contact support.",
+              });
+            }
+            const existingReversalId = lesson.stripeReversalId as string | null;
+            const existingPostPayoutRefundId = lesson.stripePostPayoutRefundId as string | null;
+
+            // Already in post-payout-refund pending state (reversal done, refund in-flight)
+            if (existingPostPayoutRefundId === "__pending_post_payout_refund__") {
+              throw new TRPCError({
+                code: "CONFLICT",
+                message: "A post-payout refund is currently in progress for this lesson. Please retry in a moment.",
+              });
+            }
+            // Already in reversal pending state
+            if (existingReversalId === "__pending_reversal__") {
+              throw new TRPCError({
+                code: "CONFLICT",
+                message: "A transfer reversal is currently in progress for this lesson. Please retry in a moment.",
+              });
+            }
+
+            const reversalAlreadyDone = existingReversalId &&
+              existingReversalId !== "__pending_reversal__" &&
+              existingReversalId !== "__pending_post_payout_refund__";
+
+            // S38P Fix 1: Separate student refund amount from transfer reversal amount.
+            // - studentRefundAmountCents: what the student gets back (gross charge, amountCents)
+            // - transferReversalAmountCents: what the coach transfer is reversed for (net payout, coachPayoutCents)
+            // For a full refund: refund student for amountCents, reverse coach for coachPayoutCents.
+            // For a partial refund: reverse min(partialAmount, coachPayoutCents) from transfer.
+            const studentRefundAmountCents = input.amountCents ?? lesson.amountCents;
+            const isFullRefund = studentRefundAmountCents >= lesson.amountCents;
+            const transferReversalAmountCents = isFullRefund
+              ? (lesson.coachPayoutCents ?? studentRefundAmountCents)
+              : Math.min(studentRefundAmountCents, lesson.coachPayoutCents ?? studentRefundAmountCents);
+
+            // Idempotency keys encode the actual amounts for each operation
+            const reversalIdempotencyKey = `lesson_post_payout_reversal_${input.lessonId}_${transferReversalAmountCents}`;
+            const refundIdempotencyKey = `lesson_post_payout_refund_${input.lessonId}_${studentRefundAmountCents}`;
+
+            let resolvedReversalId = existingReversalId;
+
+            if (!reversalAlreadyDone) {
+              // Step 1: Claim the reversal slot atomically.
+              // S38P2: Persist BOTH amounts at claim time so retry/recovery uses stable values.
+              const claimed = await db.claimPostPayoutReversalSlot(
+                input.lessonId,
+                transferReversalAmountCents,
+                studentRefundAmountCents  // S38P2: stored intended student refund
+              );
+              if (!claimed) {
+                throw new TRPCError({
+                  code: "CONFLICT",
+                  message: "Could not claim reversal slot — concurrent operation in progress. Please retry.",
+                });
+              }
+              // Step 2: Reverse the Stripe transfer for coachPayoutCents (not amountCents)
+              try {
+                const reversal = await stripeService.createTransferReversal(
+                  lesson.stripeTransferId,
+                  isFullRefund ? undefined : transferReversalAmountCents,
+                  reversalIdempotencyKey
+                );
+                resolvedReversalId = reversal.id;
+              } catch (reversalErr: any) {
+                await db.releasePostPayoutReversalClaim(input.lessonId);
+                throw new TRPCError({
+                  code: "INTERNAL_SERVER_ERROR",
+                  message: `Stripe transfer reversal failed: ${reversalErr?.message ?? 'unknown error'}. The reversal slot has been released — please retry.`,
+                });
+              }
+              // Step 3: Advance to post-payout-refund pending state (CAS)
+              const advanced = await db.advanceToPostPayoutRefundSlot(input.lessonId, resolvedReversalId!);
+              if (!advanced) {
+                // Slot was taken by concurrent operation — check if already finalized
+                const fresh = await db.getLessonById(input.lessonId);
+                if (fresh?.status === "refunded") {
+                  return { success: true, refundAmountCents: studentRefundAmountCents };
+                }
+                throw new TRPCError({
+                  code: "CONFLICT",
+                  message: "Could not advance to refund slot after reversal — concurrent operation detected. Please retry.",
+                });
+              }
+            } else {
+              // S38P Fix 2: Reversal already done — use atomic helper that guards on real reversalId.
+              // S38P2: Use the STORED intended student refund amount from the DB, not re-computed input.
+              // This prevents a retry with a different amountCents from changing the refund amount.
+              const storedStudentRefundCents = (lesson as any).stripeIntendedStudentRefundCents as number | null;
+              if (storedStudentRefundCents !== null && storedStudentRefundCents !== undefined) {
+                // If caller provides a different amount on retry, reject it — the original amount is binding.
+                if (input.amountCents !== undefined && input.amountCents !== storedStudentRefundCents) {
+                  throw new TRPCError({
+                    code: "BAD_REQUEST",
+                    message: `Retry amount ${input.amountCents} conflicts with the stored intended refund amount ${storedStudentRefundCents}. Omit amountCents to use the original amount.`,
+                  });
+                }
+                // Override with stored amount for idempotency
+                // (reassign local variable — studentRefundAmountCents is const so we use a new binding)
+              }
+              const effectiveStudentRefundCents = storedStudentRefundCents ?? studentRefundAmountCents;
+              const effectiveIsFullRefund = effectiveStudentRefundCents >= lesson.amountCents;
+              const effectiveRefundIdempotencyKey = `lesson_post_payout_refund_${input.lessonId}_${effectiveStudentRefundCents}`;
+
+              const slotClaimed = await db.claimPostPayoutRefundSlotAfterReversal(
+                input.lessonId,
+                resolvedReversalId!
+              );
+              if (!slotClaimed) {
+                // Re-read to check if already finalized
+                const fresh = await db.getLessonById(input.lessonId);
+                if (fresh?.status === "refunded") {
+                  return { success: true, refundAmountCents: effectiveStudentRefundCents };
+                }
+                throw new TRPCError({
+                  code: "CONFLICT",
+                  message: "Could not claim refund slot for retry — concurrent operation in progress. Please retry.",
+                });
+              }
+
+              // Step 4 (retry path): Refund the student using the stored intended amount
+              try {
+                const refund = await stripeService.createRefund(
+                  lesson.stripePaymentIntentId,
+                  effectiveIsFullRefund ? undefined : effectiveStudentRefundCents,
+                  "requested_by_customer",
+                  effectiveRefundIdempotencyKey
+                );
+                // Step 5 (retry path): Finalize DB state
+                const finalized = await db.finalizePostPayoutRefund(
+                  input.lessonId,
+                  refund.id,
+                  effectiveStudentRefundCents,
+                  input.reason || "Admin post-payout refund (retry)"
+                );
+                if (!finalized) {
+                  throw new TRPCError({
+                    code: "CONFLICT",
+                    message: "Finalize failed after Stripe refund (CAS miss) — the refund may have been processed by a concurrent operation. Please check the lesson status.",
+                  });
+                }
+              } catch (refundErr: any) {
+                if (refundErr instanceof TRPCError) throw refundErr;
+                await db.releasePostPayoutRefundClaim(input.lessonId);
+                throw new TRPCError({
+                  code: "INTERNAL_SERVER_ERROR",
+                  message: `Stripe refund failed after transfer reversal: ${refundErr?.message ?? 'unknown error'}. The transfer has been reversed. Please retry to complete the student refund.`,
+                });
+              }
+              return { success: true, refundAmountCents: effectiveStudentRefundCents };
+            }
+
+            // Step 4: Refund the student (for the full gross charge, not the coach net)
+            try {
+              const refund = await stripeService.createRefund(
+                lesson.stripePaymentIntentId,
+                isFullRefund ? undefined : studentRefundAmountCents,
+                "requested_by_customer",
+                refundIdempotencyKey
+              );
+              // Step 5: Finalize DB state (CAS guard)
+              const finalized = await db.finalizePostPayoutRefund(
+                input.lessonId,
+                refund.id,
+                studentRefundAmountCents,
+                input.reason || "Admin post-payout refund"
+              );
+              if (!finalized) {
+                throw new TRPCError({
+                  code: "CONFLICT",
+                  message: "Finalize failed after Stripe refund (CAS miss) — the refund may have been processed by a concurrent operation. Please check the lesson status.",
+                });
+              }
+            } catch (refundErr: any) {
+              if (refundErr instanceof TRPCError) throw refundErr;
+              await db.releasePostPayoutRefundClaim(input.lessonId);
+              throw new TRPCError({
+                code: "INTERNAL_SERVER_ERROR",
+                message: `Stripe refund failed after transfer reversal: ${refundErr?.message ?? 'unknown error'}. The transfer has been reversed. Please retry to complete the student refund.`,
+              });
+            }
+            return { success: true, refundAmountCents: studentRefundAmountCents };
+          }
+
+          // ─── Pre-payout path (status = 'disputed' | 'completed') ────────────
+          if (lesson.status !== "disputed" && lesson.status !== "completed") {
+            throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Lesson is not in a refundable state" });
+          }
+          // S30-1: Atomic settlement claim — prevent refund+payout double-settlement.
+          const refundAmountCentsForClaim = input.amountCents ?? lesson.amountCents;
+          const claimed = await db.claimLessonRefundSlot(input.lessonId, refundAmountCentsForClaim);
+          if (!claimed) {
+            const fresh = await db.getLessonById(input.lessonId);
+            if (fresh?.stripeTransferId && fresh.stripeTransferId !== '__pending_refund__') {
+              if (fresh.stripeTransferId === '__pending_payout__') {
+                throw new TRPCError({
+                  code: "CONFLICT",
+                  message: "A payout transfer is currently in progress for this lesson. Wait for it to complete before issuing a refund.",
+                });
+              }
+              throw new TRPCError({
+                code: "PRECONDITION_FAILED",
+                message: `Payout already released (transfer ${fresh.stripeTransferId}). Use the post-payout refund path.`,
+              });
+            }
+            throw new TRPCError({
+              code: "CONFLICT",
+              message: "Could not claim refund slot — concurrent settlement in progress. Please retry.",
+            });
+          }
+          const refundAmountCents = refundAmountCentsForClaim;
+          const idempotencyKey = `lesson_admin_refund_${input.lessonId}_${refundAmountCents}`;
+          try {
+            await stripeService.createRefund(
+              lesson.stripePaymentIntentId,
+              refundAmountCents === lesson.amountCents ? undefined : refundAmountCents,
+              "requested_by_customer",
+              idempotencyKey
+            );
+          } catch (stripeErr: any) {
+            await db.releaseAdminRefundClaim(input.lessonId);
+            throw new TRPCError({
+              code: "INTERNAL_SERVER_ERROR",
+              message: `Stripe refund failed: ${stripeErr?.message ?? 'unknown error'}. The refund slot has been released — please retry.`,
+            });
+          }
+          await db.finalizeAdminRefund(
+            input.lessonId,
+            refundAmountCents,
+            input.reason || "Admin refund"
+          );
+          return { success: true, refundAmountCents };
         }),
     }),
     

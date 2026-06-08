@@ -181,20 +181,25 @@ export const lessons = mysqlTable("lessons", {
   notes: text("notes"),
   meetingUrl: text("meetingUrl"),
   
-  // Status flow: pending_confirmation -> confirmed -> paid -> in_progress -> completed/cancelled/disputed
+  // Status flow: pending_payment -> payment_collected -> confirmed -> completed -> released
+  //              (declined/cancelled/disputed/refunded are terminal or paused states)
   status: mysqlEnum("status", [
-    "pending_confirmation", // Awaiting coach confirmation (Airbnb-style)
-    "confirmed",    // Coach confirmed, awaiting payment
-    "declined",     // Coach declined the booking
-    "paid",         // Payment held in escrow
-    "in_progress",  // Lesson happening
-    "completed",    // Lesson done, awaiting reviews
-    "released",     // Payment released to coach
-    "cancelled",    // Cancelled before lesson
-    "no_show",      // Student or coach didn't show up
-    "disputed",     // Student raised dispute
-    "refunded"      // Refund processed
-  ]).default("pending_confirmation"),
+    "pending_payment",      // Lesson draft, awaiting student checkout
+    "payment_collected",    // Student paid, coach notified, awaiting coach acceptance
+    "pending_confirmation", // LEGACY: old flow awaiting coach confirmation before payment
+    "confirmed",            // Coach accepted, lesson scheduled
+    "decline_pending",      // Coach declined — Stripe refund in-flight (atomic CAS claimed)
+    "declined",             // Coach declined, refund completed
+    "cancel_pending",       // Student cancelled — Stripe refund in-flight (atomic CAS claimed)
+    "paid",                 // LEGACY: old flow payment held
+    "in_progress",          // LEGACY: lesson happening
+    "completed",            // Lesson done, 24-hour issue window active
+    "released",             // Issue window passed, coach payout released
+    "cancelled",            // Cancelled before completion, refund per policy
+    "no_show",              // Student or coach didn't show up
+    "disputed",             // Student raised issue during window, payout paused
+    "refunded"              // Student refunded
+  ]).default("pending_payment"),
   
   // Pricing snapshot (at time of booking)
   amountCents: int("amountCents").notNull(),
@@ -205,6 +210,10 @@ export const lessons = mysqlTable("lessons", {
   // Stripe payment tracking (only IDs, not sensitive data)
   stripePaymentIntentId: varchar("stripePaymentIntentId", { length: 64 }),
   stripeTransferId: varchar("stripeTransferId", { length: 64 }),
+  // R3-2: Active checkout session ID for idempotency (prevents multiple payable sessions)
+  stripeCheckoutSessionId: varchar("stripeCheckoutSessionId", { length: 128 }),
+  // R5-3: Checkout attempt counter for versioned Stripe idempotency keys
+  checkoutAttempt: int("checkoutAttempt").default(0).notNull(),
   
   // Booking confirmation tracking
   coachConfirmedAt: timestamp("coachConfirmedAt"), // When coach accepted the booking
@@ -216,7 +225,9 @@ export const lessons = mysqlTable("lessons", {
   completedAt: timestamp("completedAt"),
   payoutAt: timestamp("payoutAt"),
   
-  // Refund window (48 hours after completion)
+  // 24-hour issue window after lesson completion (replaces old 48h refund window)
+  issueWindowEndsAt: timestamp("issueWindowEndsAt"),
+  // LEGACY: old 48-hour refund window
   refundWindowEndsAt: timestamp("refundWindowEndsAt"),
   
   // Reminder tracking
@@ -229,7 +240,22 @@ export const lessons = mysqlTable("lessons", {
   refundAmountCents: int("refundAmountCents"),
   refundProcessedAt: timestamp("refundProcessedAt"),
   cancellationToken: varchar("cancellationToken", { length: 64 }), // Secure token for cancellation links
-  
+
+  // S38: Post-payout transfer reversal tracking
+  // stripeReversalId doubles as the atomic mutex for the post-payout refund path:
+  //   NULL                           = no reversal in progress or completed
+  //   '__pending_reversal__'          = reversal slot claimed, Stripe call in-flight
+  //   '__pending_post_payout_refund__'= reversal done, student refund Stripe call in-flight
+  //   'trr_xxx'                       = reversal completed (real Stripe reversal ID stored)
+  stripeReversalId: varchar("stripeReversalId", { length: 64 }),
+  stripeReversalAmountCents: int("stripeReversalAmountCents"),
+  // S38P2: Persisted intended student refund amount at claim time.
+  // This is what the student will be refunded (gross charge amount or partial).
+  // Separate from stripeReversalAmountCents (coach net, capped at coachPayoutCents).
+  // Used for retry/recovery to ensure the refund amount is stable across retries.
+  stripeIntendedStudentRefundCents: int("stripeIntendedStudentRefundCents"),
+  stripePostPayoutRefundId: varchar("stripePostPayoutRefundId", { length: 64 }),
+
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -735,7 +761,8 @@ export const contentPurchases = mysqlTable("content_purchases", {
   // How it was unlocked
   unlockMethod: mysqlEnum("unlockMethod", ["purchase", "subscription", "free", "gift"]).notNull(),
   amountPaidCents: int("amountPaidCents").default(0).notNull(),
-  stripePaymentIntentId: varchar("stripePaymentIntentId", { length: 64 }),
+  // R2-3: Unique constraint prevents duplicate PaymentIntent use (race-safe)
+  stripePaymentIntentId: varchar("stripePaymentIntentId", { length: 64 }).unique(),
 
   unlockedAt: timestamp("unlockedAt").defaultNow().notNull(),
 });
@@ -766,7 +793,8 @@ export type InsertReferralCode = typeof referralCodes.$inferInsert;
 export const referrals = mysqlTable("referrals", {
   id: int("id").autoincrement().primaryKey(),
   referralCodeId: int("referralCodeId").notNull(),
-  referredUserId: int("referredUserId").notNull(),
+  // R2-4: unique constraint on referredUserId prevents same user from being referred multiple times
+  referredUserId: int("referredUserId").notNull().unique(),
   status: mysqlEnum("status", ["signed_up", "lesson_completed", "reward_issued"]).default("signed_up").notNull(),
   rewardIssuedAt: timestamp("rewardIssuedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),

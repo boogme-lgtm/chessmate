@@ -71,6 +71,76 @@
       "when": 1776013923672,
       "tag": "0009_smart_lady_bullseye",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "5",
+      "when": 1776734915867,
+      "tag": "0010_dashing_jigsaw",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "5",
+      "when": 1777246887327,
+      "tag": "0011_harsh_paladin",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "5",
+      "when": 1777652103164,
+      "tag": "0012_blushing_stature",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "5",
+      "when": 1777652168002,
+      "tag": "0013_overjoyed_lenny_balinger",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "5",
+      "when": 1777653296944,
+      "tag": "0014_amusing_nico_minoru",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "5",
+      "when": 1777655521155,
+      "tag": "0015_chunky_carlie_cooper",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "5",
+      "when": 1777665674942,
+      "tag": "0016_salty_nextwave",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "5",
+      "when": 1777668302397,
+      "tag": "0017_short_pepper_potts",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "5",
+      "when": 1777769870198,
+      "tag": "0018_serious_legion",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "5",
+      "when": 1777771782414,
+      "tag": "0019_lame_shadow_king",
+      "breakpoints": true
     }
   ]
 }

@@ -4,12 +4,16 @@ import NotFound from "@/pages/NotFound";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
+import { useAuth } from "./_core/hooks/useAuth";
+import { useInactivityLogout } from "./hooks/useInactivityLogout";
+import { toast } from "sonner";
 import Home from "./pages/Home";
 import Coaches from "./pages/Coaches";
 import CoachBrowse from "./pages/CoachBrowse";
 import CoachDashboard from "./pages/CoachDashboard";
 import AdminApplications from "./pages/AdminApplications";
 import AdminWaitlist from "./pages/AdminWaitlist";
+import AdminDisputesPanel from "./pages/AdminDisputesPanel";
 import Unsubscribe from "./pages/Unsubscribe";
 import Privacy from "./pages/Privacy";
 import Terms from "./pages/Terms";
@@ -59,6 +63,7 @@ function Router() {
       <Route path={"/reset-password"} component={ResetPassword} />
       <Route path={"/admin/applications"} component={AdminApplications} />
       <Route path={"/admin/waitlist"} component={AdminWaitlist} />
+      <Route path={"/admin/disputes"} component={AdminDisputesPanel} />
       <Route path={"/dev-dashboard"} component={DevDashboard} />
       <Route path={"/unsubscribe"} component={Unsubscribe} />
       <Route path={"/privacy"} component={Privacy} />
@@ -67,6 +72,24 @@ function Router() {
       <Route component={NotFound} />
     </Switch>
   );
+}
+
+/**
+ * Mounts the inactivity auto-logout hook globally for authenticated users.
+ * Placed inside providers so it has access to tRPC context (logout mutation).
+ * Shows a 2-minute warning toast before signing the user out.
+ */
+function InactivityGuard({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, logout } = useAuth();
+  useInactivityLogout(
+    isAuthenticated,
+    logout,
+    () =>
+      toast.warning("You'll be signed out in 2 minutes due to inactivity.", {
+        duration: 10_000,
+      })
+  );
+  return <>{children}</>;
 }
 
 function App() {
@@ -82,9 +105,11 @@ function App() {
             Skip to main content
           </a>
           <Toaster />
-          <div id="main-content">
-            <Router />
-          </div>
+          <InactivityGuard>
+            <div id="main-content">
+              <Router />
+            </div>
+          </InactivityGuard>
         </TooltipProvider>
       </ThemeProvider>
     </ErrorBoundary>

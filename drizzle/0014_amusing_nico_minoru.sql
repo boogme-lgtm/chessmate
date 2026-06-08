@@ -1,0 +1,1 @@
+ALTER TABLE `lessons` ADD `stripeCheckoutSessionId` varchar(128);

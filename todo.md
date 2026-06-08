@@ -651,3 +651,315 @@
 - [ ] Verify AI vetting auto-approves the application
 - [ ] Confirm coach profile appears in /coaches browse page
 - [ ] Test booking flow against Cristian's coach profile
+
+## Sprint 10: Coach Dashboard Link + Email Funnel (April 20, 2026)
+- [x] Add conditional "Coach Dashboard" link to UserMenu dropdown (visible for userType coach/both)
+- [x] Email notification on coach Go Live: welcome email to coach via Resend
+- [x] Email notification on coach Go Live: owner notification via notifyOwner helper
+- [x] Fire-and-forget email sends (Promise.allSettled, never blocks Go Live)
+
+## Sprint 11: Unified Dashboard + Context-Aware Navigation (April 21, 2026)
+- [x] Create unified Dashboard.tsx at /dashboard with role switcher (Student/Coach toggle for "both" users)
+- [x] Extract StudentDashboardContent and CoachDashboardContent as reusable components
+- [x] Redirect /coach/dashboard → /dashboard
+- [x] Collapse UserMenu "Coach Dashboard" + "My Bookings" into single "Dashboard" link
+- [x] Rename DashboardLayout sidebar "My Lessons" → "Dashboard"
+- [x] Make /for-coaches page redirect logged-in coaches to /dashboard
+- [x] Homepage nav: "For Coaches" → "My Dashboard" for logged-in coaches (desktop + mobile)
+
+## Sprint 12: Smart userType Promotion (April 21, 2026)
+- [x] Go Live: promote student→both if they have lesson bookings, otherwise student→coach
+- [x] Lesson booking: promote coach→both on first student booking
+- [x] Manual DB fix: updated Cristian + 3 test coaches from coach→both
+
+## Sprint 13: Dashboard Fixes + Design Alignment (April 21, 2026)
+- [x] Fix: Coach dashboard showing student lessons at the bottom (data leak between views)
+- [x] Fix: Payout Status card should have actionable Stripe Connect onboarding link instead of just "Pending Setup"
+- [x] Design: Align coach dashboard UX with the editorial dark aesthetic of the rest of the site
+- [x] Design: Align student dashboard UX with the editorial dark aesthetic of the rest of the site
+
+## Sprint 14: Country Selector Fix
+- [x] Replace free-text country input with searchable country dropdown in coach application form
+- [x] Store ISO 3166-1 alpha-2 country codes instead of full country names
+- [x] Update any other forms that collect country (profile edit) to use the same selector
+
+## Sprint 15: Phase 2 Completion (April 26, 2026)
+
+### Task 1: Settings Page
+- [x] Create Settings page at /settings with profile editing (name, bio, country, timezone)
+- [x] Password change with current password verification (hidden for Google OAuth users)
+- [x] Notification preference toggles (booking, reminders, reviews, marketing) saved as JSON on user record
+- [x] Danger zone with soft-delete account + password confirmation dialog
+- [x] Add Settings link to DashboardLayout sidebar navigation
+- [x] Add notificationPreferences and deletedAt columns to users table
+
+### Task 2: Dashboard Design Refinement
+- [x] Role switcher → pill-shaped segmented control with bg-ink-deep / bg-ember active state
+- [x] Stat cards → text-3xl font-bold font-mono tabular-nums with hover states and semantic colors
+- [x] Payout status card → animated dot indicators (green pulse for active, amber for pending)
+- [x] Lesson rows → ember left accent border (border-l-2 border-ember)
+- [x] Empty states → larger padding, muted icons, better copy + CTAs
+
+### Task 3: Coach Referral System
+- [x] Create referral_codes and referrals database tables in schema
+- [x] Add tRPC procedures: referral.generateCode, getMyCode, validateCode, recordSignup
+- [x] Coach dashboard "Invite Students" card with copy/share buttons and referral stats
+- [x] /ref/:code route → stores code in localStorage, redirects to homepage with toast
+- [x] ReferralLanding page component
+
+### Verification
+- [x] 26/26 tests passing
+- [x] tsc --noEmit clean (0 errors)
+- [x] pnpm build clean
+- [x] Database migration applied (referral tables, notification prefs, deletedAt)
+
+## Sprint 16: Homepage v2 Redesign (YC Framework)
+- [x] Extract BgMark into standalone component
+- [x] Create QuizResultMockup component (replaces HeroScene3D)
+- [x] Rewrite HeroV2 with shimmer animation + new copy
+- [x] Add SocialProofBar (founding-coach beta)
+- [x] Add ProblemStatement (3-column)
+- [x] Update Features 03 + 04 (messaging + PPV content)
+- [x] Add TestimonialBlockV2 (founding principle)
+- [x] Add CoachDashboardPreview (dark section)
+- [x] Add FoundersBlock (Cristian Chirila, dark section)
+- [x] Add PricingTable (3-tier)
+- [x] Add ClosingCTA (full-bleed)
+- [x] Apply dark section background fix (Footer, dark sections)
+- [x] Remove deprecated sections (PaymentProtection, ForCoaches)
+- [x] Verify build + tests pass
+
+## Sprint 17: Homepage Design Fixes (Claude Design Board Alignment)
+- [x] Restore hero 3D mouse-tracker shadow effect on QuizResultMockup
+- [x] Improve ProblemStatement section to match design board (more visual weight, editorial feel)
+- [x] Fix section order: remove misplaced early CTA, ensure natural flow
+- [x] Add Onboarding quiz section (20 questions / 8 minutes / One perfect match + live quiz mockup)
+- [x] Replace coach filter UI with 3-card match results (match scores, coach details, Book a Trial Lesson CTAs)
+- [x] Upgrade CoachDashboardPreview with full browser-chrome mockup (sidebar, stats, upcoming lessons)
+
+## Sprint 18: Navigation & Auth UX Fixes
+- [x] Fix "For Coaches" nav button — changed from /coaches to /for-coaches (coach recruitment landing)
+- [x] Fix /coach/onboarding auth redirect loop — replaced hard redirect with inline auth gate (sign in / create account / back to home)
+
+## Sprint 19: Security Remediation (Codex GPT-5.5 Audit)
+- [x] P0-1: Fix webhook — confirmed lessons must transition to paid on checkout.session.completed
+- [x] P0-2: Require status=paid + stripePaymentIntentId for lesson.confirmCompletion
+- [x] P1-1: Remove pricingTier from client-controllable coach.updateProfile
+- [x] P1-2: Verify Stripe PaymentIntent server-side for content.recordPurchase
+- [x] P1-3: Dependency audit — resolve critical/high advisories
+- [x] P2-1: Require password for account deletion on password-backed accounts
+- [x] P2-2: Bind referral.recordSignup to authenticated user (remove public userId param)
+
+## Sprint 20: Security Patches Round 2 (Codex Review)
+- [x] R2-1: payment.createCheckout guard — require lesson.status === 'confirmed'
+- [x] R2-2: webhook checkout.session.completed — only transition confirmed → paid, reject all others
+- [x] R2-3: Harden content.recordPurchase — hard metadata requirements, amount/currency verify, DB unique constraint
+- [x] R2-4: Harden referral.recordSignup — duplicate prevention with uniqueness constraint
+- [x] R2-5: Replace shallow string tests with behavioral tests
+- [x] R2-6: Run pnpm audit --prod and capture exact output
+
+## Sprint 21: Security Patches Round 3 (Codex Review)
+- [x] R3-1: Upgrade axios to >=1.13.5, regenerate lockfile, verify audit
+- [x] R3-2: Make lesson checkout creation idempotent (DB-side guard)
+- [x] R3-3: Update audit-report.md with accurate post-fix audit results
+- [x] R3-4: Replace source-string tests with behavioral tRPC procedure tests
+
+## Sprint 22: Security Patches Round 4 (Codex Review)
+- [x] R4-1: Handle completed checkout sessions without clearing (return PRECONDITION_FAILED)
+- [x] R4-2: Add DB-level atomic guard + Stripe idempotency key to prevent concurrent duplicate sessions
+- [x] R4-3: Add behavioral tests for completed session and concurrent race scenarios
+
+## Sprint 23: Security Patches Round 5 (Codex Review)
+- [x] R5-1: Fix CAS column name to use Drizzle schema reference instead of raw string
+- [x] R5-2: Treat __pending__ as in-progress (no Stripe retrieve, no clear, return CONFLICT)
+- [x] R5-3: Add version component to idempotency key for safe re-checkout after expiry
+- [x] R5-4: Add behavioral tests for all required scenarios
+
+## Sprint 24: Security Patches Round 6 (Codex Review)
+- [x] R6-1: Make clearLessonCheckoutSession return new checkoutAttempt value
+- [x] R6-2: Use returned attempt value in createCheckout idempotency key (not stale in-memory value)
+- [x] R6-3: Add behavioral test for expired session using incremented attempt in idempotency key
+
+## Sprint 25: Security Patches Round 7 (Codex Review)
+- [x] R7-1: Add clearLessonCheckoutSessionIfMatches (conditional atomic clear with WHERE session = expected)
+- [x] R7-2: Update createCheckout to use conditional clear and handle 0-row result (re-read + CONFLICT)
+- [x] R7-3: Add behavioral tests for concurrent expired-session race
+
+## Sprint 26: Security Patches Round 8 (Codex Review)
+- [x] R8-1: Distinguish transient Stripe errors from resource-not-found in createCheckout catch block
+- [x] R8-2: Add behavioral tests for transient error and missing/invalid session paths
+
+## Sprint 27: Payment Model Redesign — Protected Checkout + Delayed Coach Payout
+- [x] PM-1: Audit existing codebase (schema, booking, payment, webhooks, coach actions, completion, frontend)
+- [x] PM-2: DB schema migration — new status enum (pending_payment, payment_collected, confirmed, declined, cancelled, completed, disputed, released, refunded), payout columns, issue window fields
+- [x] PM-3: Backend — booking creates pending_payment, createCheckout from pending_payment, webhook marks payment_collected, notify coach
+- [x] PM-4: Backend — coach accept (payment_collected → confirmed), coach decline (→ refund + declined), confirmation deadline expiry (→ refund)
+- [x] PM-5: Backend — completion starts 24h issue window, dispute handling, payout release after window
+- [x] PM-6: Backend — admin resolution (release payout, full/partial refund), refund rules
+- [x] PM-7: Frontend — booking flow, dashboard labels, checkout copy, coach request UI, terminology updates
+- [x] PM-8: Email templates and notification copy updates
+- [x] PM-9: Behavioral tests for all 15 required scenarios
+- [x] PM-10: Verification, Stripe architecture documentation, migration mapping
+
+## Sprint 28 — Payment-First Model Hardening (Completed)
+- [x] S28-1: declineAsCoach — Stripe failure must NOT silently succeed; throw INTERNAL_SERVER_ERROR, leave in payment_collected, flag for admin
+- [x] S28-2: confirmCompletion — require lesson end time + 15min grace to have passed before student can confirm
+- [x] S28-3: releasePayout — enforce issueWindowEndsAt <= now, atomic CAS, Stripe idempotency key, admin override for disputed
+- [x] S28-4: autoDeclineStaleBookings — process payment_collected (not just pending_confirmation), full Stripe refund, no silent failure
+- [x] S28-5: autoCompletePastLessons — always set issueWindowEndsAt = now + 24h on completion (both confirmed and legacy paid)
+- [x] S28-6: Behavioral tests for all 5 scenarios above (101 tests passing, 0 failures)
+## Sprint 29 — Atomic Settlement Hardening (Completed)
+- [x] S29-1: Atomic coach accept/decline CAS — claimLessonCoachDecision(lessonId, to='confirmed'|'decline_pending'), no email until state transition won
+- [x] S29-2: Race-safe autoDeclineStaleBookings — atomically claim row to decline_pending BEFORE calling Stripe; skip if CAS returns 0 affectedRows
+- [x] S29-3: Shared settlement guard — refundStudent rejects if stripeTransferId = '__pending_payout__' (CONFLICT) or real transfer ID (PRECONDITION_FAILED)
+- [x] S29-4: Hardened student cancellation — claimLessonCancellation CAS, throw on Stripe failure, releaseCancellationWithRefundFailed, no false success
+- [x] S29-5: Recovery scan for stuck pending states — recoverStuckPendingStates() in scheduler handles decline_pending and __pending_payout__ after crash
+- [x] S29-6: Behavioral tests for all 5 scenarios — 118 tests passing, tsc clean (exit 0)
+- [ ] S29-AUDIT: pnpm audit high vulns — path-to-regexp (express@4 transitive, ReDoS), lodash (recharts/streamdown transitive, code injection via _.template) — no fix available without major upgrades; document as known risk
+## Sprint 30 — Final Payment Settlement Hardening (Completed)
+- [x] S30-1: Atomic admin refund vs payout — claimLessonRefundSlot CAS before Stripe call; CONFLICT if payout wins; releases claim on Stripe failure
+- [x] S30-2: Recovery refund amounts — cancel_pending uses stored refundAmountCents (not full); deterministic idempotency keys for all recovery refunds
+- [x] S30-3: Disable legacy lesson.requestRefund — throws METHOD_NOT_SUPPORTED; post-payout refunds require transfer reversal (not yet implemented)
+- [x] S30-4: claimLessonCancellation allowlist — only pending_payment, payment_collected, confirmed; all other statuses blocked
+- [x] S30-5: Behavioral tests for all 4 scenarios — 137 tests passing, tsc --noEmit exits 0
+
+## Sprint 31 — Pending-Refund Settlement Cleanup (Completed)
+- [x] S31-1: Fix recovery query — refundAmountCents added to SELECT in recoverStuckPendingStates()
+- [x] S31-2: Deterministic idempotency keys on first attempts — declineAsCoach: lesson_decline_refund_{id}, cancel: lesson_cancel_refund_{id}, autoDecline: lesson_decline_refund_{id}
+- [x] S31-3: releasePayout rejects __pending_refund__ with CONFLICT; only real transfer IDs return alreadyReleased=true
+- [x] S31-4: Recovery for stuck __pending_refund__ — claimLessonRefundSlot stores refundAmountCents before Stripe; recovery retries with stored amount + idempotency key; finalizes on success; releases slot on retryable failure
+- [x] S31-5: Behavioral tests for all 4 scenarios — 146 tests passing, tsc --noEmit exits 0
+
+## Sprint 32 — Cancel_pending Recovery Edge (Completed)
+- [x] S32-1: cancel_pending with refundAmountCents=0 recovers to cancelled without calling Stripe
+- [x] S32-2: cancel_pending with Stripe failure finalizes to cancelled+refund_failed (not payment_collected)
+- [x] S32-3: decline_pending failure behavior unchanged — returns to payment_collected for admin retry
+- [x] S32 tests: 149 tests passing, tsc --noEmit exits 0
+
+## Sprint 33 — Auto-Release Payout Cron (Completed)
+- [x] S33-1: Extract shared releaseLessonPayoutToCoach helper to server/payoutService.ts — all safety guards preserved
+- [x] S33-2: Refactor admin.disputes.releasePayout to use shared helper — no duplicate money-moving logic
+- [x] S33-3: Add autoReleasePayouts() to reminderScheduler — runs every 30 min, env flag AUTO_RELEASE_PAYOUTS_ENABLED, overlap guard
+- [x] S33-4: 7 behavioral tests in server/autoReleasePayout.test.ts — eligible payout, window not expired, disputed skipped, __pending_refund__ blocks, Stripe failure releases slot, multi-lesson continues after failure, disabled flag skips
+- [x] S33-5: 156 tests passing, tsc --noEmit exits 0
+
+## Sprint 34 — Payout Override Scope Fix (Completed)
+- [x] S34-1: Fix releasePayout — read lesson once in router; skipIssueWindowCheck = isDisputed && hasOverrideReason (not just hasOverrideReason)
+- [x] S34-2: completed lesson inside window + adminOverrideReason still rejects (PRECONDITION_FAILED)
+- [x] S34-3: disputed lesson without adminOverrideReason rejects (BAD_REQUEST)
+- [x] S34-4: disputed lesson with adminOverrideReason skips window check and succeeds
+- [x] S34-5: autoReleasePayouts never passes skipIssueWindowCheck — 160 tests passing, tsc --noEmit exits 0
+## Sprint 35 — Service-Owned Override Decision (Completed)
+- [x] S35-1: Remove skipIssueWindowCheck from PayoutReleaseInput — service computes skipWindow from its own lesson read
+- [x] S35-2: Service logic: skipWindow = lesson.status === "disputed" && !!adminOverrideReason?.trim()
+- [x] S35-3: Completed lessons always enforce issueWindowEndsAt regardless of adminOverrideReason
+- [x] S35-4: Disputed lessons without adminOverrideReason return precondition failure
+- [x] S35-5: Router simplified — passes adminOverrideReason directly, no local skipIssueWindowCheck computation
+- [x] S35-6: 4 behavioral tests (S35-1 through S35-4): completed+override rejects, disputed+override succeeds, stale-read race rejects, autoRelease never skips window
+- [x] S35-7: 164 tests passing, tsc --noEmit exits 0
+## Sprint 36 — Student "Confirm Lesson Complete" Button (Completed)
+- [x] S36-1: Confirm Lesson Complete button — only shown for status="confirmed" AND now >= scheduledAt + durationMinutes + 15 min grace
+- [x] S36-2: Button calls lesson.confirmCompletion({ lessonId }); on success invalidates myLessons cache and shows 24-hour issue window toast
+- [x] S36-3: Issue window banner — shown on completed lessons while issueWindowEndsAt is in the future; shows window close time
+- [x] S36-4: Issue window expired banner — shown when issueWindowEndsAt has passed; confirms coach payout released
+- [x] S36-5: Raise Issue button — shown only during active issue window; opens dialog with reason textarea; calls lesson.raiseIssue
+- [x] S36-6: Terminal statuses (payment_collected, completed, disputed, released, cancelled, declined, refunded, no_show) never show Confirm Complete button
+- [x] S36-7: 20 behavioral tests in server/sprint36.test.ts (S36-1 through S36-8); 184 tests passing, tsc --noEmit exits 0
+## Sprint 36 Patch — Time-gated UI refresh + banner copy fix
+- [x] P36-1: Add `now` interval state (30s) to LessonCard; use for canConfirmComplete, issueWindowActive, issueWindowExpired, canCancel/hoursUntilLesson
+- [x] P36-2: Extract pure helpers into shared/lessonTimeHelpers.ts: getLessonEndWithGrace(), canConfirmLessonComplete(), getIssueWindowState(), canRaiseIssue() — testable with fixed dates
+- [x] P36-3: Fix expired issue-window banner: completed+expired → "eligible for release"; added separate released banner → "coach payout has been released"
+- [x] P36-4: 39 unit tests in server/lessonTimeHelpers.test.ts covering getLessonEndWithGrace, canConfirmLessonComplete (all statuses + grace boundary), getIssueWindowState (all statuses + active/expired/released), canRaiseIssue, and all three banner scenarios
+## Sprint 37 — Admin Disputes Panel UI
+- [x] S37-1: Created AdminDisputesPanel page at /admin/disputes with admin-only auth guard (loading/unauthenticated/access-denied states)
+- [x] S37-2: Disputed Lessons tab — table with lesson ID, parties, scheduled time, amount, issue reason, status badge, and action buttons
+- [x] S37-3: Payout-Ready tab — table of completed lessons with expired issue window; includes stats row with pending payout total
+- [x] S37-4: Release Payout action — ActionModal with required adminOverrideReason for disputed; optional for payout-ready; disabled while pending
+- [x] S37-5: Issue Refund action — ActionModal with required adminOverrideReason for disputed; optional for completed; destructive variant
+- [x] S37-6: formatAdminActionError() maps all PRECONDITION_FAILED/CONFLICT/NOT_FOUND/FORBIDDEN codes to human-readable copy
+- [x] S37-7: Wired /admin/disputes route into App.tsx
+- [x] S37-8: AdminNav component added to all three admin pages (Applications, Waitlist, Disputes & Payouts)
+- [x] S37-9: 19 unit tests in server/sprint37.test.ts covering all 12 formatAdminActionError branches + priority ordering
+## Sprint 37 Patch — Stats card and shared helper
+- [x] P37-1: Extracted formatAdminActionError into shared/adminActionErrors.ts
+- [x] P37-2: AdminDisputesPanel.tsx now imports from @shared/adminActionErrors (inline copy removed)
+- [x] P37-3: sprint37.test.ts imports from ../shared/adminActionErrors (no duplication)
+- [x] P37-4: Pending Payout stats card now sums coachPayoutCents (coach net); Disputed Value card retains amountCents (gross) with label
+- [x] P37-5: 7 new stats-card tests in sprint37.test.ts (S37-S1/S2/S3): sumPendingPayoutCents, sumGrossAmountCents, and regression guard proving old amountCents path overcounts by platform fee
+## Sprint 37 Patch 2 — Normalized error matching
+- [x] P37P2-1: Normalized to lowercase at top of formatAdminActionError; matches both "not yet expired" and "not expired yet"
+- [x] P37P2-2: All branches use normalized matching; added payout-already-in-progress, payout-already-claimed, refund-in-progress, not-in-payable-state, coach-missing-Stripe-Connect branches
+- [x] P37P2-3: Added "no issue window set" branch matching payoutService: "Lesson has no issue window set — cannot safely release payout"
+- [x] P37P2-4: 16 exact-string describe blocks in sprint37.test.ts (S37-E1 through S37-E16) covering all payoutService and routers.ts error strings verbatim; 252 tests passing
+## Sprint 38 — Transfer Reversal for Post-Payout Refunds
+- [x] S38-1: Added stripeReversalId, stripeReversalAmountCents, stripePostPayoutRefundId to lessons table; migration pushed
+- [x] S38-2: Added createTransferReversal(transferId, amount?, idempotencyKey?) to stripe.ts
+- [x] S38-3: Added 5 DB helpers: claimPostPayoutReversalSlot, advanceToPostPayoutRefundSlot, finalizePostPayoutRefund, releasePostPayoutReversalClaim, releasePostPayoutRefundClaim
+- [x] S38-4: Implemented post-payout refund path in admin.disputes.refundStudent: claim slot → reverse transfer → refund student → finalize; CONFLICT on concurrent/pending; idempotent on refunded
+- [x] S38-5: Added __pending_reversal__ and __pending_post_payout_refund__ recovery scans to recoverStuckPendingStates
+- [x] S38-6: 23 behavioral tests in server/sprint38.test.ts (S38-1 through S38-8); updated 4 S30/S30-2 recovery tests with S38 mock responses
+- [x] S38-7: 275 tests passing, tsc --noEmit exits 0
+
+## Sprint 38 Patch — P1 Blockers in Post-Payout Refund Path
+- [x] P38-1: Fixed reversal amount — transferReversalAmountCents uses coachPayoutCents; studentRefundAmountCents uses amountCents; partial refund capped at coachPayoutCents
+- [x] P38-2: Fixed idempotency keys — reversal key encodes transferReversalAmountCents (8500), refund key encodes studentRefundAmountCents (10000); keys are now distinct
+- [x] P38-3: Added claimPostPayoutRefundSlotAfterReversal DB helper — guards on status=released, stripeReversalId=expectedId, stripePostPayoutRefundId IS NULL
+- [x] P38-4: Fixed retry path in routers.ts — uses claimPostPayoutRefundSlotAfterReversal; advanceToPostPayoutRefundSlot would affect 0 rows with a real reversalId
+- [x] P38-5: Added 24 regression tests (S38P-1 through S38P-3) in sprint38.test.ts
+- [x] P38-6: Regression test: amountCents=10000/coachPayoutCents=8500 — reversal gets 8500 (undefined=full), student refund gets 10000 (undefined=full); old-code bug proof included
+- [x] P38-7: Regression test: retry after refund failure — claimPostPayoutRefundSlotAfterReversal called with real reversalId; advanceToPostPayoutRefundSlot NOT called; 284 tests passing
+
+## Sprint 38 Patch 2 — P1/P2 Blockers
+- [x] P38P2-1: Added stripeIntendedStudentRefundCents column to lessons schema; migration pushed
+- [x] P38P2-2: claimPostPayoutReversalSlot now accepts and persists intendedStudentRefundCents at claim time
+- [x] P38P2-3: advanceToPostPayoutRefundSlot returns boolean; router throws CONFLICT on false
+- [x] P38P2-4: finalizePostPayoutRefund returns boolean; router throws CONFLICT on false
+- [x] P38P2-5: Added getStuckPostPayoutRefundLessons helper returning stripeIntendedStudentRefundCents for stable recovery
+- [x] P38P2-6: releasePostPayoutReversalClaim clears stripeIntendedStudentRefundCents on rollback
+- [x] P38P2-7: Added amountCents validation (positive integer, <= lesson.amountCents) before any Stripe or settlement call on both paths
+- [x] P38P2-8: Post-payout retry path uses stored stripeIntendedStudentRefundCents; conflicting retry amountCents throws BAD_REQUEST
+- [x] P38P2-9: advance/finalize return false on CAS miss; router throws CONFLICT without returning success
+- [x] P38P2-10: 21 tests in S38P2-1 through S38P2-5 covering partial amounts, retry rejection, recovery, validation, and CAS guards
+- [x] P38P2-11: 305 tests passing, tsc --noEmit exits 0, audit: 3 high (path-to-regexp via express@4, lodash via recharts) — transitive, no direct fix available
+
+## Sprint 38 Patch 3 — Recovery uses wrong refund amount + ignores CAS returns
+- [x] P38P3-1: Fixed __pending_post_payout_refund__ recovery to use stripeIntendedStudentRefundCents ?? amountCents (not stripeReversalAmountCents) for Stripe refund amount, idempotency key, and finalization
+- [x] P38P3-2: Fixed __pending_reversal__ recovery: checks advanced===true before logging recovered; CAS miss logs warn instead
+- [x] P38P3-3: Fixed __pending_post_payout_refund__ recovery: checks finalized===true before logging recovered; CAS miss logs warn instead
+- [x] P38P3-4: S38P3-1: stuck row with intendedStudentRefundCents=9000 calls createRefund(9000) and finalizes 9000; regression proof included
+- [x] P38P3-5: S38P3-2: null stripeIntendedStudentRefundCents falls back to amountCents=10000 (full refund, undefined passed to Stripe)
+- [x] P38P3-6: S38P3-3: advance returning false → no log recovered, warns CAS missed; advance returning true → logs recovered
+- [x] P38P3-7: S38P3-4: finalize returning false → no log recovered, warns CAS missed; finalize returning true → logs recovered
+- [x] P38P3-8: 312 tests passing, tsc --noEmit exits 0, audit: 2 high (path-to-regexp via express@4, lodash via recharts) — transitive, no direct fix available
+
+## Sprint 39 — S38 Error String Coverage in adminActionErrors.ts
+- [x] S39-1: Audited exact S38 error strings from routers.ts post-payout path
+- [x] S39-2: Added 7 new branches to shared/adminActionErrors.ts with lowercase-normalized matching
+- [x] S39-3: Added 18 exact-string tests (S39-E1 through S39-E7 + priority ordering) in sprint37.test.ts
+- [x] S39-4: 327 tests passing, tsc --noEmit exits 0
+
+## Sprint 40 — Express v5 Upgrade (CVE fix)
+- [x] S40-1: Audited all Express usage; only breaking change was app.use("*") wildcard syntax in vite.ts
+- [x] S40-2: Updated express to ^5.2.1 and @types/express to ^5.0.0 (resolved to 5.0.6)
+- [x] S40-3: Regenerated pnpm-lock.yaml via pnpm install
+- [x] S40-4: Fixed app.use("*") → app.use("/{*splat}") in both dev and static catch-all handlers in vite.ts; no other changes needed
+- [x] S40-5: 327 tests passing, tsc --noEmit exits 0, path-to-regexp CVE gone from audit; remaining: lodash via recharts (transitive, no fix available)
+
+## Sprint 40 Patch — Express 5 cleanup
+- [x] P40-1: Fix app.get("*") in server/index.ts to Express 5 syntax or retire the file
+- [x] P40-2: Refresh audit-report.md to reflect current pnpm audit --prod output (21 vulns, 2 high, both lodash) — both lodash-es (via streamdown→mermaid→chevrotain) and lodash (via recharts)
+- [x] P40-3: Add wildcard regression scan test (server/sprint40.test.ts) that fails on bare app.get("*") or app.use("*")
+- [x] P40-4: 331 tests passing, tsc --noEmit exits 0, pnpm audit --prod: 21 vulns / 2 high (both lodash, transitive, no fix available)
+
+## Sprint 40 Patch 2 — audit-report.md severity correction
+- [x] P40P2-1: Verified pnpm audit --prod: follow-redirects is moderate (not low); low findings are mailparser (GHSA-7gmj-h9xc-mcxc) and nodemailer (GHSA-c7w3-x93f-qmm8) via resend
+- [x] P40P2-2: Corrected audit-report.md Low table to mailparser + nodemailer only; moved follow-redirects to Moderate section; headline counts unchanged (21 total: 2 high, 17 moderate, 2 low)
+
+## Sprint 41 — Silence watch-mode TypeScript false positive
+- [x] S41-1: Diagnosed root cause: tsBuildInfoFile stored at ./node_modules/typescript/tsbuildinfo — stale incremental cache from previous session caused Manus LSP daemon to report clearLessonCheckoutSession as missing
+- [x] S41-2: Reproduced: watch-mode tsc --noEmit --watch (PID 1533) was running against the Jun 1 stale cache; fresh tsc --noEmit exits clean
+- [x] S41-3: Fix: moved tsBuildInfoFile from ./node_modules/typescript/tsbuildinfo to ./.tsbuildinfo (project root, covered by *.tsbuildinfo in .gitignore)
+- [x] S41-4: Verified: tsc --noEmit exits 0, tsc --watch exits 0 errors with new path, .tsbuildinfo is gitignored
+- [x] S41-5: Added server/sprint41.test.ts — type-level guard (S41-1) + 5 behavioral tests (S41-2a through S41-2e) for clearLessonCheckoutSession call behavior in handleCheckoutCompleted
+- [x] S41-6: Opportunistic upgrades: axios 1.15.2 → 1.17.0 (resolved 5 high CVEs), @aws-sdk/client-s3 + presigner 3.1040.0 → 3.1063.0 (resolved fast-xml-builder high CVE)
+- [x] S41-7: Updated audit-report.md: 26 total / 2 high / 22 moderate / 2 low; 337 tests passing, tsc --noEmit exits 0

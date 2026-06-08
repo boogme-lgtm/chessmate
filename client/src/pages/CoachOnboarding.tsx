@@ -114,14 +114,9 @@ export default function CoachOnboarding() {
   const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
 
-  // Auth gate: coach onboarding is the canonical flow (replacing /coach/apply,
-  // which was unauthenticated). Bounce unauth users to sign-in with a redirect
-  // back to this page after they log in. SignIn honours ?redirect= safely.
-  useEffect(() => {
-    if (authLoading) return;
-    if (isAuthenticated) return;
-    window.location.href = `/sign-in?redirect=${encodeURIComponent("/coach/onboarding")}`;
-  }, [authLoading, isAuthenticated]);
+  // Auth gate: show inline sign-in prompt instead of hard redirect to avoid
+  // back-button loops on mobile. Users can choose to sign in or go back home.
+  const needsAuth = !authLoading && !isAuthenticated;
 
   // ── Form state ──
   const [name, setName] = useState("");
@@ -395,6 +390,53 @@ export default function CoachOnboarding() {
   }
 
   const progress = ((step - 1) / (STEPS.length - 1)) * 100;
+
+  // Loading state
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-bold text-lg mx-auto">B</div>
+          <p className="text-sm text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Auth gate: inline prompt instead of hard redirect (prevents back-button loop)
+  if (needsAuth) {
+    return (
+      <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
+        <div className="w-full max-w-md mx-auto px-6 text-center space-y-6">
+          <div className="w-12 h-12 rounded-lg bg-primary flex items-center justify-center text-primary-foreground font-bold text-xl mx-auto">B</div>
+          <h1 className="text-2xl font-semibold">Sign in to get started</h1>
+          <p className="text-muted-foreground">
+            Create an account or sign in to begin your coach onboarding. It takes about 8 minutes.
+          </p>
+          <div className="flex flex-col gap-3">
+            <a
+              href={`/sign-in?redirect=${encodeURIComponent("/coach/onboarding")}`}
+              className="btn-editorial-primary py-3 px-6 text-center block"
+            >
+              Sign in
+            </a>
+            <a
+              href={`/register?redirect=${encodeURIComponent("/coach/onboarding")}`}
+              className="py-3 px-6 border border-border text-center text-sm hover:bg-muted transition-colors"
+            >
+              Create an account
+            </a>
+          </div>
+          <a
+            href="/"
+            className="inline-block text-sm text-muted-foreground hover:text-foreground transition-colors mt-4"
+          >
+            &larr; Back to homepage
+          </a>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background text-foreground">

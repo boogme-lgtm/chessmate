@@ -159,8 +159,10 @@ export async function createLessonPaymentIntent(params: {
 }
 
 /**
- * Capture a PaymentIntent after lesson completion
- * This releases funds from escrow
+ * DEPRECATED: capturePaymentIntent is no longer used in the new payment model.
+ * Payments are captured automatically at checkout (no manual capture).
+ * Coach payout is handled via separate Transfer after completion + issue window.
+ * Kept for backward compatibility with any in-flight legacy lessons.
  */
 export async function capturePaymentIntent(paymentIntentId: string) {
   const paymentIntent = await stripe.paymentIntents.capture(paymentIntentId);
@@ -168,7 +170,9 @@ export async function capturePaymentIntent(paymentIntentId: string) {
 }
 
 /**
- * Cancel/refund a PaymentIntent (before capture)
+ * Cancel a PaymentIntent (only works if not yet captured).
+ * In the new model, payments are captured immediately, so this is only
+ * useful for edge cases where a PI exists but hasn't been captured yet.
  */
 export async function cancelPaymentIntent(paymentIntentId: string) {
   const paymentIntent = await stripe.paymentIntents.cancel(paymentIntentId);
@@ -176,8 +180,18 @@ export async function cancelPaymentIntent(paymentIntentId: string) {
 }
 
 /**
- * Create a refund for a captured payment
- * Supports partial refunds based on cancellation policy
+ * Create a refund for a captured payment.
+ * 
+ * STRIPE ARCHITECTURE: Separate Charges and Transfers
+ * ────────────────────────────────────────────────────
+ * In the new model, the student's charge lives entirely on the platform.
+ * There is NO transfer_data at checkout time, so:
+ *   - reverse_transfer is NOT used (no transfer to reverse)
+ *   - refund_application_fee is NOT used (no application fee on the charge)
+ * 
+ * If a Transfer to the coach has ALREADY been made (post-completion payout),
+ * that must be reversed separately via stripe.transfers.createReversal().
+ * 
  * @param paymentIntentId - Stripe PaymentIntent ID
  * @param amountCents - Amount to refund in cents (optional, defaults to full refund)
  * @param reason - Reason for refund
@@ -185,15 +199,14 @@ export async function cancelPaymentIntent(paymentIntentId: string) {
 export async function createRefund(
   paymentIntentId: string,
   amountCents?: number,
-  reason?: "requested_by_customer" | "duplicate" | "fraudulent"
+  reason?: "requested_by_customer" | "duplicate" | "fraudulent",
+  idempotencyKey?: string
 ) {
   const refundParams: any = {
     payment_intent: paymentIntentId,
     reason: reason || "requested_by_customer",
-    // Reverse the transfer to the coach as well
-    reverse_transfer: true,
-    // Refund the application fee (platform commission)
-    refund_application_fee: true,
+    // No reverse_transfer — there is no destination charge transfer to reverse.
+    // No refund_application_fee — there is no application fee on the charge.
   };
   
   // Add amount if partial refund
@@ -201,8 +214,51 @@ export async function createRefund(
     refundParams.amount = amountCents;
   }
   
-  const refund = await stripe.refunds.create(refundParams);
+  const options: any = {};
+  if (idempotencyKey) {
+    options.idempotencyKey = idempotencyKey;
+  }
+
+  const refund = await stripe.refunds.create(refundParams, Object.keys(options).length ? options : undefined);
   return refund;
+}
+
+// ============ TRANSFER REVERSAL ============
+
+/**
+ * S38: Reverse a Stripe transfer to a connected account.
+ * Used for post-payout admin refunds: the coach's transfer must be reversed
+ * before the student's payment intent can be refunded.
+ *
+ * In the Separate Charges and Transfers model, the student's charge lives on
+ * the platform and the coach payout is a separate Transfer. To refund the
+ * student after the payout has been released, the Transfer must first be
+ * reversed so the funds return to the platform balance.
+ *
+ * @param transferId    - The Stripe transfer ID (e.g. "tr_xxx") to reverse.
+ * @param amountCents   - Amount to reverse in cents. Omit for full reversal.
+ * @param idempotencyKey - Deterministic key to make the call safe to retry.
+ * @returns The Stripe TransferReversal object.
+ */
+export async function createTransferReversal(
+  transferId: string,
+  amountCents?: number,
+  idempotencyKey?: string
+) {
+  const params: Record<string, any> = {};
+  if (amountCents !== undefined) {
+    params.amount = amountCents;
+  }
+  const options: Record<string, any> = {};
+  if (idempotencyKey) {
+    options.idempotencyKey = idempotencyKey;
+  }
+  const reversal = await stripe.transfers.createReversal(
+    transferId,
+    Object.keys(params).length ? params : undefined,
+    Object.keys(options).length ? options : undefined
+  );
+  return reversal;
 }
 
 // ============ CHECKOUT SESSION (ALTERNATIVE FLOW) ============
@@ -225,6 +281,7 @@ export async function createLessonCheckoutSession(params: {
   coachPricingTier: string | null | undefined;
   successUrl: string;
   cancelUrl: string;
+  idempotencyKey?: string;
 }) {
   const {
     lessonPriceCents,
@@ -237,6 +294,7 @@ export async function createLessonCheckoutSession(params: {
     coachPricingTier,
     successUrl,
     cancelUrl,
+    idempotencyKey,
   } = params;
 
   const feePercent = getTierFeePercent(coachPricingTier ?? DEFAULT_PRICING_TIER);
@@ -247,25 +305,28 @@ export async function createLessonCheckoutSession(params: {
   // Check if this is a test/mock coach account (starts with "acct_test_coach_")
   const isTestAccount = coachConnectAccountId.startsWith("acct_test_coach_");
 
-  // Build payment intent data conditionally
+  // STRIPE ARCHITECTURE: Separate Charges and Transfers
+  // ─────────────────────────────────────────────────────
+  // Student is charged upfront (automatic capture). Funds stay on the
+  // platform's Stripe balance. Coach payout is a separate Transfer
+  // created only after lesson completion + 24-hour issue window.
+  // This avoids long manual-capture windows and ensures refunds are
+  // straightforward (just refund the charge, no transfer reversal).
   const paymentIntentData: any = {
-    capture_method: "manual", // Escrow
+    // capture_method defaults to "automatic" — student is charged immediately.
     metadata: {
       lessonId: lessonId.toString(),
       studentId: studentId.toString(),
       platform: "boogme",
       tier: coachPricingTier ?? DEFAULT_PRICING_TIER,
       feePercent: feePercent.toString(),
+      coachConnectAccountId: isTestAccount ? "" : coachConnectAccountId,
     },
   };
 
-  // Only add transfer_data and application_fee for real Stripe Connect accounts
-  if (!isTestAccount) {
-    paymentIntentData.transfer_data = {
-      destination: coachConnectAccountId,
-    };
-    paymentIntentData.application_fee_amount = applicationFeeCents;
-  }
+  // NOTE: No transfer_data or application_fee_amount here.
+  // Funds stay on the platform. Coach payout is handled later via
+  // stripe.transfers.create() in the payout release flow.
 
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
@@ -302,7 +363,7 @@ export async function createLessonCheckoutSession(params: {
       lessonId: lessonId.toString(),
       studentId: studentId.toString(),
     },
-  });
+  }, idempotencyKey ? { idempotencyKey } : undefined);
 
   return session;
 }
@@ -383,6 +444,11 @@ export async function createInstantPayout(
     }
   );
   return payout;
+}
+
+// R3-2: Retrieve a checkout session to check its status
+export async function retrieveCheckoutSession(sessionId: string) {
+  return stripe.checkout.sessions.retrieve(sessionId);
 }
 
 export { stripe };

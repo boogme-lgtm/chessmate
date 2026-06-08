@@ -82,8 +82,8 @@ export default function BookingModal({ open, onOpenChange, coach }: BookingModal
     try {
       setStep("payment");
 
-      // Create the booking — status starts as 'pending_confirmation'.
-      // The coach must accept before the student can pay (Sprint 4).
+      // Create the booking — status starts as 'pending_payment'.
+      // Student pays first, then coach accepts/declines (payment-first model).
       await createBooking.mutateAsync({
         coachId: coach.id,
         scheduledAt: selectedSlot.start,
@@ -91,7 +91,7 @@ export default function BookingModal({ open, onOpenChange, coach }: BookingModal
         topic: notes || undefined,
       });
 
-      toast.success("Booking request sent to your coach!");
+      toast.success("Booking created! Complete payment to send it to your coach.");
 
       // Close modal after short delay so the user sees the success state
       setTimeout(() => {
@@ -129,7 +129,7 @@ export default function BookingModal({ open, onOpenChange, coach }: BookingModal
           <DialogDescription>
             {step === "calendar" && `Choose an available time slot with ${coach.name}`}
             {step === "details" && "Review your booking and add any notes for your coach"}
-            {step === "payment" && "Waiting for the coach to confirm your request..."}
+            {step === "payment" && "Booking created successfully!"}
           </DialogDescription>
         </DialogHeader>
 
@@ -190,7 +190,7 @@ export default function BookingModal({ open, onOpenChange, coach }: BookingModal
               <div className="text-sm">
                 <div className="font-medium text-green-600 mb-1">Payment Protection</div>
                 <div className="text-muted-foreground">
-                  Your payment is held securely until after your lesson. You'll only be charged once both you and your coach confirm the lesson was completed.
+                  Your payment is collected upfront and held securely. If the coach declines or you cancel before the lesson, you'll receive a full refund. After the lesson, you have 24 hours to raise any issues.
                 </div>
               </div>
             </div>
@@ -222,17 +222,17 @@ export default function BookingModal({ open, onOpenChange, coach }: BookingModal
           </div>
         )}
 
-        {/* Step 3: Request sent — waiting for coach confirmation */}
+        {/* Step 3: Booking created — student needs to pay */}
         {step === "payment" && (
           <div className="py-12 text-center space-y-4">
             <div className="flex justify-center">
               <CheckCircle2 className="h-16 w-16 text-green-600" />
             </div>
             <div>
-              <h3 className="text-lg font-semibold mb-2">Request sent!</h3>
+              <h3 className="text-lg font-semibold mb-2">Booking created!</h3>
               <p className="text-sm text-muted-foreground max-w-md mx-auto">
-                {coach.name} has 24 hours to accept your request. You'll receive
-                an email to complete payment once they confirm.
+                Head to your dashboard to complete payment. Once paid, {coach.name}
+                will be notified and can confirm your lesson.
               </p>
             </div>
           </div>

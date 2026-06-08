@@ -175,6 +175,11 @@
   width: 100%;
 }
 
+/* Padding-left override when an icon is present in a relative container */
+.editorial-input.with-icon,
+.glass-input.with-icon {
+  padding-left: 2.75rem;
+}
 .editorial-input:focus,
 .glass-input:focus {
   outline: none;

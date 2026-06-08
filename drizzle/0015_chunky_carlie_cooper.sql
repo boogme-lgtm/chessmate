@@ -1,0 +1,1 @@
+ALTER TABLE `lessons` ADD `checkoutAttempt` int DEFAULT 0 NOT NULL;

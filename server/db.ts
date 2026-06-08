@@ -1,4 +1,4 @@
-import { eq, and, desc, sql, gte, lte } from "drizzle-orm";
+import { eq, and, desc, sql, gte, lte, isNotNull, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import {
@@ -470,6 +470,24 @@ export async function updateLessonPaymentIntent(lessonId: number, paymentIntentI
     .where(eq(lessons.id, lessonId));
 }
 
+/**
+ * Payment-first model: mark lesson as payment_collected.
+ * Sets status, stores the PaymentIntent ID, and resets the confirmation deadline
+ * to 24 hours from now (coach has 24h to accept/decline after payment).
+ */
+export async function updateLessonPaymentCollected(lessonId: number, paymentIntentId: string) {
+  const db = await getDb();
+  if (!db) return;
+
+  await db.update(lessons)
+    .set({
+      stripePaymentIntentId: paymentIntentId,
+      status: "payment_collected",
+      confirmationDeadline: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    })
+    .where(eq(lessons.id, lessonId));
+}
+
 export async function updateLessonTransfer(lessonId: number, transferId: string) {
   const db = await getDb();
   if (!db) return;
@@ -481,6 +499,91 @@ export async function updateLessonTransfer(lessonId: number, transferId: string)
       payoutAt: new Date()
     })
     .where(eq(lessons.id, lessonId));
+}
+
+// R5-1: Atomic compare-and-set — claim the checkout slot only if it's currently NULL.
+// Uses Drizzle column references to ensure column name matches schema.
+// Returns true if this call won the race (slot was NULL and is now set to a placeholder).
+// Returns false if another request already claimed it.
+export async function claimLessonCheckoutSlot(lessonId: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+
+  // Atomic UPDATE ... WHERE stripeCheckoutSessionId IS NULL
+  // Only succeeds (affectedRows > 0) if no other request has set the value.
+  // Uses Drizzle column references so TypeScript catches any column name mismatch.
+  const result: any = await db.execute(sql`
+    UPDATE ${lessons}
+    SET ${lessons.stripeCheckoutSessionId} = '__pending__'
+    WHERE ${lessons.id} = ${lessonId} AND ${lessons.stripeCheckoutSessionId} IS NULL
+  `);
+  // mysql2 returns [ResultSetHeader, ...] where affectedRows indicates success
+  const affectedRows = result?.[0]?.affectedRows ?? result?.affectedRows ?? 0;
+  return affectedRows > 0;
+}
+
+// R3-2: Set active checkout session on a lesson (idempotency guard)
+export async function setLessonCheckoutSession(lessonId: number, sessionId: string) {
+  const db = await getDb();
+  if (!db) return;
+
+  await db.update(lessons)
+    .set({ stripeCheckoutSessionId: sessionId })
+    .where(eq(lessons.id, lessonId));
+}
+
+// R7-1: Conditional atomic clear — only clears if the current session ID matches expectedSessionId.
+// This prevents a concurrent request from wiping out a __pending__ slot claimed by another request.
+// Returns { cleared: boolean, checkoutAttempt: number }.
+export async function clearLessonCheckoutSessionIfMatches(
+  lessonId: number,
+  expectedSessionId: string
+): Promise<{ cleared: boolean; checkoutAttempt: number }> {
+  const db = await getDb();
+  if (!db) return { cleared: false, checkoutAttempt: 0 };
+
+  const result = await db.update(lessons)
+    .set({
+      stripeCheckoutSessionId: null,
+      checkoutAttempt: sql`${lessons.checkoutAttempt} + 1`,
+    })
+    .where(
+      and(
+        eq(lessons.id, lessonId),
+        eq(lessons.stripeCheckoutSessionId, expectedSessionId)
+      )
+    );
+
+  // MySQL returns affectedRows; if 0, the session ID didn't match (race lost)
+  const affectedRows = (result as any)[0]?.affectedRows ?? (result as any).affectedRows ?? 0;
+  if (affectedRows === 0) {
+    return { cleared: false, checkoutAttempt: 0 };
+  }
+
+  // Read back the incremented value to return it
+  const [row] = await db.select({ checkoutAttempt: lessons.checkoutAttempt })
+    .from(lessons)
+    .where(eq(lessons.id, lessonId));
+  return { cleared: true, checkoutAttempt: row?.checkoutAttempt ?? 0 };
+}
+
+// R7-1: Unconditional clear for webhook use (after payment succeeds, we know the session is ours).
+// Used only by the webhook handler where we own the session and there's no race concern.
+export async function clearLessonCheckoutSession(lessonId: number): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+
+  await db.update(lessons)
+    .set({
+      stripeCheckoutSessionId: null,
+      checkoutAttempt: sql`${lessons.checkoutAttempt} + 1`,
+    })
+    .where(eq(lessons.id, lessonId));
+
+  const [row] = await db.select({ checkoutAttempt: lessons.checkoutAttempt })
+    .from(lessons)
+    .where(eq(lessons.id, lessonId));
+  return row?.checkoutAttempt ?? 0;
 }
 
 export async function getLessonByPaymentIntent(paymentIntentId: string) {
@@ -1330,4 +1433,521 @@ export async function incrementReferralCodeUses(codeId: number) {
   await db.update(referralCodes)
     .set({ totalUses: sql`${referralCodes.totalUses} + 1` })
     .where(eq(referralCodes.id, codeId));
+}
+
+
+// ============ DISPUTE & PAYOUT HELPERS ============
+
+/**
+ * Get all lessons with a specific status (for admin views).
+ */
+export async function getLessonsByStatus(status: string) {
+  const db = await getDb();
+  if (!db) return [];
+
+  return await db.select().from(lessons).where(eq(lessons.status, status as any));
+}
+
+/**
+ * Get completed lessons where the 24-hour issue window has expired
+ * and no dispute was raised — these are ready for coach payout release.
+ * Only returns lessons that haven't already been paid out (no stripeTransferId).
+ */
+export async function getCompletedLessonsReadyForPayout() {
+  const db = await getDb();
+  if (!db) return [];
+
+  return await db.select().from(lessons).where(
+    and(
+      eq(lessons.status, "completed"),
+      isNotNull(lessons.issueWindowEndsAt),
+      sql`${lessons.issueWindowEndsAt} < NOW()`,
+      isNull(lessons.stripeTransferId),
+    )
+  );
+}
+
+/**
+ * Flag a lesson as having a failed refund attempt.
+ * Used when Stripe refund creation fails during coach decline or auto-decline.
+ * The lesson remains in its current status (payment_collected) so admin can retry.
+ * The cancellationReason is updated to make it visible in admin views.
+ */
+export async function flagLessonRefundFailed(lessonId: number, reason: string) {
+  const db = await getDb();
+  if (!db) return;
+
+  await db.update(lessons)
+    .set({
+      cancellationReason: `REFUND_FAILED: ${reason}`,
+      cancelledBy: "system",
+    })
+    .where(eq(lessons.id, lessonId));
+}
+
+/**
+ * Atomic CAS for payout release — claim the payout slot only if it's currently NULL.
+ * Uses a WHERE stripeTransferId IS NULL guard to prevent double-transfer under concurrent calls.
+ * Returns true if this call won the race (slot was NULL and is now set to a placeholder).
+ * Returns false if another request already claimed it (stripeTransferId was already set).
+ *
+ * The caller must then perform the actual Stripe transfer and update with the real transfer ID.
+ * If the Stripe transfer fails, the caller should clear the placeholder so the slot can be retried.
+ */
+export async function claimLessonPayoutSlot(lessonId: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+
+  const result: any = await db.execute(sql`
+    UPDATE lessons
+    SET stripeTransferId = '__pending_payout__'
+    WHERE id = ${lessonId}
+      AND stripeTransferId IS NULL
+      AND status IN ('completed', 'disputed')
+  `);
+
+  return result[0]?.affectedRows === 1;
+}
+
+/**
+ * Finalize a payout after a successful Stripe transfer.
+ * Replaces the __pending_payout__ placeholder with the real transfer ID.
+ */
+export async function finalizeLessonPayout(lessonId: number, transferId: string) {
+  const db = await getDb();
+  if (!db) return;
+
+  await db.execute(sql`
+    UPDATE lessons
+    SET stripeTransferId = ${transferId},
+        status = 'released',
+        payoutAt = NOW()
+    WHERE id = ${lessonId}
+      AND stripeTransferId = '__pending_payout__'
+  `);
+}
+
+/**
+ * Release the payout slot placeholder if the Stripe transfer failed.
+ * This allows the admin to retry the payout.
+ */
+export async function releaseLessonPayoutSlot(lessonId: number) {
+  const db = await getDb();
+  if (!db) return;
+
+  await db.execute(sql`
+    UPDATE lessons
+    SET stripeTransferId = NULL
+    WHERE id = ${lessonId}
+      AND stripeTransferId = '__pending_payout__'
+  `);
+}
+
+/**
+ * S29-1: Atomic CAS for coach accept/decline.
+ *
+ * Transitions the lesson from `payment_collected` to either `confirmed` (accept)
+ * or `decline_pending` (decline) in a single UPDATE ... WHERE status = 'payment_collected'.
+ *
+ * Returns true if this call won the race (row was in payment_collected and is now claimed).
+ * Returns false if another request already transitioned the row (concurrent accept or decline).
+ *
+ * For accept: the caller may proceed immediately — no Stripe call needed.
+ * For decline: the caller must attempt the Stripe refund, then call finalizeCoachDecline()
+ *   on success or releaseCoachDeclineClaim() on failure.
+ */
+export async function claimLessonCoachDecision(
+  lessonId: number,
+  toStatus: 'confirmed' | 'decline_pending'
+): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+
+  const result: any = await db.execute(sql`
+    UPDATE lessons
+    SET status = ${toStatus},
+        coachConfirmedAt = CASE WHEN ${toStatus} = 'confirmed' THEN NOW() ELSE coachConfirmedAt END,
+        coachDeclinedAt  = CASE WHEN ${toStatus} = 'decline_pending' THEN NOW() ELSE coachDeclinedAt END
+    WHERE id = ${lessonId}
+      AND status = 'payment_collected'
+  `);
+
+  return result[0]?.affectedRows === 1;
+}
+
+/**
+ * Finalize coach decline after Stripe refund succeeds.
+ * Transitions from decline_pending → declined.
+ */
+export async function finalizeCoachDecline(
+  lessonId: number,
+  refundAmountCents: number,
+  reason: string
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+
+  await db.execute(sql`
+    UPDATE lessons
+    SET status = 'declined',
+        refundAmountCents = ${refundAmountCents},
+        refundProcessedAt = NOW(),
+        cancellationReason = ${reason}
+    WHERE id = ${lessonId}
+      AND status = 'decline_pending'
+  `);
+}
+
+/**
+ * Release the coach decline claim if Stripe refund fails.
+ * Transitions from decline_pending → payment_collected so admin can retry.
+ */
+export async function releaseCoachDeclineClaim(lessonId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+
+  await db.execute(sql`
+    UPDATE lessons
+    SET status = 'payment_collected',
+        coachDeclinedAt = NULL,
+        cancellationReason = 'REFUND_FAILED: Coach decline refund failed — admin retry required'
+    WHERE id = ${lessonId}
+      AND status = 'decline_pending'
+  `);
+}
+
+/**
+ * S29-4: Atomic CAS for student cancellation.
+ *
+ * Transitions the lesson from a cancellable status to `cancel_pending` in a single
+ * UPDATE ... WHERE status NOT IN (terminal states).
+ *
+ * Returns the lesson's refund calculation fields if the claim succeeded, or null if
+ * the lesson was already in a terminal state (concurrent cancel or completion).
+ */
+export async function claimLessonCancellation(
+  lessonId: number,
+  cancelledBy: 'student' | 'coach' | 'system',
+  cancellationReason: string | undefined
+): Promise<{ refundAmountCents: number; refundPercentage: number } | null> {
+  const lesson = await getLessonById(lessonId);
+  if (!lesson) return null;
+
+  // Calculate refund based on time until lesson
+  const now = new Date();
+  const lessonTime = new Date(lesson.scheduledAt);
+  const hoursUntilLesson = (lessonTime.getTime() - now.getTime()) / (1000 * 60 * 60);
+
+  let refundPercentage = 0;
+  if (hoursUntilLesson > 48) {
+    refundPercentage = 100;
+  } else if (hoursUntilLesson >= 24) {
+    refundPercentage = 50;
+  }
+
+  const refundAmountCents = Math.round((lesson.amountCents * refundPercentage) / 100);
+
+  const db = await getDb();
+  if (!db) return null;
+
+  // S30-4: Atomic CAS: claim the cancellation slot.
+  // Use an explicit ALLOWLIST of pre-completion statuses to prevent cancellation of
+  // disputed, no_show, or any future terminal/post-completion states.
+  // Only these statuses represent a lesson that has not yet been completed or settled:
+  //   - pending_payment: booking created, student hasn't paid yet
+  //   - payment_collected: student paid, coach hasn't confirmed yet
+  //   - confirmed: coach confirmed, lesson hasn't happened yet
+  const result: any = await db.execute(sql`
+    UPDATE lessons
+    SET status = 'cancel_pending',
+        cancelledAt = NOW(),
+        cancelledBy = ${cancelledBy},
+        cancellationReason = ${cancellationReason || null},
+        refundAmountCents = ${refundAmountCents}
+    WHERE id = ${lessonId}
+      AND status IN ('pending_payment', 'payment_collected', 'confirmed')
+  `);
+
+  if (result[0]?.affectedRows !== 1) return null;
+
+  return { refundAmountCents, refundPercentage };
+}
+
+/**
+ * Finalize student cancellation after Stripe refund succeeds (or when no refund is due).
+ * Transitions from cancel_pending → cancelled.
+ */
+export async function finalizeCancellation(
+  lessonId: number,
+  refundSucceeded: boolean
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+
+  await db.execute(sql`
+    UPDATE lessons
+    SET status = 'cancelled',
+        refundProcessedAt = CASE WHEN ${refundSucceeded} THEN NOW() ELSE refundProcessedAt END
+    WHERE id = ${lessonId}
+      AND status = 'cancel_pending'
+  `);
+}
+
+/**
+ * Release the cancellation claim if Stripe refund fails.
+ * Transitions from cancel_pending → cancelled but flags the refund failure.
+ * The lesson is still cancelled (student cannot re-book), but the refund needs admin retry.
+ */
+export async function releaseCancellationWithRefundFailed(lessonId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+
+  await db.execute(sql`
+    UPDATE lessons
+    SET status = 'cancelled',
+        cancellationReason = CONCAT(COALESCE(cancellationReason, ''), ' [REFUND_FAILED: Stripe refund creation failed — admin retry required]')
+    WHERE id = ${lessonId}
+      AND status = 'cancel_pending'
+  `);
+}
+
+/**
+ * S30-1: Atomic settlement claim for admin refund.
+ * Atomically sets stripeTransferId = '__pending_refund__' only when:
+ *   - stripeTransferId IS NULL (no payout in flight or completed)
+ *   - status is in the refundable set (disputed, completed)
+ * Returns true if the claim was won (affectedRows = 1), false if lost to a concurrent payout.
+ */
+/**
+ * S31-4: Claim the refund slot AND store the intended refund amount atomically.
+ * This allows recovery to reconstruct the correct amount after a process crash.
+ */
+export async function claimLessonRefundSlot(lessonId: number, intendedRefundAmountCents?: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+
+  const result: any = await db.execute(sql`
+    UPDATE lessons
+    SET stripeTransferId = '__pending_refund__',
+        -- Store intended refund amount so recovery can reconstruct it after a crash.
+        -- Only set if provided; leave existing value if NULL is passed.
+        refundAmountCents = COALESCE(${intendedRefundAmountCents ?? null}, refundAmountCents)
+    WHERE id = ${lessonId}
+      AND stripeTransferId IS NULL
+      AND status IN ('disputed', 'completed')
+  `);
+
+  return result[0]?.affectedRows === 1;
+}
+
+/**
+ * Finalize admin refund: clear the __pending_refund__ slot and mark lesson as refunded.
+ * Only transitions from the pending state to prevent double-finalization.
+ */
+export async function finalizeAdminRefund(
+  lessonId: number,
+  refundAmountCents: number,
+  reason: string
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+
+  await db.execute(sql`
+    UPDATE lessons
+    SET status = 'refunded',
+        stripeTransferId = NULL,
+        refundAmountCents = ${refundAmountCents},
+        refundProcessedAt = NOW(),
+        cancellationReason = ${reason}
+    WHERE id = ${lessonId}
+      AND stripeTransferId = '__pending_refund__'
+  `);
+}
+
+/**
+ * Release the __pending_refund__ slot back to NULL on Stripe failure.
+ * Allows the admin to retry.
+ */
+export async function releaseAdminRefundClaim(lessonId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+
+  await db.execute(sql`
+    UPDATE lessons
+    SET stripeTransferId = NULL
+    WHERE id = ${lessonId}
+      AND stripeTransferId = '__pending_refund__'
+  `);
+}
+
+// ─── S38: Post-payout transfer reversal helpers ───────────────────────────────
+
+/**
+ * S38: Atomically claim the reversal slot for a released lesson.
+ * Sets stripeReversalId = '__pending_reversal__' only when:
+ *   - status = 'released'   (payout has been made)
+ *   - stripeReversalId IS NULL  (no reversal in progress or completed)
+ *
+ * Returns true if the claim was won (affectedRows = 1), false otherwise.
+ */
+export async function claimPostPayoutReversalSlot(
+  lessonId: number,
+  intendedReversalAmountCents: number,
+  intendedStudentRefundCents: number  // S38P2: persist at claim time for stable retry/recovery
+): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  const result: any = await db.execute(sql`
+    UPDATE lessons
+    SET stripeReversalId = '__pending_reversal__',
+        stripeReversalAmountCents = ${intendedReversalAmountCents},
+        stripeIntendedStudentRefundCents = ${intendedStudentRefundCents}
+    WHERE id = ${lessonId}
+      AND status = 'released'
+      AND stripeReversalId IS NULL
+  `);
+  return result[0]?.affectedRows === 1;
+}
+
+/**
+ * S38: Advance the slot from '__pending_reversal__' to '__pending_post_payout_refund__'
+ * after the Stripe transfer reversal succeeds.
+ * Stores the real Stripe reversal ID for idempotency and audit.
+ */
+export async function advanceToPostPayoutRefundSlot(
+  lessonId: number,
+  stripeReversalId: string
+): Promise<boolean> {  // S38P2: return CAS success
+  const db = await getDb();
+  if (!db) return false;
+  const result: any = await db.execute(sql`
+    UPDATE lessons
+    SET stripeReversalId = ${stripeReversalId},
+        stripePostPayoutRefundId = '__pending_post_payout_refund__'
+    WHERE id = ${lessonId}
+      AND stripeReversalId = '__pending_reversal__'
+  `);
+  return result[0]?.affectedRows === 1;
+}
+
+/**
+ * S38: Finalize the post-payout refund after both Stripe operations succeed.
+ * Stores the real Stripe refund ID, sets status = 'refunded', records amounts.
+ */
+export async function finalizePostPayoutRefund(
+  lessonId: number,
+  stripeRefundId: string,
+  refundAmountCents: number,
+  reason: string
+): Promise<boolean> {  // S38P2: return CAS success
+  const db = await getDb();
+  if (!db) return false;
+  const result: any = await db.execute(sql`
+    UPDATE lessons
+    SET status = 'refunded',
+        stripePostPayoutRefundId = ${stripeRefundId},
+        refundAmountCents = ${refundAmountCents},
+        refundProcessedAt = NOW(),
+        cancellationReason = ${reason}
+    WHERE id = ${lessonId}
+      AND stripePostPayoutRefundId = '__pending_post_payout_refund__'
+  `);
+  return result[0]?.affectedRows === 1;
+}
+
+/**
+ * S38: Release the reversal slot back to NULL on Stripe failure (before reversal).
+ * Allows the admin to retry.
+ */
+export async function releasePostPayoutReversalClaim(lessonId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.execute(sql`
+    UPDATE lessons
+    SET stripeReversalId = NULL,
+        stripeReversalAmountCents = NULL,
+        stripeIntendedStudentRefundCents = NULL
+    WHERE id = ${lessonId}
+      AND stripeReversalId = '__pending_reversal__'
+  `);
+}
+
+/**
+ * S38: Release the post-payout refund slot on Stripe refund failure.
+ * Only releases if in '__pending_post_payout_refund__' state.
+ * The stripeReversalId already holds the real reversal ID at this point.
+ * Allows the admin to retry the refund step.
+ */
+export async function releasePostPayoutRefundClaim(lessonId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.execute(sql`
+    UPDATE lessons
+    SET stripePostPayoutRefundId = NULL
+    WHERE id = ${lessonId}
+      AND stripePostPayoutRefundId = '__pending_post_payout_refund__'
+  `);
+}
+
+/**
+ * S38P Fix 2: Claim the post-payout refund slot when the transfer reversal is already done.
+ * This is the correct retry helper for the case where stripeReversalId holds a real trr_ ID
+ * (reversal succeeded) but stripePostPayoutRefundId is still NULL (refund failed or never ran).
+ *
+ * advanceToPostPayoutRefundSlot cannot be used here because it only matches
+ * WHERE stripeReversalId = '__pending_reversal__', which would affect 0 rows.
+ *
+ * Guards:
+ *   - status = 'released'           (lesson must still be in released state)
+ *   - stripeReversalId = expectedId  (must match the real reversal ID we already have)
+ *   - stripePostPayoutRefundId IS NULL (no concurrent refund in progress)
+ */
+export async function claimPostPayoutRefundSlotAfterReversal(
+  lessonId: number,
+  expectedReversalId: string
+): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  const result: any = await db.execute(sql`
+    UPDATE lessons
+    SET stripePostPayoutRefundId = '__pending_post_payout_refund__'
+    WHERE id = ${lessonId}
+      AND status = 'released'
+      AND stripeReversalId = ${expectedReversalId}
+      AND stripePostPayoutRefundId IS NULL
+  `);
+  return result[0]?.affectedRows === 1;
+}
+
+/**
+ * S38P2: Recovery helper — fetch lessons stuck in __pending_post_payout_refund__ state.
+ * Returns the stored stripeIntendedStudentRefundCents so recovery uses the original
+ * intended amount, not a re-computed value from a new request.
+ */
+export async function getStuckPostPayoutRefundLessons(stuckBeforeMs: number): Promise<Array<{
+  id: number;
+  stripeReversalId: string;
+  stripeIntendedStudentRefundCents: number;
+  amountCents: number;
+  coachPayoutCents: number;
+  adminOverrideReason: string | null;
+}>> {
+  const db = await getDb();
+  if (!db) return [];
+  const cutoff = new Date(Date.now() - stuckBeforeMs);
+  const rows: any = await db.execute(sql`
+    SELECT id, stripeReversalId, stripeIntendedStudentRefundCents,
+           amountCents, coachPayoutCents, adminOverrideReason
+    FROM lessons
+    WHERE stripePostPayoutRefundId = '__pending_post_payout_refund__'
+      AND updatedAt < ${cutoff}
+  `);
+  return (rows[0] ?? []).map((r: any) => ({
+    id: r.id,
+    stripeReversalId: r.stripeReversalId,
+    stripeIntendedStudentRefundCents: r.stripeIntendedStudentRefundCents ?? r.amountCents,
+    amountCents: r.amountCents,
+    coachPayoutCents: r.coachPayoutCents,
+    adminOverrideReason: r.adminOverrideReason ?? null,
+  }));
 }

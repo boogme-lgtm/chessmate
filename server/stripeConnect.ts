@@ -144,17 +144,21 @@ export async function transferToCoach(params: {
   currency?: string;
   description: string;
   metadata?: Record<string, string>;
+  idempotencyKey?: string;
 }) {
-  const { accountId, amountCents, currency = 'usd', description, metadata } = params;
+  const { accountId, amountCents, currency = 'usd', description, metadata, idempotencyKey } = params;
 
   try {
-    const transfer = await stripe.transfers.create({
-      amount: amountCents,
-      currency,
-      destination: accountId,
-      description,
-      metadata,
-    });
+    const transfer = await stripe.transfers.create(
+      {
+        amount: amountCents,
+        currency,
+        destination: accountId,
+        description,
+        metadata,
+      },
+      idempotencyKey ? { idempotencyKey } : undefined
+    );
 
     return {
       success: true,
@@ -269,8 +273,9 @@ export async function createRefund(params: {
       amount: amountCents,
       reason,
       metadata,
-      reverse_transfer: true,
-      refund_application_fee: true,
+      // No reverse_transfer — separate charges and transfers model means
+      // there is no destination charge transfer to reverse at refund time.
+      // No refund_application_fee — no application fee on the charge.
     });
 
     console.log('[Stripe Refund] Refund created:', refund.id);

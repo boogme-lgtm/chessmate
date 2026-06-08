@@ -854,7 +854,7 @@ export function getStudentBookingConfirmationEmail(
                   🛡️ Payment Protection Active
                 </p>
                 <p style="margin: 0; font-size: 14px; line-height: 1.6; color: #d1d5db;">
-                  Your payment is held securely in escrow until after your lesson. You'll only be charged once both you and your coach confirm the lesson was completed.
+                  Your payment has been collected and is held securely. Your coach will now review and confirm the booking. If the coach declines, you'll receive a full refund. After the lesson, you have 24 hours to raise any issues.
                 </p>
               </div>
               
@@ -985,10 +985,10 @@ export function getCoachBookingNotificationEmail(
               <!-- Payment Protection Notice -->
               <div style="background-color: #1f2937; padding: 20px; margin: 30px 0; border-radius: 6px; border: 1px solid #374151;">
                 <p style="margin: 0 0 10px 0; font-size: 14px; font-weight: 600; color: #10b981;">
-                  🛡️ Payment Secured in Escrow
+                  🛡️ Payment Collected
                 </p>
                 <p style="margin: 0; font-size: 14px; line-height: 1.6; color: #d1d5db;">
-                  The student's payment is held securely. You'll receive your payout automatically after both parties confirm the lesson was completed.
+                  The student's payment has been collected and is held securely. Please accept or decline this booking in your dashboard. Your payout will be released after the lesson is completed and the review window closes.
                 </p>
               </div>
               
@@ -998,10 +998,10 @@ export function getCoachBookingNotificationEmail(
                   Next Steps
                 </p>
                 <ol style="margin: 0; padding-left: 20px; color: #e0e0e0; font-size: 14px; line-height: 1.8;">
-                  <li>Review the lesson details above</li>
-                  <li>Prepare your lesson materials</li>
+                  <li>Accept or decline this booking in your coach dashboard</li>
+                  <li>If accepted, prepare your lesson materials</li>
                   <li>You'll receive a reminder 24 hours before the lesson</li>
-                  <li>After the lesson, confirm completion to receive your payout</li>
+                  <li>After the lesson, the student confirms completion and your payout is released after 24 hours</li>
                 </ol>
               </div>
               
@@ -1464,8 +1464,9 @@ export function getCoachCancellationEmail(params: {
 }
 
 /**
- * New booking request — sent to the coach when a student books a lesson.
+ * Paid booking request — sent to the coach when a student pays for a lesson.
  * The coach must accept/decline within 24 hours or the system auto-declines.
+ * In the payment-first model, the student has already paid at this point.
  */
 export function getCoachNewBookingRequestEmail(params: {
   coachName: string;
@@ -1512,7 +1513,7 @@ export function getCoachNewBookingRequestEmail(params: {
             <td style="padding: 0 40px 40px 40px;">
               <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">Hi ${coachName},</p>
               <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">
-                ${studentName} has requested a lesson with you. Please accept or decline in your coach dashboard so the student can complete payment.
+                ${studentName} has booked and paid for a lesson with you. Please accept or decline in your coach dashboard. If you decline, the student will receive a full refund.
               </p>
               <div style="background-color: #2a2a2a; padding: 25px; margin: 30px 0; border-radius: 8px; border-left: 4px solid #8b4513;">
                 <h2 style="margin: 0 0 20px 0; font-size: 20px; font-weight: 600; color: #ffffff;">Lesson Details</h2>
@@ -1545,8 +1546,9 @@ export function getCoachNewBookingRequestEmail(params: {
 }
 
 /**
- * Coach accepted the booking — sent to the student with a payment link.
- * After Sprint 4, students pay AFTER the coach confirms.
+ * Coach accepted the booking — sent to the student after coach confirms.
+ * In the payment-first model, the student has already paid. This email
+ * confirms the coach accepted and the lesson is locked in.
  */
 export function getStudentCoachConfirmedEmail(params: {
   studentName: string;
@@ -1574,7 +1576,7 @@ export function getStudentCoachConfirmedEmail(params: {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Coach Confirmed — Complete Payment</title>
+  <title>Lesson Confirmed!</title>
 </head>
 <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #0a0a0a; color: #ffffff;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #0a0a0a;">
@@ -1584,14 +1586,14 @@ export function getStudentCoachConfirmedEmail(params: {
           <tr>
             <td style="padding: 40px 40px 20px 40px; text-align: center;">
               <img src="https://files.manuscdn.com/user_upload_by_module/session_file/310519663188415081/xRYfqyUGHSJUlDcu.png" alt="BooGMe" style="height: 48px; width: auto; margin-bottom: 20px;" />
-              <h1 style="margin: 0; font-size: 32px; font-weight: 300; color: #ffffff; letter-spacing: -0.5px;">Your coach said yes!</h1>
+              <h1 style="margin: 0; font-size: 32px; font-weight: 300; color: #ffffff; letter-spacing: -0.5px;">Lesson Confirmed!</h1>
             </td>
           </tr>
           <tr>
             <td style="padding: 0 40px 40px 40px;">
               <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">Hi ${studentName},</p>
               <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">
-                Great news — <strong>${coachName}</strong> has accepted your booking request. Complete payment to lock in your lesson.
+                Great news — <strong>${coachName}</strong> has confirmed your lesson. Your booking is locked in and ready to go.
               </p>
               <div style="background-color: #2a2a2a; padding: 25px; margin: 30px 0; border-radius: 8px; border-left: 4px solid #8b4513;">
                 <h2 style="margin: 0 0 20px 0; font-size: 20px; font-weight: 600; color: #ffffff;">Lesson Details</h2>
@@ -1604,11 +1606,11 @@ export function getStudentCoachConfirmedEmail(params: {
                 </table>
               </div>
               <div style="text-align: center; margin: 30px 0;">
-                <a href="${frontendUrl}/dashboard" style="display: inline-block; padding: 14px 32px; background-color: #8b4513; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px;">Complete Payment</a>
+                <a href="${frontendUrl}/dashboard" style="display: inline-block; padding: 14px 32px; background-color: #8b4513; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px;">View Your Dashboard</a>
               </div>
               <div style="background-color: #2a2a2a; padding: 20px; margin: 20px 0; border-radius: 8px;">
                 <p style="margin: 0; font-size: 14px; line-height: 1.6; color: #a0a0a0;">
-                  Your payment is held securely in escrow until after your lesson. You can cancel for a full refund up to 48 hours before the lesson.
+                  Your payment is held securely. After the lesson, you'll have 24 hours to raise any issues. If everything went well, the coach's payout will be released automatically.
                 </p>
               </div>
             </td>

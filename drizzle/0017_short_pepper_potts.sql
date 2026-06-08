@@ -1,0 +1,1 @@
+ALTER TABLE `lessons` MODIFY COLUMN `status` enum('pending_payment','payment_collected','pending_confirmation','confirmed','decline_pending','declined','cancel_pending','paid','in_progress','completed','released','cancelled','no_show','disputed','refunded') DEFAULT 'pending_payment';
