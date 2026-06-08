@@ -25,7 +25,7 @@ import { storagePut } from "./storage";
 import { sendEmail as sendSimpleEmail, getCoachWelcomeEmail } from "./email";
 import { notifyOwner } from "./_core/notification";
 import { transferToCoach } from "./stripeConnect";
-import { releaseLessonPayoutToCoach } from "./payoutService";
+import { releaseLessonPayoutToCoach, releaseAllEligiblePayouts } from "./payoutService";
 
 /**
  * Send cancellation confirmation emails to both student and coach.
@@ -2636,6 +2636,23 @@ export const appRouter = router({
             throw new TRPCError({ code: "PRECONDITION_FAILED", message: result.reason });
           }
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: result.reason });
+        }),
+
+      // Release payouts for ALL currently-eligible lessons in one pass.
+      // Server owns the eligible set (completed + window expired + no transfer);
+      // each lesson is independently re-validated and atomically claimed inside
+      // releaseLessonPayoutToCoach. No new money path — this only orchestrates the
+      // existing hardened service. Returns a per-lesson success/failure summary so
+      // a partial failure never aborts the rest.
+      releaseAllEligible: protectedProcedure
+        .use(({ ctx, next }) => {
+          if (ctx.user.role !== "admin") {
+            throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
+          }
+          return next({ ctx });
+        })
+        .mutation(async () => {
+          return await releaseAllEligiblePayouts();
         }),
 
       // Admin: full refund to student (for disputed lessons)

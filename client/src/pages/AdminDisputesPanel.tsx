@@ -396,6 +396,33 @@ export default function AdminDisputesPanel() {
     },
   });
 
+  // Bulk release — orchestrates the existing per-lesson payout service server-side.
+  const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
+  const releaseAllMutation = trpc.admin.disputes.releaseAllEligible.useMutation({
+    onSuccess: (res) => {
+      setBulkConfirmOpen(false);
+      if (res.total === 0) {
+        toast.info("No eligible lessons to release.");
+      } else if (res.failedCount === 0) {
+        toast.success(`Released ${res.releasedCount} of ${res.total} payouts.`);
+      } else {
+        const detail = res.failed
+          .slice(0, 5)
+          .map((f) => `#${f.lessonId}: ${formatAdminActionError(f.reason)}`)
+          .join("\n");
+        toast.warning(
+          `Released ${res.releasedCount} of ${res.total}. ${res.failedCount} failed.`,
+          { description: detail + (res.failed.length > 5 ? "\n…" : ""), duration: 10000 }
+        );
+      }
+      utils.admin.disputes.list.invalidate();
+      utils.admin.disputes.pendingPayouts.invalidate();
+    },
+    onError: (err) => {
+      toast.error(formatAdminActionError(err.message));
+    },
+  });
+
   // ── Helpers ────────────────────────────────────────────────────────────────
   function openAction(action: LessonRowAction) {
     setOverrideReason("");
@@ -674,15 +701,34 @@ export default function AdminDisputesPanel() {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between pb-3">
                 <CardTitle className="text-lg">Payout-Ready Lessons</CardTitle>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => refetchPayouts()}
-                  className="gap-2 text-muted-foreground"
-                >
-                  <RefreshCw className="h-4 w-4" />
-                  Refresh
-                </Button>
+                <div className="flex items-center gap-2">
+                  {(payoutReadyLessons?.length ?? 0) > 0 && (
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={() => setBulkConfirmOpen(true)}
+                      disabled={releaseAllMutation.isPending}
+                      className="gap-2"
+                      data-testid="release-all-eligible-btn"
+                    >
+                      {releaseAllMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Banknote className="h-4 w-4" />
+                      )}
+                      Release All Eligible ({payoutReadyLessons!.length})
+                    </Button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => refetchPayouts()}
+                    className="gap-2 text-muted-foreground"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    Refresh
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent>
                 <p className="text-sm text-muted-foreground mb-4">
@@ -782,6 +828,43 @@ export default function AdminDisputesPanel() {
           confirmVariant={modalConfig.confirmVariant}
         />
       )}
+
+      {/* Bulk release confirmation */}
+      <Dialog open={bulkConfirmOpen} onOpenChange={(v) => { if (!v && !releaseAllMutation.isPending) setBulkConfirmOpen(false); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Release All Eligible Payouts</DialogTitle>
+            <DialogDescription>
+              This releases the coach payout for all {payoutReadyLessons?.length ?? 0} payout-ready
+              lessons — completed lessons whose 24-hour issue window has expired with no dispute.
+              Each is independently validated server-side. This action is irreversible.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setBulkConfirmOpen(false)}
+              disabled={releaseAllMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => releaseAllMutation.mutate()}
+              disabled={releaseAllMutation.isPending}
+              data-testid="bulk-release-confirm"
+            >
+              {releaseAllMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Releasing…
+                </>
+              ) : (
+                `Release ${payoutReadyLessons?.length ?? 0} Payouts`
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
