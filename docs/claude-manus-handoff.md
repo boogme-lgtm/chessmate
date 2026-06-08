@@ -187,6 +187,55 @@ per-lesson service.
    identical because each lesson still goes through the full per-lesson service.
 2. Confirm sequential (not concurrent) processing is acceptable for expected volumes.
 
+## 3c. Sprint 44 — Booking UX + notifications (BUILT, commit `61e098e`)
+
+8 fixes from the live E2E test. **No money path touched.** Two important
+corrections to the handoff's assumptions are flagged below as review asks.
+
+### What changed
+- **S44-1** `client/src/components/BookingModal.tsx` — the post-booking toast that
+  auto-closed in 2s is replaced by a **persistent payment step**: lesson summary +
+  **Pay Now** (calls `payment.createCheckout` with the returned `lessonId` and
+  redirects to Stripe) and **Pay Later** (dismisses; lesson stays Awaiting Payment).
+  Correction: the booking mutation does **not** return a checkout URL — Pay Now calls
+  `createCheckout` to get it.
+- **S44-2** `server/db.ts` `getLessonsByStudent` now `LEFT JOIN users` → `coachName`;
+  `client/src/pages/StudentDashboard.tsx` renders `lesson.coachName` on the card title
+  and in the message thread (fallback `Coach #id`). Note: `admin.users.getByIds`
+  (Sprint 42) is admin-only, so it could **not** be reused here — enriched the query
+  instead.
+- **S44-3** `client/src/pages/LessonPaymentSuccess.tsx` invalidates `lesson.myLessons`
+  on mount; the dashboard query uses `refetchOnMount:"always"` + `refetchOnWindowFocus`
+  + an 8s poll **only while a transient lesson exists** (review ask #1 fallback).
+  Correction: Stripe redirects to `/lessons/:id?payment=success`, not
+  `/dashboard?payment_success=1`.
+- **S44-4 / S44-5** `client/src/components/MessageThread.tsx` — PGN "Browse file"
+  upload via `FileReader`; flex scroll fix (`min-h-0` on the list, `shrink-0` sticky
+  footer, capped textarea) so Send is always reachable.
+- **S44-6** `server/emailService.ts` new `getStudentBookingReservedEmail`;
+  `server/routers.ts` `lesson.book` sends it fire-and-forget at booking time.
+- **server/sprint44.test.ts** — 5 behavioral tests (S44-6 student-only email +
+  failure-safe; S44-7/S44-8 webhook coach + student emails).
+
+### Review asks (please confirm) — divergences from the literal handoff
+1. **S44-7 not done at booking time (deliberate).** The handoff asked to email the
+   coach "after a lesson is created." But the payment-first model only notifies the
+   coach after payment (the webhook already does this), and `confirmAsCoach` requires
+   `status === 'payment_collected'` — a booking-time "accept" link would dead-end with
+   PRECONDITION_FAILED. So I kept coach notification in the webhook and added a test.
+   If you want a purely *informational* booking-time coach email (no accept action),
+   say so and I'll add it.
+2. **S44-8 was already implemented.** `checkout.session.completed` already sends the
+   student a receipt via `getStudentBookingConfirmationEmail`, which already contains
+   escrow language + the cancellation policy + a CTA. I left it intact and added a test
+   rather than duplicating it. The live-test "no emails received" was almost certainly
+   a Resend delivery/config issue (key/domain), not missing send calls — worth checking
+   `RESEND_API_KEY` + verified sender domain in the test environment.
+
+### Verification
+- `pnpm test`: **353 passing** (19 files; +5) · `tsc --noEmit`: 0 · `build`: clean ·
+  audit unchanged (26/2h/22m/2l).
+
 ## 4. Remaining open items
 
 - **Live Stripe end-to-end test** — needs a human with Stripe test cards; I can't run
