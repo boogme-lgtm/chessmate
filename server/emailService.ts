@@ -4,6 +4,12 @@ import { ENV } from './_core/env';
 // Initialize Resend client
 const resend = new Resend(ENV.resendApiKey);
 
+// P1: Make a missing key immediately visible at startup. Without this, sends
+// fail silently (new Resend("") returns a 401 on every send).
+if (!ENV.resendApiKey) {
+  console.warn('[Email Service] WARNING: RESEND_API_KEY is not set. All email sends will fail silently.');
+}
+
 export interface EmailOptions {
   to: string;
   subject: string;
@@ -15,6 +21,18 @@ export interface EmailOptions {
  * Send an email using Resend
  */
 export async function sendEmail(options: EmailOptions) {
+  // Short-circuit when the key is missing: avoids a doomed 401 round-trip and
+  // surfaces the misconfiguration on every attempt (not just at startup).
+  if (!ENV.resendApiKey) {
+    console.warn(
+      `[Email Service] Cannot send to ${options.to} — RESEND_API_KEY is not set.`
+    );
+    return { success: false, error: 'RESEND_API_KEY not configured' };
+  }
+
+  // P2: confirm a send is being attempted, independent of success/failure.
+  console.log(`[Email Service] Sending to: ${options.to} | subject: "${options.subject}"`);
+
   try {
     const { data, error } = await resend.emails.send({
       from: options.from || 'BooGMe <noreply@contact.boogme.com>',

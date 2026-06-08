@@ -2,7 +2,7 @@ import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { authRouter } from "./authRouter";
-import { router, publicProcedure, protectedProcedure, coachProcedure } from "./_core/trpc";
+import { router, publicProcedure, protectedProcedure, coachProcedure, adminProcedure } from "./_core/trpc";
 import { vetCoachApplication } from "./aiVettingService";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
@@ -1129,7 +1129,11 @@ export const appRouter = router({
               db.getUserById(ctx.user.id),
               db.getUserById(input.coachId),
             ]);
-            if (!student?.email) return;
+            if (!student?.email) {
+              console.warn(`[lesson.book] Student ${ctx.user.id} has no email address — skipping booking-reserved email`);
+              return;
+            }
+            console.log(`[lesson.book] Sending booking-reserved email to student: ${student.email}`);
             const lessonDate = new Date(input.scheduledAt).toLocaleDateString("en-US", {
               weekday: "long", year: "numeric", month: "long", day: "numeric",
             });
@@ -2986,6 +2990,22 @@ export const appRouter = router({
         .query(async ({ input }) => {
           if (input.ids.length === 0) return [];
           return await db.getUsersByIds(input.ids);
+        }),
+    }),
+
+    // System diagnostics
+    system: router({
+      // Send a test email to verify Resend delivery without a full booking flow.
+      // Returns the raw sendEmail result ({ success, id? | error? }) instead of
+      // throwing, so the admin UI can surface the exact outcome (e.g. a 401).
+      testEmail: adminProcedure
+        .input(z.object({ to: z.string().email() }))
+        .mutation(async ({ input }) => {
+          return await sendEmail({
+            to: input.to,
+            subject: "BooGMe — Email delivery test",
+            html: "<p>This is a test email from BooGMe. If you received this, email delivery is working correctly.</p>",
+          });
         }),
     }),
 

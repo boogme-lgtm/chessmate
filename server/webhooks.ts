@@ -145,6 +145,12 @@ async function handleCheckoutCompleted(event: Stripe.Event) {
         const student = await db.getUserById(lesson.studentId);
         const coach = await db.getUserById(lesson.coachId);
         
+        if (!student) {
+          console.warn(`[Webhook] Cannot send emails for lesson ${lessonId}: student ${lesson.studentId} not found`);
+        }
+        if (!coach) {
+          console.warn(`[Webhook] Cannot send emails for lesson ${lessonId}: coach ${lesson.coachId} not found`);
+        }
         if (student && coach) {
           // Format lesson date and time
           const lessonDate = new Date(lesson.scheduledAt).toLocaleDateString('en-US', {
