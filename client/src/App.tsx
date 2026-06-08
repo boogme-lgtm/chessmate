@@ -13,6 +13,7 @@ import CoachBrowse from "./pages/CoachBrowse";
 import CoachDashboard from "./pages/CoachDashboard";
 import AdminApplications from "./pages/AdminApplications";
 import AdminWaitlist from "./pages/AdminWaitlist";
+import AdminSystem from "./pages/AdminSystem";
 import AdminDisputesPanel from "./pages/AdminDisputesPanel";
 import Unsubscribe from "./pages/Unsubscribe";
 import Privacy from "./pages/Privacy";
@@ -64,6 +65,7 @@ function Router() {
       <Route path={"/admin/applications"} component={AdminApplications} />
       <Route path={"/admin/waitlist"} component={AdminWaitlist} />
       <Route path={"/admin/disputes"} component={AdminDisputesPanel} />
+      <Route path={"/admin/system"} component={AdminSystem} />
       <Route path={"/dev-dashboard"} component={DevDashboard} />
       <Route path={"/unsubscribe"} component={Unsubscribe} />
       <Route path={"/privacy"} component={Privacy} />

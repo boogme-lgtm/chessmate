@@ -15,11 +15,12 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { Link } from "wouter";
 
-function AdminNav({ active }: { active: "applications" | "waitlist" | "disputes" }) {
+function AdminNav({ active }: { active: "applications" | "waitlist" | "disputes" | "system" }) {
   const links = [
     { href: "/admin/applications", label: "Applications", key: "applications" },
     { href: "/admin/waitlist", label: "Waitlist", key: "waitlist" },
     { href: "/admin/disputes", label: "Disputes & Payouts", key: "disputes" },
+    { href: "/admin/system", label: "System", key: "system" },
   ] as const;
   return (
     <nav className="flex gap-2 mb-8 border-b border-border pb-4">

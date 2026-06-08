@@ -44,11 +44,12 @@ import { formatAdminActionError } from "@shared/adminActionErrors";
 
 // ─── Admin Nav ────────────────────────────────────────────────────────────────
 
-function AdminNav({ active }: { active: "applications" | "waitlist" | "disputes" }) {
+function AdminNav({ active }: { active: "applications" | "waitlist" | "disputes" | "system" }) {
   const links = [
     { href: "/admin/applications", label: "Applications", key: "applications" },
     { href: "/admin/waitlist", label: "Waitlist", key: "waitlist" },
     { href: "/admin/disputes", label: "Disputes & Payouts", key: "disputes" },
+    { href: "/admin/system", label: "System", key: "system" },
   ] as const;
 
   return (
