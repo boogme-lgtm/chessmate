@@ -963,3 +963,16 @@
 - [x] S41-5: Added server/sprint41.test.ts — type-level guard (S41-1) + 5 behavioral tests (S41-2a through S41-2e) for clearLessonCheckoutSession call behavior in handleCheckoutCompleted
 - [x] S41-6: Opportunistic upgrades: axios 1.15.2 → 1.17.0 (resolved 5 high CVEs), @aws-sdk/client-s3 + presigner 3.1040.0 → 3.1063.0 (resolved fast-xml-builder high CVE)
 - [x] S41-7: Updated audit-report.md: 26 total / 2 high / 22 moderate / 2 low; 337 tests passing, tsc --noEmit exits 0
+
+## Sprint 44 — E2E Booking Test Fixes
+
+- [ ] S44-1: Post-booking: replace disappearing toast with a persistent modal/dialog directing student to complete payment immediately (no friction between booking and payment)
+- [ ] S44-2: Lesson card shows "Coach #1" instead of coach's real name — resolve coach name on student dashboard lesson cards
+- [ ] S44-3: Dashboard does not refresh lesson status after payment completes — "Awaiting Payment" badge persists even after Stripe checkout succeeds
+- [ ] S44-4: PGN message tab: add a "Browse / Upload file" button so students can attach .pgn files directly instead of copy-paste only
+- [ ] S44-5: Messaging modal PGN tab: textarea overflows modal — cannot scroll down to reach the Send button when PGN is long
+- [ ] S44-6: Booking confirmation email not sent to student after lesson is booked
+- [ ] S44-7: Booking notification email not sent to coach when a new lesson is booked with them
+- [ ] S44-8: Payment confirmation email not sent to student after Stripe checkout completes
+- [ ] S44-9: (Future sprint) Logged-in users see public marketing landing page — need personalized dashboard landing for authenticated students/coaches
+- [ ] S44-10: (Future sprint) Replace Manus OAuth with native/white-label auth so Manus branding is not visible to users
