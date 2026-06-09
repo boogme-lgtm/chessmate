@@ -236,7 +236,7 @@ function HeroV2({ onOpenAssessment }: { onOpenAssessment: () => void }) {
             >
               {[
                 { value: "0%", label: "Platform fee until $100" },
-                { value: "48h", label: "Refund window" },
+                { value: "1h", label: "Cancellation window" },
                 { value: "8min", label: "Match assessment" },
                 { value: "20Q", label: "Style + goals + schedule" },
               ].map((stat) => (
@@ -366,7 +366,7 @@ function FeaturesSection() {
       num: "01",
       icon: Shield,
       title: "Escrow-held payment",
-      copy: "Your payment sits in escrow until the lesson is complete. Dispute it within 48 hours, get it all back.",
+      copy: "Your payment sits in escrow until the lesson is complete. Cancel more than 1 hour before your lesson for a full refund.",
     },
     {
       num: "02",

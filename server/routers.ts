@@ -1689,7 +1689,7 @@ export const appRouter = router({
     send: protectedProcedure
       .input(z.object({
         lessonId: z.number(),
-        content: z.string().min(1).max(4000),
+        content: z.string().min(1).max(500_000), // 500KB — covers the largest PGN files
         contentType: z.enum(["text", "pgn"]).default("text"),
       }))
       .mutation(async ({ ctx, input }) => {

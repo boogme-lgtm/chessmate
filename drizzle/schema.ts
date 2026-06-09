@@ -1,4 +1,4 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, decimal, boolean } from "drizzle-orm/mysql-core";
+import { int, mysqlEnum, mysqlTable, text, mediumtext, timestamp, varchar, decimal, boolean } from "drizzle-orm/mysql-core";
 
 /**
  * Core user table backing auth flow.
@@ -637,7 +637,8 @@ export const messages = mysqlTable("messages", {
 
   // Content type — "text" for plain chat, "pgn" for attached chess games
   contentType: mysqlEnum("contentType", ["text", "pgn"]).default("text").notNull(),
-  content: text("content").notNull(),
+  // mediumtext (16MB) so large annotated PGN files fit — `text` caps at 64KB (S47-1).
+  content: mediumtext("content").notNull(),
 
   readAt: timestamp("readAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),

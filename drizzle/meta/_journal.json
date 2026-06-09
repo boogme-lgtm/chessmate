@@ -141,6 +141,13 @@
       "when": 1777771782414,
       "tag": "0019_lame_shadow_king",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "5",
+      "when": 1781012286571,
+      "tag": "0020_free_ezekiel_stane",
+      "breakpoints": true
     }
   ]
 }
