@@ -293,6 +293,27 @@ was already correct) — it was a **route path mismatch**.
 
 Verification: 362 tests, tsc 0, build clean, audit unchanged.
 
+## 3f. Sprint 46 — coach dashboard data + post-payment copy (BUILT, latest commit)
+
+All 6 fixed.
+- **S46-1** `getLessonsByCoach` LEFT JOINs users → `studentName`; CoachDashboard uses it
+  (booking-request card, lesson row, message thread) with a `Student #id` fallback.
+- **S46-2** All Lessons sorted client-side by status priority (payment_collected →
+  confirmed → completed → cancelled → declined → other), then soonest date.
+- **S46-3** "Lessons" stat card excludes cancelled/declined.
+- **S46-4** `getCoachPendingEarnings` sums payout across `payment_collected`, `confirmed`,
+  `completed` (all escrowed) — "Pending" now shows real money owed.
+- **S46-5** resolved by S46-4 (progress bar already uses `percentToThreshold`).
+- **S46-6** payment-success copy corrected (student was already charged; escrow holds the
+  coach payout). Note: that string lives in **LessonPaymentSuccess.tsx**, not BookingModal
+  as the handoff stated.
+- Refactor: `shared/coachEarnings.ts` (`COACH_PENDING_STATUSES` + `buildCoachEarningsSummary`)
+  is the single source of truth.
+- **server/sprint46.test.ts**: pending-status set, summary math (escrowed pending drives
+  the threshold), + structural check of the studentName JOIN.
+
+Verification: 368 tests, tsc 0, build clean, audit unchanged.
+
 ## 4. Remaining open items
 
 - **Live Stripe end-to-end test** — needs a human with Stripe test cards; I can't run
