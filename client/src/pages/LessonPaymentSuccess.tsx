@@ -143,7 +143,7 @@ export default function LessonPaymentSuccess() {
             {/* Payment Protection Notice */}
             <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4">
               <p className="text-sm text-center font-light text-green-600 dark:text-green-400">
-                Your payment is held securely until after your lesson. You'll only be charged once both you and your coach confirm the lesson was completed.
+                Your payment is held securely in escrow and will be released to your coach only after the lesson is completed.
               </p>
             </div>
 

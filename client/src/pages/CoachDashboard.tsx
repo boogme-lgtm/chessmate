@@ -39,6 +39,16 @@ import ReviewDialog from "@/components/ReviewDialog";
 import { format } from "date-fns";
 import { Copy, Share2 } from "lucide-react";
 
+// S46-2: order the All Lessons list so active work surfaces first and
+// cancelled/declined sink to the bottom.
+const STATUS_PRIORITY: Record<string, number> = {
+  payment_collected: 0,
+  confirmed: 1,
+  completed: 2,
+  cancelled: 3,
+  declined: 4,
+};
+
 export default function CoachDashboard() {
   const { user, loading: authLoading, isAuthenticated } = useAuth();
 
@@ -146,6 +156,14 @@ export function CoachDashboardContent({ user }: { user: any }) {
     { limit: 10 },
     { enabled: !!user }
   );
+
+  // S46-2: status priority first, then soonest scheduled date.
+  const sortedLessons = [...(lessons || [])].sort((a: any, b: any) => {
+    const pa = STATUS_PRIORITY[a.status] ?? 5;
+    const pb = STATUS_PRIORITY[b.status] ?? 5;
+    if (pa !== pb) return pa - pb;
+    return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
+  });
 
   const lessonIds = (lessons || []).map((l: any) => l.id);
   const { data: unreadCounts } = trpc.messages.getUnreadCounts.useQuery(
@@ -295,7 +313,7 @@ export function CoachDashboardContent({ user }: { user: any }) {
                     <Calendar className="w-4 h-4 text-match" />
                   </div>
                   <div className="text-3xl font-bold font-mono tabular-nums">
-                    {lessons?.length || 0}
+                    {lessons?.filter((l: any) => !["cancelled", "declined"].includes(l.status)).length || 0}
                   </div>
                 </CardContent>
               </Card>
@@ -417,7 +435,7 @@ export function CoachDashboardContent({ user }: { user: any }) {
               <CardContent>
                 {lessons && lessons.length > 0 ? (
                   <div className="space-y-4">
-                    {lessons.map((lesson: any) => {
+                    {sortedLessons.map((lesson: any) => {
                       const unread = (unreadCounts as Record<number, number> | undefined)?.[lesson.id] || 0;
                       const getStatusBadge = () => {
                         switch (lesson.status) {
@@ -563,7 +581,7 @@ function PendingLessonCard({ lesson, formatCurrency, onActionComplete }: {
         </div>
         <div className="flex-1">
           <div className="font-medium">
-            {lesson.topic || "Chess Lesson"} • Student #{lesson.studentId}
+            {lesson.topic || "Chess Lesson"} • {lesson.studentName || `Student #${lesson.studentId}`}
           </div>
           <div className="text-sm text-muted-foreground">
             {lesson.durationMinutes} min • {new Date(lesson.scheduledAt).toLocaleDateString()} at {new Date(lesson.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -619,6 +637,7 @@ function CoachLessonRow({ lesson, unreadCount, formatCurrency, getStatusBadge }:
           <div>
             <div className="font-medium">
               {lesson.topic || "Chess Lesson"}
+              {lesson.studentName ? ` • ${lesson.studentName}` : ""}
             </div>
             <div className="text-sm text-muted-foreground">
               {lesson.durationMinutes} min • {new Date(lesson.scheduledAt).toLocaleDateString()}
@@ -652,7 +671,7 @@ function CoachLessonRow({ lesson, unreadCount, formatCurrency, getStatusBadge }:
         open={showMessages}
         onOpenChange={setShowMessages}
         lessonId={lesson.id}
-        otherPartyName={`Student #${lesson.studentId}`}
+        otherPartyName={lesson.studentName || `Student #${lesson.studentId}`}
       />
     </>
   );

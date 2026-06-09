@@ -29,6 +29,7 @@ import {
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { computeCancellationRefund } from "@shared/cancellationPolicy";
+import { COACH_PENDING_STATUSES, buildCoachEarningsSummary } from "@shared/coachEarnings";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -464,14 +465,17 @@ export async function getLessonsByCoach(coachId: number, limit: number = 50) {
   const db = await getDb();
   if (!db) return [];
 
-  // Use raw SQL to avoid Drizzle transaction isolation issues
+  // LEFT JOIN users to resolve the student's display name (studentName) so the
+  // coach dashboard can render the student's name instead of a raw ID (S46-1).
   const result: any = await db.execute(sql`
-    SELECT * FROM lessons 
-    WHERE coachId = ${coachId} 
-    ORDER BY scheduledAt DESC 
+    SELECT l.*, u.name AS studentName
+    FROM lessons l
+    LEFT JOIN users u ON u.id = l.studentId
+    WHERE l.coachId = ${coachId}
+    ORDER BY l.scheduledAt DESC
     LIMIT ${limit}
   `);
-  
+
   return result[0] || [];
 }
 
@@ -814,6 +818,10 @@ export async function getCoachPendingEarnings(coachId: number) {
   const db = await getDb();
   if (!db) return 0;
 
+  // S46-4: money is escrowed for the coach across all of these states — the
+  // student has already paid (payment_collected / confirmed) or the lesson is
+  // done and awaiting payout (completed). "Pending" should reflect all of them,
+  // not just completed.
   const result = await db
     .select({
       pendingEarnings: sql<number>`COALESCE(SUM(${lessons.coachPayoutCents}), 0)`,
@@ -821,7 +829,7 @@ export async function getCoachPendingEarnings(coachId: number) {
     .from(lessons)
     .where(and(
       eq(lessons.coachId, coachId),
-      eq(lessons.status, "completed")
+      inArray(lessons.status, [...COACH_PENDING_STATUSES])
     ));
 
   return result[0]?.pendingEarnings || 0;
@@ -843,17 +851,7 @@ export async function hasCoachReachedPayoutThreshold(coachId: number, thresholdC
 export async function getCoachEarningsSummary(coachId: number) {
   const totalEarnings = await getCoachTotalEarnings(coachId);
   const pendingEarnings = await getCoachPendingEarnings(coachId);
-  const thresholdCents = 10000; // $100
-  const hasReachedThreshold = (totalEarnings + pendingEarnings) >= thresholdCents;
-  
-  return {
-    totalEarningsCents: totalEarnings,
-    pendingEarningsCents: pendingEarnings,
-    combinedEarningsCents: totalEarnings + pendingEarnings,
-    thresholdCents,
-    hasReachedThreshold,
-    percentToThreshold: Math.min(100, Math.round(((totalEarnings + pendingEarnings) / thresholdCents) * 100)),
-  };
+  return buildCoachEarningsSummary(totalEarnings, pendingEarnings);
 }
 
 // ============ WAITLIST OPERATIONS ============
