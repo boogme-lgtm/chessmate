@@ -984,3 +984,11 @@
 - [ ] S44P-3: Add admin.system.testEmail tRPC procedure + "Send Test Email" button in admin panel
 - [ ] S44P-4: Add explicit log/warn in lesson.book when student email is missing or send is attempted
 - [ ] S44P-5: Add explicit log/warn in webhook handler when student or coach lookup returns null
+
+## Sprint 45 — E2E Test Bugs (found 2026-06-09)
+- [ ] S45-1: Cancellation refund window — change full-refund cutoff from >48h to >1h before lesson; 50% refund from 24h-1h; 0% refund within 1h (db.ts claimCancellationSlot)
+- [ ] S45-2: Webhook not updating lesson status — Stripe confirms payment (cs_test_b1rBZI88 paid) but lesson 300001 still shows pending_payment in DB; investigate signature verification or DB update failure in webhooks.ts handleCheckoutCompleted
+- [ ] S45-3: "Pay Now" button shows "Payment is already processing" toast when lesson is actually paid — root cause is S45-2; fix S45-2 first
+- [ ] S45-4: Only "Lesson Reserved" email received — no payment-confirmed or coach-notification emails; these fire from webhook handler which is not executing (same root cause as S45-2)
+- [ ] S45-5: "Pay Now or Pay Later" option shown during booking — platform is payment-first only; remove any UI offering a pay-later path
+- [ ] S45-6: Cancellation fee applied to unpaid lesson (pending_payment status) — lesson 270001 was cancelled with 50% refund even though stripePaymentIntentId was null (never charged); unpaid lesson cancellations should always be free
