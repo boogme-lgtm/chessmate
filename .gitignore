@@ -106,3 +106,6 @@ temp/
 *.sqlite
 *.sqlite3
 .project-config.json
+
+# Stockfish WASM — copied from node_modules at install time, not versioned
+client/public/stockfish/
