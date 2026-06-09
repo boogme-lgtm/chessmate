@@ -261,6 +261,38 @@ All P1–P5 implemented. No money path, no template changes.
 
 Verification: 356 tests, tsc 0, build clean, audit unchanged.
 
+## 3e. Sprint 45 — webhook path + cancellation policy (BUILT, latest commit)
+
+All 6 bugs addressed. **The critical S45-2 root cause was NOT raw-body parsing** (that
+was already correct) — it was a **route path mismatch**.
+
+- **S45-2 (critical)** `server/_core/index.ts`: the handler was only mounted at
+  `/api/stripe/webhook`, but Stripe now posts to `/api/webhooks/stripe`, so events fell
+  through to the SPA catch-all and never ran → lesson stuck `pending_payment`,
+  `stripePaymentIntentId = null`. Fixed by registering the handler at **both** paths
+  with `express.raw()` before `express.json()`. This also fixes **S45-3** (the
+  "already processing" toast) and **S45-4** (missing emails) — both were symptoms.
+- **S45-1** single **1-hour** refund cutoff (`>1h → 100%`, `≤1h → 0%`); 48h/24h/50%
+  removed. UI copy updated (CancellationDialog, CountdownBanner, policy list).
+- **S45-6** unpaid lessons (no payment intent) always cancel **free**. `lesson.cancel`
+  already guards the Stripe refund on `amountCents>0 && stripePaymentIntentId`, so $0
+  issues no Stripe call.
+- Refactor: `shared/cancellationPolicy.ts` `computeCancellationRefund` is the single
+  source of truth for both `db.claimLessonCancellation` and `db.cancelLesson`.
+- **S45-5** removed the "Pay Later" button from `BookingModal` (payment-first → Pay Now
+  only, with a subtle Cancel link).
+- **server/sprint45.test.ts**: refund policy (paid >1h / <1h / exactly 1h / unpaid any
+  time) + structural check that both webhook paths use `express.raw()` before
+  `express.json()`.
+
+### Review ask
+- Confirm the deployed Stripe dashboard endpoint. I registered **both** path spellings
+  so it works either way, but if the dashboard is configured for yet another path, tell
+  me and I'll add it. After merging, re-run the live E2E: the paid checkout should now
+  flip the lesson to `payment_collected` and fire both emails.
+
+Verification: 362 tests, tsc 0, build clean, audit unchanged.
+
 ## 4. Remaining open items
 
 - **Live Stripe end-to-end test** — needs a human with Stripe test cards; I can't run
