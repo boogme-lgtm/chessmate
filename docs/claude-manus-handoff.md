@@ -350,6 +350,38 @@ Pure frontend (`MessageThread.tsx`), no backend/DB.
 
 Verification: 374 tests, tsc 0, build clean.
 
+## 3i. Sprint 49 — interactive PGN analysis board (BUILT, latest commit)
+
+New `PgnViewerModal.tsx`: click a PGN message → full analysis board (chess.js parse,
+react-chessboard v5, move list, nav + keyboard, flip, Stockfish eval bar + best-move
+arrow, malformed-PGN safe). `MessageThread.tsx` PGN bubble is now clickable (Copy PGN
+still works via stopPropagation).
+
+### Important deviations from the handoff (all deliberate, lower-risk)
+1. **Single-threaded Stockfish, NO COOP/COEP headers.** I used the
+   `stockfish-18-lite-single` build (7MB, no `SharedArrayBuffer`) served from
+   `client/public/stockfish/`. This means I did **not** add the COOP/COEP headers — which
+   is exactly what protects the Manus OAuth popup the handoff warned about. OAuth is
+   untouched. If you later want multi-threaded speed, that's a separate change that must
+   scope COOP/COEP carefully.
+2. **No `vite.config.ts` change.** The worker is a static public asset (`new
+   Worker("/stockfish/stockfish-18-lite-single.js")`), not bundled, so `optimizeDeps`/
+   `assetsInclude` are unnecessary.
+3. **react-chessboard v5 API**: the handoff's snippets were v4 (`position`,
+   `customArrows`, `areDraggable`). v5 uses a single `options` prop and Arrow objects
+   `{startSquare,endSquare,color}` — implemented against the real v5 types.
+4. **Eval sign correctness**: engine `score cp` is side-to-move POV; I normalize to
+   white-POV (negate when black to move) and handle `score mate`.
+
+deps added: `react-chessboard@5.10`, `stockfish@18.0.7`. The 7MB wasm is committed under
+`client/public/stockfish/` and copies into `dist/public/` on build (verified).
+
+**server/sprint49.test.ts**: getForLesson exposes contentType; 500k PGN round-trip.
+
+Verification: 376 tests, tsc 0, build clean, audit unchanged. Worth a manual smoke test
+after merge: open a PGN message, confirm the board + engine eval appear and OAuth login
+still works.
+
 ## 4. Remaining open items
 
 - **Live Stripe end-to-end test** — needs a human with Stripe test cards; I can't run
