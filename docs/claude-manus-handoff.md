@@ -335,6 +335,21 @@ Verification: 368 tests, tsc 0, build clean, audit unchanged.
 
 Verification: 372 tests, tsc 0, build clean, audit unchanged.
 
+## 3h. Sprint 48 — message copy button (BUILT, latest commit)
+
+Pure frontend (`MessageThread.tsx`), no backend/DB.
+- `copiedId` state + `handleCopy` (clipboard write, "Copied to clipboard" toast, icon →
+  checkmark for 2s).
+- **PGN bubbles**: "Copy PGN" always visible inline in the PGN header row (opacity-60 →
+  100 on hover).
+- **Text bubbles**: icon-only copy floats top-right, revealed on hover (`relative group`
+  + `opacity-0 group-hover:opacity-100`); body padded `pr-5` so text doesn't run under it.
+- Color inherits the bubble foreground; matches the dark aesthetic.
+- **server/sprint48.test.ts**: smoke test that `messages.send` preserves `contentType`
+  (the contract the copy UI branches on).
+
+Verification: 374 tests, tsc 0, build clean.
+
 ## 4. Remaining open items
 
 - **Live Stripe end-to-end test** — needs a human with Stripe test cards; I can't run
