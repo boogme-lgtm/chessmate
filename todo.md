@@ -992,3 +992,11 @@
 - [ ] S45-4: Only "Lesson Reserved" email received — no payment-confirmed or coach-notification emails; these fire from webhook handler which is not executing (same root cause as S45-2)
 - [ ] S45-5: "Pay Now or Pay Later" option shown during booking — platform is payment-first only; remove any UI offering a pay-later path
 - [ ] S45-6: Cancellation fee applied to unpaid lesson (pending_payment status) — lesson 270001 was cancelled with 50% refund even though stripePaymentIntentId was null (never charged); unpaid lesson cancellations should always be free
+
+## Sprint 46 — Coach Dashboard & Post-Payment UX Bugs (found 2026-06-09)
+- [ ] S46-1: Coach dashboard booking request shows "Student #990004" instead of student's real name — resolve student display name from users table (same pattern as S44-2 coach name fix)
+- [ ] S46-2: Coach dashboard lesson list sort order — confirmed/active lessons should appear before cancelled ones; sort by status priority (active first) then by scheduledAt ascending
+- [ ] S46-3: Coach earnings "Lessons: 3" count includes cancelled lessons — should only count payment_collected, confirmed, and completed statuses
+- [ ] S46-4: Coach earnings "Pending: $0.00" should reflect escrowed amount — a $132.00 lesson is in payment_collected state but Pending shows $0.00; Pending should sum amountCents for payment_collected lessons
+- [ ] S46-5: Payout threshold progress bar shows $0 earned despite $132 in escrow — progress bar should include pending/escrowed earnings so coach can see they're making progress toward the $100 threshold
+- [ ] S46-6: Payment success screen copy says "You'll only be charged once both you and your coach confirm" — inaccurate; student was already charged at checkout; fix copy to say "Your payment is held securely in escrow and released to your coach only after the lesson is completed"
