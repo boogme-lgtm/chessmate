@@ -1006,3 +1006,7 @@
 - [ ] S47-1: PGN message content limit too low — tRPC validator at routers.ts:1692 caps `content` at 4000 chars; real PGN files routinely exceed this. Raise the validator limit to 500,000 chars (500KB). DB column is already `text` type (64KB default in MySQL) — may need to migrate to `mediumtext` (16MB) for large PGN files. Also update any frontend textarea maxLength attribute if present.
 - [ ] S47-2: Landing page stat "48h · Refund window" is stale — cancellation policy was changed to 1-hour in Sprint 45. Update Home.tsx line 239: change value from "48h" to "1h" and label from "Refund window" to "Cancellation window". Also update the copy at line 369 ("Dispute it within 48 hours") to reflect the 1-hour cancellation policy.
 - [ ] S47-3: (Deferred) New message notification on main dashboard — hold until post-sign-up landing page redesign is done, as the notification UI will be part of that authenticated landing experience.
+
+## Sprint 48 — Message Copy Button
+
+- [ ] S48-1: Add copy-to-clipboard button on message bubbles — appears on hover for all messages, always visible for PGN messages. For PGN messages show a "Copy PGN" label; for text messages show a plain copy icon. Use the Clipboard icon from lucide-react. On click: copy msg.content to clipboard, show a brief "Copied!" toast (sonner). Button should be positioned top-right of the message bubble, styled to match the bubble's color scheme (opacity-60 by default, opacity-100 on hover). No backend changes needed — pure frontend in MessageThread.tsx.
