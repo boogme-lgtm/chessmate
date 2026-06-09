@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Loader2, Send, FileText, Upload, Clipboard, Check } from "lucide-react";
+import PgnViewerModal from "@/components/PgnViewerModal";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
@@ -37,6 +38,8 @@ export default function MessageThread({
   const [draft, setDraft] = useState("");
   const [contentType, setContentType] = useState<"text" | "pgn">("text");
   const [copiedId, setCopiedId] = useState<number | null>(null);
+  const [pgnViewerOpen, setPgnViewerOpen] = useState(false);
+  const [selectedPgn, setSelectedPgn] = useState<string>("");
   const listEndRef = useRef<HTMLDivElement>(null);
   const pgnFileRef = useRef<HTMLInputElement>(null);
 
@@ -97,6 +100,7 @@ export default function MessageThread({
   };
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg h-[80vh] flex flex-col">
         <DialogHeader>
@@ -127,15 +131,20 @@ export default function MessageThread({
                     }`}
                   >
                     {msg.contentType === "pgn" ? (
-                      <div className="space-y-1">
+                      <div
+                        className="space-y-1 cursor-pointer"
+                        onClick={() => { setSelectedPgn(msg.content); setPgnViewerOpen(true); }}
+                        title="Click to open analysis board"
+                      >
                         <div className="flex items-center justify-between gap-2 text-xs opacity-80">
                           <span className="flex items-center gap-1">
                             <FileText className="h-3 w-3" /> PGN
                           </span>
-                          {/* PGN copy is always visible — recipients always need it. */}
+                          {/* PGN copy is always visible — recipients always need it.
+                              stopPropagation so copying doesn't also open the board. */}
                           <button
                             type="button"
-                            onClick={() => handleCopy(msg.id, msg.content)}
+                            onClick={(e) => { e.stopPropagation(); handleCopy(msg.id, msg.content); }}
                             className="flex items-center gap-1 opacity-60 hover:opacity-100 transition-opacity"
                             aria-label="Copy PGN"
                           >
@@ -147,9 +156,10 @@ export default function MessageThread({
                             Copy PGN
                           </button>
                         </div>
-                        <pre className="text-xs whitespace-pre-wrap font-mono">
+                        <pre className="text-xs whitespace-pre-wrap font-mono line-clamp-6">
                           {msg.content}
                         </pre>
+                        <p className="text-[10px] opacity-60 italic">Click to open analysis board</p>
                       </div>
                     ) : (
                       <>
@@ -256,5 +266,7 @@ export default function MessageThread({
         </div>
       </DialogContent>
     </Dialog>
+    <PgnViewerModal open={pgnViewerOpen} onOpenChange={setPgnViewerOpen} pgn={selectedPgn} />
+    </>
   );
 }
