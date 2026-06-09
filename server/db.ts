@@ -28,6 +28,7 @@ import {
   InsertReferral,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
+import { computeCancellationRefund } from "@shared/cancellationPolicy";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -1201,22 +1202,12 @@ export async function cancelLesson(
     throw new Error('Lesson cannot be cancelled');
   }
   
-  // Calculate hours until lesson
-  const now = new Date();
-  const lessonTime = new Date(lesson.scheduledAt);
-  const hoursUntilLesson = (lessonTime.getTime() - now.getTime()) / (1000 * 60 * 60);
-  
-  // Determine refund amount based on cancellation policy
-  let refundPercentage = 0;
-  if (hoursUntilLesson > 48) {
-    refundPercentage = 100; // Full refund
-  } else if (hoursUntilLesson >= 24) {
-    refundPercentage = 50; // 50% refund
-  } else {
-    refundPercentage = 0; // No refund
-  }
-  
-  const refundAmountCents = Math.round((lesson.amountCents * refundPercentage) / 100);
+  // Refund policy (S45-1 1-hour cutoff, S45-6 free for unpaid) — shared helper.
+  const { refundPercentage, refundAmountCents } = computeCancellationRefund({
+    amountCents: lesson.amountCents,
+    scheduledAt: lesson.scheduledAt,
+    stripePaymentIntentId: lesson.stripePaymentIntentId,
+  });
 
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -1659,19 +1650,12 @@ export async function claimLessonCancellation(
   const lesson = await getLessonById(lessonId);
   if (!lesson) return null;
 
-  // Calculate refund based on time until lesson
-  const now = new Date();
-  const lessonTime = new Date(lesson.scheduledAt);
-  const hoursUntilLesson = (lessonTime.getTime() - now.getTime()) / (1000 * 60 * 60);
-
-  let refundPercentage = 0;
-  if (hoursUntilLesson > 48) {
-    refundPercentage = 100;
-  } else if (hoursUntilLesson >= 24) {
-    refundPercentage = 50;
-  }
-
-  const refundAmountCents = Math.round((lesson.amountCents * refundPercentage) / 100);
+  // Refund policy (S45-1 1-hour cutoff, S45-6 free for unpaid) — shared helper.
+  const { refundPercentage, refundAmountCents } = computeCancellationRefund({
+    amountCents: lesson.amountCents,
+    scheduledAt: lesson.scheduledAt,
+    stripePaymentIntentId: lesson.stripePaymentIntentId,
+  });
 
   const db = await getDb();
   if (!db) return null;
