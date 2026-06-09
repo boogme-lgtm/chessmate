@@ -382,6 +382,18 @@ Verification: 376 tests, tsc 0, build clean, audit unchanged. Worth a manual smo
 after merge: open a PGN message, confirm the board + engine eval appear and OAuth login
 still works.
 
+## 3j. Sprint 49 patch — un-commit Stockfish binary (BUILT, latest commit)
+
+Housekeeping only. `git rm --cached` the 7MB wasm + worker js, `.gitignore`
+`client/public/stockfish/`, and added `scripts/copy-stockfish.mjs` run via a new
+`postinstall` (copies from `node_modules/stockfish/bin/` on every install). No
+component/test changes — `PgnViewerModal` still loads `/stockfish/stockfish-18-lite-single.js`.
+Verified the script repopulates the files from an empty dir; 376 tests, tsc 0.
+
+> Deploy note: the deploy pipeline must run `postinstall` (default for pnpm install)
+> so the files land in `client/public/stockfish/` before `vite build` copies them to
+> `dist/public/`.
+
 ## 4. Remaining open items
 
 - **Live Stripe end-to-end test** — needs a human with Stripe test cards; I can't run
