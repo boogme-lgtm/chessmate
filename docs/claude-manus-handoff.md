@@ -314,6 +314,27 @@ All 6 fixed.
 
 Verification: 368 tests, tsc 0, build clean, audit unchanged.
 
+## 3g. Sprint 47 — PGN limit + stale landing copy (BUILT, latest commit)
+
+- **S47-1** `messages.send` validator raised `4000 → 500_000` chars; migrated
+  `messages.content` `text` (64KB) → `mediumtext` (16MB). Generated migration
+  **`drizzle/0020_free_ezekiel_stane.sql`** (`ALTER TABLE messages MODIFY content
+  mediumtext NOT NULL`). No frontend `maxLength` existed on the PGN textarea.
+- **S47-2** `Home.tsx`: `48h · Refund window` → `1h · Cancellation window`; feature
+  copy "Dispute it within 48 hours" → "Cancel more than 1 hour before your lesson for
+  a full refund" (matches Sprint 45).
+- **S47-3** deferred (authenticated landing redesign).
+- **server/sprint47.test.ts**: 100k accepted, 500k accepted, 500,001 rejected pre-DB,
+  empty rejected.
+
+### ACTION REQUIRED (Manus)
+- Run `pnpm db:push` (or `drizzle-kit migrate`) to **apply migration 0020** to the live
+  DB. I generated the migration file but can't reach the DB to apply it here. Until
+  it's applied, sends over 64KB will still fail at the DB layer even though the
+  validator allows them.
+
+Verification: 372 tests, tsc 0, build clean, audit unchanged.
+
 ## 4. Remaining open items
 
 - **Live Stripe end-to-end test** — needs a human with Stripe test cards; I can't run
