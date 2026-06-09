@@ -224,33 +224,30 @@ interface CancellationDialogProps {
 }
 
 function CancellationDialog({ open, onClose, lesson, onConfirm, isPending }: CancellationDialogProps) {
-  const hoursUntil = differenceInHours(new Date(lesson.scheduledAt), new Date());
+  // S45-1: full refund if cancelling more than 1 hour before the lesson, else none.
+  // S45-6: lessons that were never paid cancel free (nothing to refund).
+  const minutesUntil = differenceInMinutes(new Date(lesson.scheduledAt), new Date());
   const amountDollars = (lesson.amountCents / 100).toFixed(2);
+  const wasPaid = !!lesson.stripePaymentIntentId;
 
-  let refundPercent = 0;
   let refundDollars = "0.00";
-  let refundLabel = "";
+  let refundLabel = "No Refund";
   let refundColor = "text-red-500";
   let policyNote = "";
 
-  if (hoursUntil >= 48) {
-    refundPercent = 100;
+  if (!wasPaid) {
+    refundLabel = "Free Cancellation";
+    refundColor = "text-green-500";
+    policyNote = "This lesson hasn't been paid for yet, so cancelling is free — there's nothing to refund.";
+  } else if (minutesUntil > 60) {
     refundDollars = amountDollars;
     refundLabel = "Full Refund";
     refundColor = "text-green-500";
-    policyNote = "You're cancelling more than 48 hours in advance — you'll receive a full refund.";
-  } else if (hoursUntil >= 24) {
-    refundPercent = 50;
-    refundDollars = ((lesson.amountCents * 0.5) / 100).toFixed(2);
-    refundLabel = "50% Refund";
-    refundColor = "text-yellow-500";
-    policyNote = "You're cancelling between 24–48 hours before the lesson — you'll receive a 50% refund.";
+    policyNote = "You're cancelling more than 1 hour before the lesson — you'll receive a full refund.";
   } else {
-    refundPercent = 0;
-    refundDollars = "0.00";
     refundLabel = "No Refund";
     refundColor = "text-red-500";
-    policyNote = "You're cancelling within 24 hours of the lesson — no refund will be issued per our cancellation policy.";
+    policyNote = "You're cancelling within 1 hour of the lesson — no refund will be issued per our cancellation policy.";
   }
 
   return (
@@ -281,7 +278,7 @@ function CancellationDialog({ open, onClose, lesson, onConfirm, isPending }: Can
             <span className="font-medium">{lesson.durationMinutes} minutes</span>
           </div>
           <div className="flex justify-between border-t border-border pt-2 mt-2">
-            <span className="text-muted-foreground">Amount Paid</span>
+            <span className="text-muted-foreground">{wasPaid ? "Amount Paid" : "Amount (unpaid)"}</span>
             <span className="font-semibold">${amountDollars}</span>
           </div>
         </div>
@@ -315,9 +312,9 @@ function CancellationDialog({ open, onClose, lesson, onConfirm, isPending }: Can
         {/* Policy reminder */}
         <div className="text-xs text-muted-foreground space-y-1">
           <p className="font-medium text-foreground">Cancellation Policy:</p>
-          <p>• More than 48 hours before lesson → 100% refund</p>
-          <p>• 24–48 hours before lesson → 50% refund</p>
-          <p>• Less than 24 hours before lesson → No refund</p>
+          <p>• More than 1 hour before lesson → Full refund</p>
+          <p>• Within 1 hour of lesson → No refund</p>
+          <p>• Unpaid lessons → Always free to cancel</p>
         </div>
 
         <DialogFooter className="gap-2">
@@ -370,10 +367,11 @@ function CountdownBanner({ scheduledAt, status }: CountdownBannerProps) {
 
   if (secondsLeft <= 0) return null;
 
-  const hoursTotal = differenceInHours(scheduledAt, new Date());
+  // S45-1: single 1-hour cutoff. Within the final hour, cancellation earns no
+  // refund; before that, a full refund is available.
+  const withinFinalHour = secondsLeft < 3600;
 
-  // Within 24 hours — red warning (no refund window)
-  if (hoursTotal < 24) {
+  if (withinFinalHour) {
     return (
       <div className="mt-4 p-3 bg-red-950/30 border border-red-800/50 rounded-md">
         <div className="flex items-center gap-2 text-red-400 text-sm font-medium mb-1">
@@ -387,26 +385,6 @@ function CountdownBanner({ scheduledAt, status }: CountdownBannerProps) {
     );
   }
 
-  // 24–48 hours — yellow warning (partial refund window)
-  if (hoursTotal < 48) {
-    const refundDeadlineHours = hoursTotal - 24;
-    return (
-      <div className="mt-4 p-3 bg-yellow-950/30 border border-yellow-800/50 rounded-md">
-        <div className="flex items-center gap-2 text-yellow-400 text-sm font-medium mb-1">
-          <AlertCircle className="h-4 w-4" />
-          {days > 0 ? `${days}d ` : ""}{hours % 24}h {String(minutes).padStart(2, "0")}m until lesson
-        </div>
-        <p className="text-xs text-yellow-400/80">
-          Cancel now for a 50% refund · Full refund window closed {Math.round(refundDeadlineHours)}h ago
-        </p>
-      </div>
-    );
-  }
-
-  // More than 48 hours — green (full refund available)
-  const fullRefundDeadline = new Date(scheduledAt.getTime() - 48 * 60 * 60 * 1000);
-  const hoursToDeadline = differenceInHours(fullRefundDeadline, new Date());
-
   return (
     <div className="mt-4 p-3 bg-green-950/20 border border-green-800/40 rounded-md">
       <div className="flex items-center gap-2 text-green-400 text-sm font-medium mb-1">
@@ -414,7 +392,7 @@ function CountdownBanner({ scheduledAt, status }: CountdownBannerProps) {
         {days > 0 ? `${days}d ` : ""}{hours % 24}h {String(minutes).padStart(2, "0")}m until lesson
       </div>
       <p className="text-xs text-green-400/80">
-        Full refund available · Deadline in {hoursToDeadline}h
+        Full refund available · Cancel more than 1 hour before the lesson
       </p>
     </div>
   );

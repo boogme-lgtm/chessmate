@@ -271,20 +271,13 @@ export default function BookingModal({ open, onOpenChange, coach }: BookingModal
               </div>
             </div>
 
-            {/* Actions */}
-            <div className="flex flex-col sm:flex-row gap-3">
-              <Button
-                variant="outline"
-                onClick={handleClose}
-                className="flex-1"
-                disabled={createCheckout.isPending}
-              >
-                Pay Later
-              </Button>
+            {/* Actions — payment-first: the only path forward is Pay Now (S45-5) */}
+            <div className="space-y-2">
               <Button
                 onClick={handlePayNow}
                 disabled={createCheckout.isPending}
-                className="flex-1"
+                className="w-full"
+                size="lg"
               >
                 {createCheckout.isPending ? (
                   <>
@@ -295,6 +288,14 @@ export default function BookingModal({ open, onOpenChange, coach }: BookingModal
                   "Pay Now"
                 )}
               </Button>
+              <button
+                type="button"
+                onClick={handleClose}
+                disabled={createCheckout.isPending}
+                className="w-full text-center text-sm text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
             </div>
           </div>
         )}

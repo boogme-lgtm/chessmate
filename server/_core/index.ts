@@ -46,9 +46,14 @@ async function startServer() {
     });
   }
   
-  // Stripe webhook MUST come before express.json() to get raw body
+  // Stripe webhook MUST come before express.json() to get the raw body buffer
+  // (signature verification fails on a parsed body). Register BOTH path spellings
+  // so the handler runs regardless of which one the Stripe dashboard targets:
+  //   - /api/stripe/webhook   (original)
+  //   - /api/webhooks/stripe  (current dashboard config — S45-2)
   const { handleStripeWebhook } = await import("../webhooks");
   app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), handleStripeWebhook);
+  app.post("/api/webhooks/stripe", express.raw({ type: "application/json" }), handleStripeWebhook);
   
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
