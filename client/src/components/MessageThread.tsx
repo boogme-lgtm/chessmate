@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, Send, FileText, Upload } from "lucide-react";
+import { Loader2, Send, FileText, Upload, Clipboard, Check } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
@@ -36,8 +36,17 @@ export default function MessageThread({
   const utils = trpc.useUtils();
   const [draft, setDraft] = useState("");
   const [contentType, setContentType] = useState<"text" | "pgn">("text");
+  const [copiedId, setCopiedId] = useState<number | null>(null);
   const listEndRef = useRef<HTMLDivElement>(null);
   const pgnFileRef = useRef<HTMLInputElement>(null);
+
+  // S48-1: copy a message's content to the clipboard, with a brief checkmark.
+  const handleCopy = (id: number, content: string) => {
+    navigator.clipboard.writeText(content);
+    setCopiedId(id);
+    toast.success("Copied to clipboard");
+    setTimeout(() => setCopiedId(null), 2000);
+  };
 
   // S44-4: load a .pgn file from disk into the draft textarea. No upload —
   // the PGN text is sent as a normal message string, same as the paste flow.
@@ -111,7 +120,7 @@ export default function MessageThread({
                   className={`flex ${isMine ? "justify-end" : "justify-start"}`}
                 >
                   <div
-                    className={`max-w-[80%] rounded-lg px-3 py-2 ${
+                    className={`relative group max-w-[80%] rounded-lg px-3 py-2 ${
                       isMine
                         ? "bg-primary text-primary-foreground"
                         : "bg-muted text-foreground"
@@ -119,15 +128,46 @@ export default function MessageThread({
                   >
                     {msg.contentType === "pgn" ? (
                       <div className="space-y-1">
-                        <div className="flex items-center gap-1 text-xs opacity-80">
-                          <FileText className="h-3 w-3" /> PGN
+                        <div className="flex items-center justify-between gap-2 text-xs opacity-80">
+                          <span className="flex items-center gap-1">
+                            <FileText className="h-3 w-3" /> PGN
+                          </span>
+                          {/* PGN copy is always visible — recipients always need it. */}
+                          <button
+                            type="button"
+                            onClick={() => handleCopy(msg.id, msg.content)}
+                            className="flex items-center gap-1 opacity-60 hover:opacity-100 transition-opacity"
+                            aria-label="Copy PGN"
+                          >
+                            {copiedId === msg.id ? (
+                              <Check className="h-3 w-3" />
+                            ) : (
+                              <Clipboard className="h-3 w-3" />
+                            )}
+                            Copy PGN
+                          </button>
                         </div>
                         <pre className="text-xs whitespace-pre-wrap font-mono">
                           {msg.content}
                         </pre>
                       </div>
                     ) : (
-                      <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
+                      <>
+                        <p className="text-sm whitespace-pre-wrap break-words pr-5">{msg.content}</p>
+                        {/* Text copy floats top-right, revealed on hover. */}
+                        <button
+                          type="button"
+                          onClick={() => handleCopy(msg.id, msg.content)}
+                          className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                          aria-label="Copy message"
+                        >
+                          {copiedId === msg.id ? (
+                            <Check className="h-3 w-3" />
+                          ) : (
+                            <Clipboard className="h-3 w-3" />
+                          )}
+                        </button>
+                      </>
                     )}
                     <div className="text-[10px] opacity-60 mt-1 text-right">
                       {format(new Date(msg.createdAt), "MMM d, h:mm a")}
