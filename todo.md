@@ -1000,3 +1000,9 @@
 - [ ] S46-4: Coach earnings "Pending: $0.00" should reflect escrowed amount — a $132.00 lesson is in payment_collected state but Pending shows $0.00; Pending should sum amountCents for payment_collected lessons
 - [ ] S46-5: Payout threshold progress bar shows $0 earned despite $132 in escrow — progress bar should include pending/escrowed earnings so coach can see they're making progress toward the $100 threshold
 - [ ] S46-6: Payment success screen copy says "You'll only be charged once both you and your coach confirm" — inaccurate; student was already charged at checkout; fix copy to say "Your payment is held securely in escrow and released to your coach only after the lesson is completed"
+
+## Sprint 47 — Messaging & Landing Page Fixes
+
+- [ ] S47-1: PGN message content limit too low — tRPC validator at routers.ts:1692 caps `content` at 4000 chars; real PGN files routinely exceed this. Raise the validator limit to 500,000 chars (500KB). DB column is already `text` type (64KB default in MySQL) — may need to migrate to `mediumtext` (16MB) for large PGN files. Also update any frontend textarea maxLength attribute if present.
+- [ ] S47-2: Landing page stat "48h · Refund window" is stale — cancellation policy was changed to 1-hour in Sprint 45. Update Home.tsx line 239: change value from "48h" to "1h" and label from "Refund window" to "Cancellation window". Also update the copy at line 369 ("Dispute it within 48 hours") to reflect the 1-hour cancellation policy.
+- [ ] S47-3: (Deferred) New message notification on main dashboard — hold until post-sign-up landing page redesign is done, as the notification UI will be part of that authenticated landing experience.
