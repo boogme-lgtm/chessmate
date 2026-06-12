@@ -803,3 +803,36 @@ export const referrals = mysqlTable("referrals", {
 
 export type Referral = typeof referrals.$inferSelect;
 export type InsertReferral = typeof referrals.$inferInsert;
+
+/**
+ * PGN analyses — student self-analysis sessions (Sprint 50).
+ * Can be linked to a lesson (lessonId) or a content item (contentItemId),
+ * or standalone (both null). coachId is set when the student has a coach
+ * to send the recap to (derived server-side from the lesson when present).
+ */
+export const pgnAnalyses = mysqlTable("pgn_analyses", {
+  id: int("id").autoincrement().primaryKey(),
+
+  // Context — at least one should be set; both can be null for standalone
+  lessonId: int("lessonId"),
+  contentItemId: int("contentItemId"),
+
+  // Participants
+  studentId: int("studentId").notNull(),
+  coachId: int("coachId"), // null if no coach context
+
+  // PGN content (mediumtext: annotated studies can exceed 64KB)
+  title: varchar("title", { length: 255 }).notNull(),
+  originalPgn: mediumtext("originalPgn").notNull(), // unmodified source PGN
+  annotatedPgn: mediumtext("annotatedPgn"), // student's annotated version
+
+  // Workflow
+  status: mysqlEnum("status", ["draft", "sent"]).default("draft").notNull(),
+  sentAt: timestamp("sentAt"),
+
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type PgnAnalysis = typeof pgnAnalyses.$inferSelect;
+export type InsertPgnAnalysis = typeof pgnAnalyses.$inferInsert;

@@ -266,7 +266,7 @@ export default function MessageThread({
         </div>
       </DialogContent>
     </Dialog>
-    <PgnViewerModal open={pgnViewerOpen} onOpenChange={setPgnViewerOpen} pgn={selectedPgn} />
+    <PgnViewerModal open={pgnViewerOpen} onOpenChange={setPgnViewerOpen} pgn={selectedPgn} lessonId={lessonId} />
     </>
   );
 }

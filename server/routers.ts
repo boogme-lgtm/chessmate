@@ -2,6 +2,7 @@ import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { authRouter } from "./authRouter";
+import { analysisRouter } from "./analysisRouter";
 import { router, publicProcedure, protectedProcedure, coachProcedure, adminProcedure } from "./_core/trpc";
 import { vetCoachApplication } from "./aiVettingService";
 import { z } from "zod";
@@ -104,6 +105,9 @@ export const appRouter = router({
   system: systemRouter,
   
   auth: authRouter,
+
+  // Sprint 50: student PGN self-analysis sessions
+  analysis: analysisRouter,
 
   // ============ USER SETTINGS ============
   user: router({
