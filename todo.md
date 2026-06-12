@@ -1051,5 +1051,10 @@
 
 ## Sprint 49 Fix-6 — Engine Death Root Cause + Board Size (S49-21 through S49-22)
 
-- [ ] S49-21: Engine death on 3rd move — root cause: stop→position→go without waiting for bestmove confirmation; fix: pendingFenRef + bestmove gate (stop → wait for bestmove → position → go infinite)
-- [ ] S49-22: Board size regression — left column has no explicit width so flex-1 on board resolves to 0; fix: explicit style width using min(calc(90vh-8rem), calc(100%-296px))
+- [x] S49-21: Engine death on 3rd move — root cause: stop→position→go without waiting for bestmove confirmation; fix: pendingFenRef + bestmove gate (stop → wait for bestmove → position → go infinite)
+- [x] S49-22: Board size regression — left column has no explicit width so flex-1 on board resolves to 0; fix: explicit style width using min(calc(90vh-8rem), calc(100%-296px))
+
+## Sprint 49 Fix-7 — PGN Viewer Board Size + Full PGN Notation (S49-23, S49-24)
+
+- [ ] S49-23: Board too small — min(calc(90vh-8rem), calc(100%-296px)) resolves incorrectly; left column should use flex-1 min-w-0 so it takes all remaining space; right panel stays w-[300px] shrink-0; remove explicit style width
+- [ ] S49-24: PGN notation only shows main line — chess.history() returns flat array; need full PGN tree: sidelines (parentheses), comments ({curly braces}), NAG annotations ($1=$!, $2=$?, etc.), chapter text; render like Lichess analysis board with clickable moves, indented sidelines, italic comments
