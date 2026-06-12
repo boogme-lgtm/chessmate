@@ -40,11 +40,12 @@ interface PgnViewerModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   pgn: string;
-  /** S50: analysis context — when set, Save/Send-to-Coach become available.
-   *  The coach is derived from the lesson SERVER-side, never passed here. */
+  /** S50: analysis context — when set, Save/Send become available. */
   lessonId?: number;
   /** S50: reopen a previously saved analysis (loads its annotated PGN). */
   analysisId?: number;
+  /** S50-F2: labels the send button (defaults to student perspective). */
+  viewerRole?: "student" | "coach";
 }
 
 type Evaluation =
@@ -535,6 +536,7 @@ export default function PgnViewerModal({
   pgn,
   lessonId,
   analysisId,
+  viewerRole = "student",
 }: PgnViewerModalProps) {
   const [pgnNodes, setPgnNodes] = useState<PgnNode[]>([]);
   const [fens, setFens] = useState<string[]>([new Chess().fen()]);
@@ -1458,7 +1460,7 @@ export default function PgnViewerModal({
                   style={{ color: BRAND }}
                 >
                   <Send className="h-3.5 w-3.5" />
-                  Send to Coach
+                  {viewerRole === "coach" ? "Send to Student" : "Send to Coach"}
                 </Button>
               )}
             </div>
@@ -1547,9 +1549,11 @@ export default function PgnViewerModal({
       <Dialog open={sendDialogOpen} onOpenChange={setSendDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Send Analysis to Coach</DialogTitle>
+            <DialogTitle>
+              {viewerRole === "coach" ? "Send Analysis to Student" : "Send Analysis to Coach"}
+            </DialogTitle>
             <DialogDescription>
-              Your annotated game will be saved and sent as a message in your lesson chat.
+              Your annotated game will be saved and sent as a message in the lesson chat.
             </DialogDescription>
           </DialogHeader>
           <Textarea

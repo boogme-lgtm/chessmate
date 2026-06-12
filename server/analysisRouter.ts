@@ -1,10 +1,10 @@
 /**
- * Analysis router (Sprint 50) — student PGN self-analysis sessions.
+ * Analysis router (Sprint 50 + Fix-1) — PGN self-analysis sessions.
  *
- * create / save / sendToCoach / myAnalyses / byId. All procedures are scoped
- * to the authenticated student (ownership enforced in the db helpers' WHERE
- * clauses). When a lesson context is provided, the coach is derived from the
- * LESSON row server-side — the client-supplied coachId is never trusted.
+ * Both students AND coaches on a lesson can create, save, send, and list
+ * analyses. Ownership is dual-path: the student-scoped db helpers try first;
+ * if the caller isn't the student, the coach-scoped helpers try second. A
+ * third party (neither student nor coach on the lesson) is always rejected.
  */
 
 import { z } from "zod";
@@ -14,7 +14,7 @@ import * as db from "./db";
 import { sendEmail } from "./emailService";
 
 export const analysisRouter = router({
-  // Create a new analysis session.
+  // Create a new analysis session — coaches AND students can create.
   create: protectedProcedure
     .input(
       z.object({
@@ -25,24 +25,27 @@ export const analysisRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      // Derive the coach from the lesson (never from the client) and verify
-      // the caller is actually the student on that lesson.
       let coachId: number | null = null;
+      let studentId: number = ctx.user.id; // standalone: the caller is the student
+
       if (input.lessonId) {
         const lesson = await db.getLessonById(input.lessonId);
         if (!lesson) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
         }
-        if (lesson.studentId !== ctx.user.id) {
+        const isStudent = lesson.studentId === ctx.user.id;
+        const isCoach = lesson.coachId === ctx.user.id;
+        if (!isStudent && !isCoach) {
           throw new TRPCError({ code: "FORBIDDEN", message: "Not your lesson" });
         }
         coachId = lesson.coachId;
+        studentId = lesson.studentId; // always the lesson's student, even when the coach creates
       }
 
       const { id } = await db.createPgnAnalysis({
         lessonId: input.lessonId ?? null,
         contentItemId: input.contentItemId ?? null,
-        studentId: ctx.user.id,
+        studentId,
         coachId,
         title: input.title,
         originalPgn: input.originalPgn,
@@ -52,37 +55,42 @@ export const analysisRouter = router({
       return { id };
     }),
 
-  // Save the current annotated PGN (ownership enforced by the WHERE clause).
+  // Save — try student ownership, then coach ownership.
   save: protectedProcedure
     .input(z.object({ id: z.number(), annotatedPgn: z.string().min(1).max(500_000) }))
     .mutation(async ({ ctx, input }) => {
-      const updated = await db.updatePgnAnalysis(input.id, ctx.user.id, input.annotatedPgn);
+      let updated = await db.updatePgnAnalysis(input.id, ctx.user.id, input.annotatedPgn);
+      if (!updated) {
+        updated = await db.updatePgnAnalysisForCoach(input.id, ctx.user.id, input.annotatedPgn);
+      }
       if (!updated) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Analysis not found" });
       }
       return { ok: true };
     }),
 
-  // Send the annotated PGN to the coach as a lesson chat message.
+  // Send the annotated PGN into the lesson chat. Direction is automatic:
+  // student → coach, coach → student.
   sendToCoach: protectedProcedure
     .input(z.object({ id: z.number(), note: z.string().max(2000).optional() }))
     .mutation(async ({ ctx, input }) => {
-      const analysis = await db.getPgnAnalysisById(input.id, ctx.user.id);
+      let analysis = await db.getPgnAnalysisById(input.id, ctx.user.id);
+      const callerIsCoach = !analysis;
+      if (!analysis) analysis = await db.getPgnAnalysisByIdForCoach(input.id, ctx.user.id);
       if (!analysis) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Analysis not found" });
       }
       if (!analysis.lessonId) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "No lesson context for this analysis" });
       }
-      if (!analysis.coachId) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "No coach context for this analysis" });
+      // Recipient: coach sends to student; student sends to coach.
+      const recipientId = callerIsCoach ? analysis.studentId : analysis.coachId;
+      if (!recipientId) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "No recipient for this analysis" });
       }
 
       const pgn = analysis.annotatedPgn ?? analysis.originalPgn;
 
-      // The PGN goes into the lesson chat as a pgn message (opens the analysis
-      // board on click). An optional personal note precedes it as a normal
-      // text message so it reads naturally in the thread.
       if (input.note?.trim()) {
         await db.createMessage({
           lessonId: analysis.lessonId,
@@ -100,36 +108,43 @@ export const analysisRouter = router({
 
       await db.markPgnAnalysisSent(input.id, pgn);
 
-      // Best-effort coach email (the chat unread badge is the in-app signal).
-      // NOTE: notifyOwner() from the handoff notifies the PLATFORM owner, not
-      // the coach — an email to the coach is what was actually intended.
+      // Best-effort email to the recipient.
       (async () => {
         try {
-          const coach = await db.getUserById(analysis.coachId!);
-          if (!coach?.email) return;
+          const recipient = await db.getUserById(recipientId);
+          if (!recipient?.email) return;
+          const senderLabel = ctx.user.name ?? (callerIsCoach ? "Your coach" : "Your student");
           await sendEmail({
-            to: coach.email,
-            subject: `${ctx.user.name ?? "Your student"} sent you an annotated game`,
-            html: `<p>${ctx.user.name ?? "Your student"} sent you an annotated game: <strong>${analysis.title}</strong>.</p><p>Open your lesson chat to review it on the analysis board.</p>`,
+            to: recipient.email,
+            subject: `${senderLabel} sent you an annotated game`,
+            html: `<p>${senderLabel} sent you an annotated game: <strong>${analysis!.title}</strong>.</p><p>Open your lesson chat to review it on the analysis board.</p>`,
           });
         } catch (err) {
-          console.error(`[analysis.sendToCoach] coach email failed for analysis ${input.id}:`, err);
+          console.error(`[analysis.sendToCoach] recipient email failed for analysis ${input.id}:`, err);
         }
       })();
 
       return { ok: true };
     }),
 
-  // List the caller's analyses, most recently updated first.
+  // List — returns both student-side and coach-side analyses, deduped + sorted.
   myAnalyses: protectedProcedure.query(async ({ ctx }) => {
-    return await db.listPgnAnalysesByStudent(ctx.user.id);
+    const [asStudent, asCoach] = await Promise.all([
+      db.listPgnAnalysesByStudent(ctx.user.id),
+      db.listPgnAnalysesByCoach(ctx.user.id),
+    ]);
+    const seen = new Set<number>();
+    return [...asStudent, ...asCoach]
+      .filter((r) => { if (seen.has(r.id)) return false; seen.add(r.id); return true; })
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
   }),
 
-  // Fetch one analysis (caller must own it).
+  // Fetch — try student ownership, then coach ownership.
   byId: protectedProcedure
     .input(z.object({ id: z.number() }))
     .query(async ({ ctx, input }) => {
-      const row = await db.getPgnAnalysisById(input.id, ctx.user.id);
+      let row = await db.getPgnAnalysisById(input.id, ctx.user.id);
+      if (!row) row = await db.getPgnAnalysisByIdForCoach(input.id, ctx.user.id);
       if (!row) throw new TRPCError({ code: "NOT_FOUND", message: "Analysis not found" });
       return row;
     }),

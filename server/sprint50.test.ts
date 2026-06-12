@@ -143,7 +143,7 @@ describe("Sprint 50 — analysis.sendToCoach", () => {
     await expect(caller.analysis.sendToCoach({ id: 3 })).rejects.toThrow(/No lesson context/);
 
     vi.mocked(db.getPgnAnalysisById).mockResolvedValue({ ...baseAnalysis, coachId: null } as any);
-    await expect(caller.analysis.sendToCoach({ id: 3 })).rejects.toThrow(/No coach context/);
+    await expect(caller.analysis.sendToCoach({ id: 3 })).rejects.toThrow(/No recipient/);
     expect(db.createMessage).not.toHaveBeenCalled();
   });
 
@@ -167,7 +167,8 @@ describe("Sprint 50 — analysis.byId / myAnalyses", () => {
   });
 
   it("S50-12: myAnalyses lists the caller's sessions", async () => {
-    vi.mocked(db.listPgnAnalysesByStudent).mockResolvedValue([{ id: 1 }, { id: 2 }] as any);
+    vi.mocked(db.listPgnAnalysesByStudent).mockResolvedValue([{ id: 1, updatedAt: new Date() }, { id: 2, updatedAt: new Date() }] as any);
+    vi.mocked(db.listPgnAnalysesByCoach).mockResolvedValue([] as any);
     const caller = appRouter.createCaller(ctx());
     const res = await caller.analysis.myAnalyses();
     expect(res).toHaveLength(2);
