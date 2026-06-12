@@ -574,6 +574,43 @@ PGN → indented sidelines, italic comments, NAG glyphs all render; click a side
 move → board + engine follow; arrow keys return to the main line; board fills the
 dialog with no clipping at any window size.
 
+## 3r. Sprint 49 fix-8 — definitive sizing + NAGs + last-move highlight (BUILT, commit 140d733)
+
+**S49-25 — the real root cause of the entire board-size saga, finally found:**
+shadcn DialogContent's base classes include **`sm:max-w-lg` (512px)**. tailwind-merge
+only collapses conflicts within the same variant group, so our base `max-w-[96vw]`
+never beat the `sm:` variant — **the dialog itself has been capped at 512px on every
+desktop screen**, which is why no inner-layout fix ever worked. Fixed with
+`sm:max-w-[96vw]` (same group → the cap is now removed from the class list entirely).
+Two more compounding bugs fixed: fix-6's `calc(90vh-8rem)` Tailwind class was INVALID
+CSS (calc needs spaces around minus — the rule was silently dropped; now
+`calc(90vh_-_130px)`), and percentage-based wrapper sizing.
+Architecture per your handoff (concrete `--board-size` var consumed by both the board
+wrapper and the eval bar) with **corrected arithmetic**: width budget 384px (your 340
+overflows by 42px on tall/narrow screens — panel 300 + p-6 48 + gap 16 + bar 18 = 382),
+height budget 130px (your 240 counted the right panel's rows as vertical chrome and
+wasted ~110px of board). Mobile gets its own stacked-panel budget (96vw−70) and a
+scrollable main area. **Right panel is now exactly board-height on desktop** — move
+list/engine align flush with the board edges.
+
+**S49-26** — full NAG map; unknown → "" (never raw $N). Two handoff-table corrections:
+$20/$21 were swapped (White/Black crushing = +-/-+) and $141 is ∇, not △.
+
+**S49-27** — v5 has **no `lastMove` option** (your snippet wouldn't compile);
+implemented via `squareStyles` — the per-square style lands on an inner overlay div so
+the terracotta rgba tint layers OVER the square color. from/to on PgnNode, aligned
+`lastMoves[]`, `selectedLastMove` for sidelines, cleared on all navigation.
+
+**Verified at every layer**: tsc 0 · 376 tests · build clean · parser fixtures 11/11
+(from/to validated by chess.js replay; $11→=; $20→+-; $999 dropped; branch-start
+rewind intact) · **compiled CSS inspected**: valid calc, desktop var sm-scoped, mobile
+var unscoped, max-width:96vw inside the sm media block.
+
+Manual smoke: on a laptop the dialog should now be dramatically wider (~96vw, not
+512px) with a ~570-680px board; bar/board/panel top+bottom edges flush; highlight
+follows every move incl. sideline clicks; `$11` renders `=`; board size never changes
+during navigation.
+
 ## 4. Remaining open items
 
 - **Live Stripe end-to-end test** — needs a human with Stripe test cards; I can't run
