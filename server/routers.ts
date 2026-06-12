@@ -1469,8 +1469,8 @@ export const appRouter = router({
         if (input.rating) {
           await db.createReview({
             lessonId: input.lessonId,
-            reviewerId: ctx.user.id,
-            revieweeId: lesson.coachId,
+            studentId: lesson.studentId,
+            coachId: lesson.coachId,
             reviewerType: 'student',
             rating: input.rating,
             comment: input.comment || '',
@@ -1615,12 +1615,11 @@ export const appRouter = router({
         }
 
         const reviewerType: "student" | "coach" = isStudent ? "student" : "coach";
-        const revieweeId = isStudent ? lesson.coachId : lesson.studentId;
 
         await db.createReview({
           lessonId: input.lessonId,
-          reviewerId: ctx.user.id,
-          revieweeId,
+          studentId: lesson.studentId,
+          coachId: lesson.coachId,
           reviewerType,
           rating: input.rating,
           comment: input.comment || "",

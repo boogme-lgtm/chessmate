@@ -1,4 +1,4 @@
-import { eq, and, desc, sql, gte, lte, isNotNull, isNull, inArray } from "drizzle-orm";
+import { eq, and, or, desc, sql, gte, lte, isNotNull, isNull, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import {
@@ -302,7 +302,7 @@ export async function updateCoachStats(coachId: number) {
     })
     .from(reviews)
     .where(and(
-      eq(reviews.revieweeId, coachId),
+      eq(reviews.coachId, coachId),
       eq(reviews.reviewerType, 'student'),
       eq(reviews.isVisible, true)
     ));
@@ -643,7 +643,7 @@ export async function createReview(review: InsertReview) {
   
   // Update coach stats after new review (if reviewing a coach)
   if (review.reviewerType === 'student') {
-    await updateCoachStats(review.revieweeId);
+    await updateCoachStats(review.coachId);
   }
   
   return result;
@@ -657,7 +657,7 @@ export async function getReviewsByCoach(coachId: number, limit: number = 20) {
     .select()
     .from(reviews)
     .where(and(
-      eq(reviews.revieweeId, coachId),
+      eq(reviews.coachId, coachId),
       eq(reviews.reviewerType, 'student'),
       eq(reviews.isPublic, true),
       eq(reviews.isVisible, true)
@@ -671,14 +671,25 @@ export async function getReviewsByCoach(coachId: number, limit: number = 20) {
  */
 export async function getReviewByLessonAndReviewer(
   lessonId: number,
-  reviewerId: number
+  userId: number
 ) {
   const db = await getDb();
   if (!db) return null;
+  // The id must be PAIRED with the role: both review rows of a lesson carry
+  // the same studentId/coachId, so a plain (studentId=u OR coachId=u) match
+  // would return the OTHER party's review too (S-REV-1 handoff correction).
   const rows = await db
     .select()
     .from(reviews)
-    .where(and(eq(reviews.lessonId, lessonId), eq(reviews.reviewerId, reviewerId)))
+    .where(
+      and(
+        eq(reviews.lessonId, lessonId),
+        or(
+          and(eq(reviews.studentId, userId), eq(reviews.reviewerType, "student")),
+          and(eq(reviews.coachId, userId), eq(reviews.reviewerType, "coach"))
+        )
+      )
+    )
     .limit(1);
   return rows[0] || null;
 }
