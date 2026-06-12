@@ -1021,3 +1021,8 @@
 - [x] S49-3: Board square colors indistinguishable — dark #1a1a2e and light #2d2d4e too similar; use higher-contrast colors
 - [x] S49-4: Stockfish does not re-evaluate on move navigation — engine evaluates once then locks; changing moves does not trigger a new search
 - [x] S49-5: No best-move text displayed — best move shown only as arrow; add text label (e.g. "Best: Nf3") in engine status line
+
+## Sprint 49 Fix-2 — PGN Viewer Board & Engine (S49-6, S49-7)
+
+- [ ] S49-6: Dark gaps between board rows — boardStyle height:100% stretches grid rows beyond square size; fix by overriding boardStyle to {height:'auto'} and removing aspect-square from wrapper
+- [ ] S49-7: Stockfish stalls at depth 0 after navigation — isready/readyok barrier is wrong for single-threaded WASM; replace with stop→position fen→go infinite (no barrier needed); engine should analyze continuously per position
