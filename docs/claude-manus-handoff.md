@@ -436,6 +436,29 @@ Verification: 376 tests, tsc 0, build clean. Manual smoke: no row gaps; depth cl
 1,2,3… continuously per position; rapid arrow-keys never stall at depth 0; arrow +
 "Best:" update live during the search.
 
+## 3m. Sprint 49 fix-3 — branded board, notation, engine toggle, MultiPV (BUILT, commit ea99991)
+
+All four in `PgnViewerModal.tsx` only.
+- **S49-8** navy/tan branded squares (#1A2C3D / #C8B89A); eval bar #151B22 bg + #E8633A
+  fill; active move, eval label, Best: text all terracotta.
+- **S49-9** 9px notation + per-square-type colors.
+- **S49-10** Power toggle; startEngine/stopEngine refactor; three-state status.
+- **S49-11** MultiPV 3; multipv-aware parsing (multipv 1 drives bar/arrow/Best); live
+  top-3 variations table, reset per navigation.
+
+### Two deviations to review
+1. **Best-move ARROW stays cyan** — the spec listed which accents go terracotta and the
+   arrow wasn't among them; cyan also reads better against both new square tones. Say
+   the word if you want it branded too (1-line change to ARROW_COLOR).
+2. **Omitted the base `color` from alpha/numericNotationStyle** (spec had
+   rgba(255,255,255,0.55)). v5 renders those styles on INNER spans whose color would
+   override the per-square color on the OUTER span — including it would have defeated
+   the per-square colors entirely. Verified against react-chessboard dist source.
+
+Verification: 376 tests, tsc 0, build clean. Manual smoke: branded board; small
+non-overlapping notation; Power off→on restarts cleanly with depth climbing from 1;
+three variation rows update live and reset on navigation.
+
 ## 4. Remaining open items
 
 - **Live Stripe end-to-end test** — needs a human with Stripe test cards; I can't run
