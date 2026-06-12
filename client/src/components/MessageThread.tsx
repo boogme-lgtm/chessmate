@@ -20,6 +20,7 @@ interface MessageThreadProps {
   onOpenChange: (open: boolean) => void;
   lessonId: number;
   otherPartyName: string;
+  viewerRole?: "student" | "coach";
 }
 
 /**
@@ -32,6 +33,7 @@ export default function MessageThread({
   onOpenChange,
   lessonId,
   otherPartyName,
+  viewerRole = "student",
 }: MessageThreadProps) {
   const { user } = useAuth();
   const utils = trpc.useUtils();
@@ -266,7 +268,7 @@ export default function MessageThread({
         </div>
       </DialogContent>
     </Dialog>
-    <PgnViewerModal open={pgnViewerOpen} onOpenChange={setPgnViewerOpen} pgn={selectedPgn} lessonId={lessonId} />
+    <PgnViewerModal open={pgnViewerOpen} onOpenChange={setPgnViewerOpen} pgn={selectedPgn} lessonId={lessonId} viewerRole={viewerRole} />
     </>
   );
 }

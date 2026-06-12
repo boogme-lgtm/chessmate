@@ -672,6 +672,7 @@ function CoachLessonRow({ lesson, unreadCount, formatCurrency, getStatusBadge }:
         onOpenChange={setShowMessages}
         lessonId={lesson.id}
         otherPartyName={lesson.studentName || `Student #${lesson.studentId}`}
+        viewerRole="coach"
       />
     </>
   );
