@@ -85,10 +85,6 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
   // Side-to-move for the position currently being analyzed, so we can normalize
   // the engine's side-to-move score into a white-POV evaluation.
   const sideToMoveRef = useRef<"w" | "b">("w");
-  // S49-4: FEN waiting for the engine to confirm idle (readyok) before search.
-  // The single-threaded worker drops commands sent while it's still stopping, so
-  // we use the isready/readyok handshake as a sync barrier.
-  const pendingFenRef = useRef<string | null>(null);
 
   // ── Parse PGN ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -140,26 +136,17 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
       if (typeof line !== "string") return;
 
       if (line === "uciok") {
-        setEngineReady(true);
         worker.postMessage("isready");
         return;
       }
       if (line === "readyok") {
-        // S49-4: engine is idle — if a position is waiting (from navigation or
-        // the initial open), start its search now.
-        if (pendingFenRef.current) {
-          const fen = pendingFenRef.current;
-          pendingFenRef.current = null;
-          worker.postMessage(`position fen ${fen}`);
-          worker.postMessage("go depth 18");
-        }
+        // S49-7: engineReady flips here (not on uciok) so the evaluation effect
+        // only fires once the engine has confirmed it is ready.
+        setEngineReady(true);
         return;
       }
 
-      // While a new position is pending, any info/bestmove lines belong to the
-      // ABORTED search — ignore them so stale evals/arrows don't flash.
-      if (pendingFenRef.current) return;
-
+      // info lines — update depth and eval continuously while `go infinite` runs.
       const depthMatch = line.match(/\bdepth (\d+)/);
       if (depthMatch) setEngineDepth(parseInt(depthMatch[1], 10));
 
@@ -175,8 +162,12 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
         const white = sideToMoveRef.current === "w" ? m : -m;
         setEvaluation({ type: "mate", value: white });
       }
-      const bmMatch = line.match(/^bestmove (\S+)/);
-      if (bmMatch && bmMatch[1] !== "(none)") setBestMove(bmMatch[1]);
+      // S49-7: under `go infinite`, `bestmove` is only emitted AFTER a stop — i.e.
+      // it always belongs to the previous (aborted) position and must be ignored.
+      // The live best move is the first move of the principal variation instead,
+      // streamed in every info line: "info depth N score cp X ... pv e2e4 e7e5 ..."
+      const pvMatch = line.match(/\bpv (\S+)/);
+      if (pvMatch) setBestMove(pvMatch[1]);
     };
 
     worker.onerror = (err) => console.error("[PgnViewer] Stockfish worker error:", err);
@@ -188,17 +179,16 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
         worker.terminate();
       } catch { /* noop */ }
       stockfishRef.current = null;
-      pendingFenRef.current = null;
       setEngineReady(false);
       setEngineDepth(0);
     };
   }, [open]);
 
   // ── Trigger evaluation when the viewed position changes ──────────────────────
-  // S49-4: don't send position/go directly — the single-threaded worker drops
-  // commands while still stopping. Park the FEN in pendingFenRef and use
-  // stop + isready; the onmessage readyok branch dispatches the search once the
-  // engine confirms it is idle.
+  // S49-7: single-threaded WASM processes `stop` synchronously in its message
+  // queue, so no isready/readyok barrier is needed — send stop → position → go
+  // directly. `go infinite` keeps the engine improving its eval until the next
+  // navigation stops it (standard chess-GUI pattern).
   useEffect(() => {
     const fen = fens[currentIndex];
     if (!engineReady || !stockfishRef.current || !fen) return;
@@ -206,9 +196,9 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
     setBestMove(null);
     setEvaluation(null);
     setEngineDepth(0);
-    pendingFenRef.current = fen;
     stockfishRef.current.postMessage("stop");
-    stockfishRef.current.postMessage("isready");
+    stockfishRef.current.postMessage(`position fen ${fen}`);
+    stockfishRef.current.postMessage("go infinite");
   }, [currentIndex, fens, engineReady]);
 
   // ── Keyboard navigation ──────────────────────────────────────────────────────
@@ -271,14 +261,27 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
                 {evalLabel(evaluation)}
               </span>
             </div>
-            {/* aspect-square forces a 1:1 board regardless of flex width (S49-2) */}
-            <div className="flex-1 min-w-0 aspect-square">
+            {/* S49-6: no aspect-square — boardStyle height:auto lets the grid rows
+                size to the squares' own 1:1 aspect ratio, so the board is naturally
+                square (height = width) with no dark gaps between rows. */}
+            <div className="flex-1 min-w-0">
               <Chessboard
                 options={{
                   position: fens[currentIndex],
                   boardOrientation,
                   allowDragging: false,
                   arrows,
+                  // S49-6: v5's defaultBoardStyle sets height:'100%', which stretches
+                  // grid rows past the squares' aspectRatio and leaves gaps. Same
+                  // defaults, but height:'auto' so rows size to content.
+                  boardStyle: {
+                    display: "grid",
+                    gridTemplateColumns: "repeat(8, 1fr)",
+                    overflow: "hidden",
+                    width: "100%",
+                    height: "auto",
+                    position: "relative",
+                  },
                   // S49-3: Lichess classic palette — high contrast, instantly
                   // recognizable, readable on the dark modal background.
                   darkSquareStyle: { backgroundColor: "#b58863" },
