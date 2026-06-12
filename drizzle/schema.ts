@@ -269,26 +269,29 @@ export type InsertLesson = typeof lessons.$inferInsert;
 export const reviews = mysqlTable("reviews", {
   id: int("id").autoincrement().primaryKey(),
   lessonId: int("lessonId").notNull(),
-  
-  // Who is reviewing whom (mutual reviews)
-  reviewerId: int("reviewerId").notNull(),
-  revieweeId: int("revieweeId").notNull(),
+
+  // Both parties of the lesson (S-REV-1: matches the live table — these are
+  // the original NOT NULL columns). reviewerType says which side WROTE this
+  // review: 'student' = student reviewing the coach, 'coach' = coach
+  // reviewing the student.
+  studentId: int("studentId").notNull(),
+  coachId: int("coachId").notNull(),
   reviewerType: mysqlEnum("reviewerType", ["student", "coach"]).notNull(),
-  
+
   rating: int("rating").notNull(), // 1-5 stars
   comment: text("comment"), // Written review
-  
+
   // Detailed ratings
   knowledgeRating: int("knowledgeRating"),
   communicationRating: int("communicationRating"),
   preparednessRating: int("preparednessRating"),
-  
+
   // Airbnb-style hidden reviews until both submit
   isVisible: boolean("isVisible").default(false),
   visibleAt: timestamp("visibleAt"),
-  
+
   isPublic: boolean("isPublic").default(true),
-  
+
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
