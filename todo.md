@@ -1051,5 +1051,5 @@
 
 ## Sprint 49 Fix-6 — Engine Death Root Cause + Board Size (S49-21 through S49-22)
 
-- [ ] S49-21: Engine death on 3rd move — root cause: stop→position→go without waiting for bestmove confirmation; fix: pendingFenRef + bestmove gate (stop → wait for bestmove → position → go infinite)
-- [ ] S49-22: Board size regression — left column has no explicit width so flex-1 on board resolves to 0; fix: explicit style width using min(calc(90vh-8rem), calc(100%-296px))
+- [x] S49-21: Engine death on 3rd move — root cause: stop→position→go without waiting for bestmove confirmation; fix: pendingFenRef + bestmove gate (stop → wait for bestmove → position → go infinite)
+- [x] S49-22: Board size regression — left column has no explicit width so flex-1 on board resolves to 0; fix: explicit style width using min(calc(90vh-8rem), calc(100%-296px))
