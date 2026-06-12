@@ -1077,4 +1077,4 @@
 
 ## Sprint 49 Fix-11 — Right-Arrow Picker Confirm + Sideline Continuation (S49-32)
 
-- [ ] S49-32: Three related right-arrow navigation bugs — (1) when picker is open, pressing → should confirm the focused choice (same as Enter), not silently take the main line; (2) after choosing a sideline, pressing → should continue in that sideline's next move, not redirect to the main line; (3) the sideline navigation context (selectedFen) needs to be threaded into handleRightArrow so it can find the next node in the sideline tree rather than always looking in pgnNodes[currentIndex]
+- [x] S49-32: Three related right-arrow navigation bugs — (1) when picker is open, pressing → should confirm the focused choice (same as Enter), not silently take the main line; (2) after choosing a sideline, pressing → should continue in that sideline's next move, not redirect to the main line; (3) the sideline navigation context (selectedFen) needs to be threaded into handleRightArrow so it can find the next node in the sideline tree rather than always looking in pgnNodes[currentIndex]
