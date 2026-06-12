@@ -197,10 +197,11 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
       if (typeof line !== "string") return;
 
       if (line === "uciok") {
-        // S49-12: setoption is an INITIALIZATION command — set MultiPV exactly
-        // once per worker lifetime, here between uci and isready. Sending it in
-        // the per-position hot path progressively stalled the single-threaded
-        // engine (works → depth-9 stall → depth 0).
+        // S49-12: setoption is an INITIALIZATION command — configure the engine
+        // exactly once per worker lifetime, here between uci and isready.
+        // Hash 16MB: the WASM build can stall (observed around depth 9) when it
+        // fills an undersized default hash table.
+        worker.postMessage("setoption name Hash value 16");
         worker.postMessage("setoption name MultiPV value 3");
         worker.postMessage("isready");
         return;
@@ -311,8 +312,8 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[92vw] w-full">
-        <DialogHeader>
+      <DialogContent className="max-w-[96vw] w-full h-[90vh] flex flex-col overflow-hidden p-6">
+        <DialogHeader className="shrink-0">
           <DialogTitle className="text-base">
             {headerLine || "Game Analysis"}
             {metaLine && (
@@ -322,50 +323,42 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
         </DialogHeader>
 
         {parseError ? (
-          <p className="text-sm text-muted-foreground py-8 text-center">
+          <p className="text-sm text-muted-foreground py-2 text-center shrink-0">
             This PGN couldn't be parsed. Showing an empty board.
           </p>
         ) : null}
 
-        <div className="flex flex-col sm:flex-row gap-4">
-          {/* Left: eval bar + board — board must be square (S49-2) */}
-          <div className="flex gap-2 sm:flex-[3] min-w-0">
-            {/* Evaluation bar — brand surface bg + terracotta fill (S49-8) */}
+        {/* S49-17: fixed-size main area — dialog never resizes with content */}
+        <div className="flex-1 flex flex-col sm:flex-row gap-4 overflow-hidden min-h-0">
+          {/* S49-18: left column is self-start so its height collapses to its
+              content (the board) instead of stretching to the main area — that
+              makes the eval bar's self-stretch match the BOARD height exactly. */}
+          <div className="flex-1 flex gap-1.5 justify-center min-w-0 self-start">
+            {/* S49-19: clean eval bar — dark bg, orange fill, midpoint notch,
+                NO floating label (the eval is shown in the engine panel). */}
             <div
-              className="relative w-4 shrink-0 self-stretch rounded overflow-hidden border border-border/30"
+              className="w-3 shrink-0 self-stretch rounded-sm overflow-hidden relative"
               style={{ backgroundColor: "#151B22" }}
-              title="Engine evaluation"
+              title={`Engine evaluation: ${evalLabel(evaluation)}`}
             >
-              {/* White (advantage) fill — grows upward from bottom */}
               <div
-                className="absolute bottom-0 left-0 right-0 transition-[height] duration-500"
+                className="absolute bottom-0 left-0 right-0 transition-[height] duration-300"
                 style={{ height: `${evalPct}%`, backgroundColor: BRAND }}
               />
-              {/* S49-15: center line — fill at this line = equal position */}
               <div
                 className="absolute left-0 right-0"
                 style={{
                   top: "50%",
-                  height: "1px",
-                  backgroundColor: "rgba(244,239,230,0.25)",
+                  height: "2px",
+                  backgroundColor: "rgba(244,239,230,0.4)",
                   zIndex: 2,
                 }}
               />
-              {/* S49-15: label floats at the fill boundary so it tracks the eval */}
-              <span
-                className="absolute left-1/2 -translate-x-1/2 text-[8px] font-mono z-10 whitespace-nowrap"
-                style={{
-                  bottom: evalPct > 15 ? `${evalPct}%` : "2px",
-                  color: BRAND,
-                }}
-              >
-                {evalLabel(evaluation)}
-              </span>
             </div>
-            {/* S49-6: no aspect-square — boardStyle height:auto lets the grid rows
-                size to the squares' own 1:1 aspect ratio, so the board is naturally
-                square (height = width) with no dark gaps between rows. */}
-            <div className="flex-1 min-w-0">
+            {/* S49-20: board takes all remaining width, but capped by the dialog
+                height (square board sizes by width — without the cap it would
+                overflow vertically on wide/short screens, e.g. 1440×900). */}
+            <div className="flex-1 min-w-0 max-w-[calc(90vh-8rem)]">
               <Chessboard
                 options={{
                   position: fens[currentIndex],
@@ -410,9 +403,10 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
             </div>
           </div>
 
-          {/* Right: move list + controls */}
-          <div className="sm:flex-[2] flex flex-col min-h-0">
-            <div className="overflow-y-auto max-h-[320px] sm:max-h-[480px] font-mono text-sm border border-border/40 rounded-md">
+          {/* S49-20: right panel — fixed width, scrolls internally so its
+              content can never change the dialog's size (S49-17). */}
+          <div className="w-full sm:w-[280px] shrink-0 flex flex-col gap-3 overflow-y-auto min-h-0">
+            <div className="flex-1 min-h-[120px] overflow-y-auto font-mono text-sm border border-border/40 rounded-md">
               {moves.length === 0 ? (
                 <p className="text-xs text-muted-foreground p-3">No moves to display.</p>
               ) : (
@@ -443,7 +437,7 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
             </div>
 
             {/* Navigation controls */}
-            <div className="flex items-center gap-1 mt-3">
+            <div className="flex items-center gap-1 shrink-0">
               <Button variant="outline" size="icon" onClick={() => goTo(0)} aria-label="First move">
                 <ChevronFirst className="h-4 w-4" />
               </Button>
@@ -471,7 +465,7 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
             </div>
 
             {/* S49-16: flip board — dedicated labeled row so it can't be missed */}
-            <div className="flex items-center gap-2 mt-2">
+            <div className="flex items-center gap-2 shrink-0">
               <Button
                 variant="outline"
                 size="sm"
@@ -488,7 +482,7 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
             </div>
 
             {/* Engine status — three states (S49-10) */}
-            <div className="mt-3 text-xs text-muted-foreground font-mono space-y-0.5">
+            <div className="text-xs text-muted-foreground font-mono space-y-0.5 shrink-0">
               {!engineEnabled ? (
                 <div>
                   Engine off ·{" "}
