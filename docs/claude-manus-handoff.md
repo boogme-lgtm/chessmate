@@ -478,6 +478,35 @@ depth climbs on EVERY move with no 3-step degradation; variation rows show 5-mov
 lines; center line visible on the eval bar with the label tracking the fill; labeled
 Flip board row with perspective text.
 
+## 3o. Sprint 49 fix-5 — layout overhaul + engine hash (BUILT, commit 15a18b2)
+
+All in `PgnViewerModal.tsx` only.
+- **S49-17** fixed dialog: `max-w-[96vw] w-full h-[90vh] flex flex-col overflow-hidden`;
+  main area `flex-1 min-h-0 overflow-hidden` — content can never resize the dialog.
+- **S49-18** eval bar parallel to the board.
+- **S49-19** label removed from the bar; w-3 strip, terracotta fill, 2px midpoint notch
+  (numeric eval remains in the tooltip + engine panel).
+- **S49-20** right panel `w-[280px] shrink-0`, internal scroll (move list is the flex-1
+  scroller); board gets the remaining width.
+- **Engine**: `setoption name Hash value 16` added to the uciok init block.
+
+### Two necessary deviations (please review)
+1. **`self-start` on the left column** — the spec's layout tree alone does not fix
+   S49-18: the left column is a flex-row child of the main area and stretches to the
+   main-area height by default, so the bar's `self-stretch` would again exceed the
+   board. `self-start` collapses the column to its content (the board), making the
+   bar exactly board-height.
+2. **Board width capped at `max-w-[calc(90vh-8rem)]`** — the square board sizes by
+   width (height:auto grid). Uncapped, the spec's ~1067px board would vertically
+   overflow the fixed 90vh dialog on common wide/short screens (e.g. 1440×900,
+   ~700px available). The cap keeps the square fully visible; the bar+board pair is
+   centered in any leftover width.
+
+Verification: 376 tests, tsc 0, build clean. Manual smoke: dialog size stable across
+all moves; bar flush left of the board at exactly board height with a visible notch;
+board large and fully visible (no vertical clipping); right panel scrolls internally;
+depth climbs past 9 with no stall.
+
 ## 4. Remaining open items
 
 - **Live Stripe end-to-end test** — needs a human with Stripe test cards; I can't run
