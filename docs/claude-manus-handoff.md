@@ -394,6 +394,25 @@ Verified the script repopulates the files from an empty dir; 376 tests, tsc 0.
 > so the files land in `client/public/stockfish/` before `vite build` copies them to
 > `dist/public/`.
 
+## 3k. Sprint 49 fix — viewer board/colors/engine/best-move (BUILT, latest commit)
+
+All four in `PgnViewerModal.tsx` only, per the handoff.
+- **S49-2** `aspect-square` on the board wrapper (true 1:1 at any dialog width); eval bar
+  `w-4` + `self-stretch`.
+- **S49-3** Lichess classic square colors (`#b58863` / `#f0d9b5`).
+- **S49-4** isready/readyok sync barrier: eval effect parks the FEN in `pendingFenRef`
+  and sends `stop` + `isready`; the `readyok` handler dispatches `position`+`go`. One
+  addition beyond the spec: while a position is pending, info/bestmove lines from the
+  aborted search are **ignored**, so stale evals/arrows can't flash during navigation.
+  Ref cleared on worker teardown; initial-open double-`isready` resolves to exactly one
+  search.
+- **S49-5** `uciToSan` helper (handles promotion) → status line shows "Best: Nf3", falls
+  back to `e2→e4`.
+
+Verification: 376 tests, tsc 0, build clean. Manual smoke after merge: navigate moves and
+confirm the depth counter resets + climbs on every move, board is square, colors are the
+Lichess scheme, and the Best: line updates.
+
 ## 4. Remaining open items
 
 - **Live Stripe end-to-end test** — needs a human with Stripe test cards; I can't run
