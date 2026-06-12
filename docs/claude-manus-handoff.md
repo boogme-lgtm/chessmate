@@ -459,6 +459,25 @@ Verification: 376 tests, tsc 0, build clean. Manual smoke: branded board; small
 non-overlapping notation; Power off→on restarts cleanly with depth climbing from 1;
 three variation rows update live and reset on navigation.
 
+## 3n. Sprint 49 fix-4 — engine stability + UX polish (BUILT, commit b6f3b98)
+
+All five in `PgnViewerModal.tsx` only.
+- **S49-12** `setoption MultiPV 3` → uciok handler (once per worker); hot path is the
+  minimal `stop → position → go infinite`.
+- **S49-13** full-PV variations: `Variation.pvUci: string[]` + `pvToSan()` → 5-move SAN
+  lines per row. Refinement over spec: per-move try/break so a stale PV shows its legal
+  prefix rather than collapsing the whole line to arrow notation.
+- **S49-14** dialog `max-w-[92vw] w-full`; move list max-h 320/480px.
+- **S49-15** eval bar center reference line + label floating at the fill boundary
+  (clamped near bottom under 15% fill).
+- **S49-16** flip board in its own labeled row with a perspective indicator; Power
+  toggle right-aligned in the nav row.
+
+Verification: 376 tests, tsc 0, build clean. Manual smoke: rapid arrow-key navigation —
+depth climbs on EVERY move with no 3-step degradation; variation rows show 5-move SAN
+lines; center line visible on the eval bar with the label tracking the fill; labeled
+Flip board row with perspective text.
+
 ## 4. Remaining open items
 
 - **Live Stripe end-to-end test** — needs a human with Stripe test cards; I can't run
