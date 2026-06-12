@@ -398,6 +398,7 @@ function MoveList({
               </span>
             )}
             <button
+              data-active={isActive ? "true" : undefined}
               onClick={() =>
                 depth === 0
                   ? onSelectMainline(idx + 1)
@@ -457,6 +458,8 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
   // S49-29: candidate continuations shown when → hits a bifurcation.
   type BranchChoice = { label: string; fen: string; from: string; to: string; isMainLine: boolean };
   const [branchChoices, setBranchChoices] = useState<BranchChoice[] | null>(null);
+  // S49-30: which row in the picker is keyboard-focused (0 = main line).
+  const [focusedChoiceIndex, setFocusedChoiceIndex] = useState(0);
   const [boardOrientation, setBoardOrientation] = useState<"white" | "black">("white");
   const [evaluation, setEvaluation] = useState<Evaluation>(null);
   const [bestMove, setBestMove] = useState<string | null>(null);
@@ -468,6 +471,8 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
   const [variations, setVariations] = useState<Variation[]>([]);
 
   const stockfishRef = useRef<Worker | null>(null);
+  // S49-31: ref to the move-list wrapper for programmatic scroll-following.
+  const moveListRef = useRef<HTMLDivElement>(null);
   // Side-to-move for the position currently being analyzed, so we can normalize
   // the engine's side-to-move score into a white-POV evaluation.
   const sideToMoveRef = useRef<"w" | "b">("w");
@@ -663,6 +668,17 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
   // derives from this single value.
   const displayFen = selectedFen ?? fens[currentIndex] ?? fens[0];
 
+  // S49-31: scroll the active move into view in the notation panel. `nearest`
+  // only scrolls when the element is outside the visible area and moves the
+  // minimum distance — no disorienting jumps when the active move is already
+  // visible. Uses `instant` (not `smooth`) so rapid arrow-key navigation
+  // doesn't lag behind with a queue of animations.
+  useEffect(() => {
+    if (!moveListRef.current) return;
+    const el = moveListRef.current.querySelector<HTMLElement>('[data-active="true"]');
+    if (el) el.scrollIntoView({ block: "nearest", behavior: "instant" });
+  }, [displayFen]);
+
   useEffect(() => {
     const fen = displayFen;
     if (!engineReady || !stockfishRef.current || !fen) return;
@@ -734,6 +750,7 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
             isMainLine: false,
           })),
       ]);
+      setFocusedChoiceIndex(0); // S49-30: always start with main line highlighted
     } else {
       setCurrentIndex((i) => Math.min(fens.length - 1, i + 1));
     }
@@ -749,8 +766,8 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
     }
   }, [fens.length]);
 
-  // Keyboard: arrows walk the main line (leaving any selected sideline);
-  // Escape dismisses the branch picker and defaults to the main line.
+  // Keyboard: when the branch picker is open, ↑/↓ cycle the list, Enter/Space
+  // confirm, Escape takes the main line. Otherwise arrows walk the main line.
   useEffect(() => {
     if (!open) return;
     const leaveSideline = () => {
@@ -759,19 +776,38 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
       setBranchChoices(null);
     };
     const handler = (e: KeyboardEvent) => {
+      // ── S49-30: branch picker is open — keyboard navigates the list ──
+      if (branchChoices !== null) {
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          setFocusedChoiceIndex((i) => Math.max(0, i - 1));
+        } else if (e.key === "ArrowDown") {
+          e.preventDefault();
+          setFocusedChoiceIndex((i) => Math.min(branchChoices.length - 1, i + 1));
+        } else if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          chooseBranch(branchChoices[focusedChoiceIndex]);
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          setBranchChoices(null);
+          setCurrentIndex((i) => Math.min(fens.length - 1, i + 1));
+        } else if (e.key === "ArrowRight") {
+          // → again while picker is open = accept the main line (fix-9)
+          e.preventDefault();
+          handleRightArrow();
+        }
+        return; // consume all keys while picker is open
+      }
+
+      // ── Normal navigation — picker is closed ──
       if (e.key === "ArrowLeft") { e.preventDefault(); leaveSideline(); setCurrentIndex((i) => Math.max(0, i - 1)); }
       if (e.key === "ArrowRight") { e.preventDefault(); handleRightArrow(); }
       if (e.key === "ArrowUp") { e.preventDefault(); leaveSideline(); setCurrentIndex(0); }
       if (e.key === "ArrowDown") { e.preventDefault(); leaveSideline(); setCurrentIndex(fens.length - 1); }
-      if (e.key === "Escape" && branchChoices !== null) {
-        e.preventDefault();
-        setBranchChoices(null);
-        setCurrentIndex((i) => Math.min(fens.length - 1, i + 1));
-      }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [open, fens.length, handleRightArrow, branchChoices]);
+  }, [open, fens.length, handleRightArrow, branchChoices, focusedChoiceIndex, chooseBranch]);
 
   const goTo = useCallback((i: number) => {
     setSelectedFen(null);
@@ -944,7 +980,7 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
               {pgnNodes.length === 0 ? (
                 <p className="text-xs text-muted-foreground p-3">No moves to display.</p>
               ) : (
-                <div className="p-2 leading-relaxed">
+                <div ref={moveListRef} className="p-2 leading-relaxed">
                   {/* S49-24: full notation — sidelines, comments, NAGs. Every
                       move is clickable, sidelines included. */}
                   <MoveList
@@ -1000,12 +1036,17 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
                       <button
                         key={i}
                         onClick={() => chooseBranch(choice)}
-                        className={`block w-full text-left text-xs px-3 py-1.5 rounded hover:bg-muted/60 font-mono ${
-                          choice.isMainLine ? "font-semibold" : "text-muted-foreground"
-                        }`}
-                        style={choice.isMainLine ? { color: BRAND } : undefined}
+                        onMouseEnter={() => setFocusedChoiceIndex(i)}
+                        className={`block w-full text-left text-xs px-3 py-1.5 rounded font-mono ${
+                          i === focusedChoiceIndex ? "bg-muted/60" : "hover:bg-muted/40"
+                        } ${choice.isMainLine ? "font-semibold" : "text-muted-foreground"}`}
+                        style={
+                          i === focusedChoiceIndex || choice.isMainLine
+                            ? { color: BRAND }
+                            : undefined
+                        }
                       >
-                        {choice.isMainLine ? "★ " : "   "}
+                        {i === focusedChoiceIndex ? "▶ " : choice.isMainLine ? "★ " : "   "}
                         {choice.label}
                       </button>
                     ))}
