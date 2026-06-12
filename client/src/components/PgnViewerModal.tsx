@@ -110,12 +110,317 @@ function pvToSan(pvUci: string[], startFen: string | undefined, maxMoves = 5): s
     .join(" ");
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// S49-24: PGN tree parser — full notation support (sidelines, comments, NAGs).
+// chess.js history() flattens to the main line only, so the move text is
+// tokenized and walked manually; chess.js still validates every move and
+// supplies the FEN after each one.
+// ═══════════════════════════════════════════════════════════════════════════
+
+type PgnNode = {
+  id: string; // unique key for React rendering
+  fen: string; // FEN after this move
+  san: string; // SAN notation (e.g. "Nf3")
+  moveNumber: number; // 1-based full move number
+  color: "w" | "b"; // side that made this move
+  commentBefore?: string; // comment immediately BEFORE this move
+  comment?: string; // comment AFTER this move (from {…})
+  nags: string[]; // NAG symbols converted to glyphs (["!", "?!"])
+  variations: PgnNode[][]; // sideline branches starting at this move
+  depth: number; // 0 = main line, 1 = first-level sideline, …
+};
+
+const NAG_GLYPHS: Record<number, string> = {
+  1: "!", 2: "?", 3: "!!", 4: "??", 5: "!?", 6: "?!",
+  7: "□", 10: "=", 13: "∞", 14: "⩲", 15: "⩱", 16: "±",
+  17: "∓", 18: "+-", 19: "-+", 22: "⨀", 32: "⟳", 36: "→",
+  40: "↑", 132: "⇆", 138: "⊕",
+};
+
+// Strip embedded command tags ([%clk 0:03:00], [%eval 0.4], [%csl …]) that
+// Lichess/chess.com put inside comments — they are machine data, not prose.
+function cleanCommentText(raw: string): string | undefined {
+  const text = raw.replace(/\[%[^\]]*\]/g, "").replace(/\s+/g, " ").trim();
+  return text.length > 0 ? text : undefined;
+}
+
+function tokenizePgn(moveText: string): string[] {
+  const tokens: string[] = [];
+  let i = 0;
+  while (i < moveText.length) {
+    const ch = moveText[i];
+    if (/\s/.test(ch)) { i++; continue; }
+    // Brace comment
+    if (ch === "{") {
+      const end = moveText.indexOf("}", i);
+      if (end === -1) break;
+      tokens.push(moveText.slice(i, end + 1));
+      i = end + 1;
+      continue;
+    }
+    // Semicolon comment — runs to end of line (PGN spec)
+    if (ch === ";") {
+      const end = moveText.indexOf("\n", i);
+      const stop = end === -1 ? moveText.length : end;
+      tokens.push(`{${moveText.slice(i + 1, stop)}}`);
+      i = stop;
+      continue;
+    }
+    if (ch === "(" || ch === ")") { tokens.push(ch); i++; continue; }
+    // NAG ($N)
+    if (ch === "$") {
+      const m = moveText.slice(i).match(/^\$(\d+)/);
+      if (m) { tokens.push(m[0]); i += m[0].length; continue; }
+    }
+    // Move number ("12." / "12...") — positional info we recompute; discard
+    const mnMatch = moveText.slice(i).match(/^\d+\.+/);
+    if (mnMatch) { i += mnMatch[0].length; continue; }
+    // Result token — end of the game; discard (shown from headers)
+    const resultMatch = moveText.slice(i).match(/^(1-0|0-1|1\/2-1\/2|\*)/);
+    if (resultMatch) { i += resultMatch[0].length; continue; }
+    // SAN move (castling first so "O-O-O" isn't split)
+    const sanMatch = moveText
+      .slice(i)
+      .match(/^(O-O-O|O-O|[NBRQK]?[a-h]?[1-8]?x?[a-h][1-8](=[NBRQK])?)[+#]?/);
+    if (sanMatch) {
+      tokens.push(sanMatch[0]);
+      i += sanMatch[0].length;
+      // Suffix annotation glued to the move ("Qd2?!", "Nf3!") — Lichess
+      // exports these as text, not $-NAGs. Emit as a suffix token.
+      const suffix = moveText.slice(i).match(/^[!?]{1,2}/);
+      if (suffix) { tokens.push(suffix[0]); i += suffix[0].length; }
+      continue;
+    }
+    i++; // skip anything unrecognized
+  }
+  return tokens;
+}
+
+let _nodeCounter = 0;
+
+/**
+ * Recursive tree builder. `startFen` is the position this branch starts from —
+ * needed so a variation on the branch's FIRST move rewinds to the branch
+ * start, not the game start.
+ */
+function buildPgnTree(
+  tokens: string[],
+  startIndex: number,
+  chess: Chess,
+  depth: number,
+  startFen: string
+): { nodes: PgnNode[]; nextIndex: number } {
+  const nodes: PgnNode[] = [];
+  let pendingPreComment: string | undefined;
+  let i = startIndex;
+
+  while (i < tokens.length) {
+    const tok = tokens[i];
+
+    if (tok === ")") {
+      return { nodes, nextIndex: i }; // caller consumes the ')'
+    }
+
+    if (tok === "(") {
+      // Variation replaces the LAST move — it starts from the position before it.
+      if (nodes.length === 0) {
+        // Malformed (variation before any move) — skip the whole group.
+        let bal = 1;
+        i++;
+        while (i < tokens.length && bal > 0) {
+          if (tokens[i] === "(") bal++;
+          if (tokens[i] === ")") bal--;
+          i++;
+        }
+        continue;
+      }
+      const lastNode = nodes[nodes.length - 1];
+      const parentFen = nodes.length >= 2 ? nodes[nodes.length - 2].fen : startFen;
+      const varChess = new Chess(parentFen);
+      i++; // consume '('
+      const { nodes: varNodes, nextIndex } = buildPgnTree(tokens, i, varChess, depth + 1, parentFen);
+      i = nextIndex;
+      if (tokens[i] === ")") i++; // consume ')'
+      if (varNodes.length > 0) lastNode.variations.push(varNodes);
+      continue;
+    }
+
+    if (tok.startsWith("{")) {
+      const text = cleanCommentText(tok.slice(1, -1));
+      if (text) {
+        if (nodes.length > 0) {
+          const last = nodes[nodes.length - 1];
+          last.comment = last.comment ? `${last.comment} ${text}` : text;
+        } else {
+          // Comment before any move in this branch — attach to the next node.
+          pendingPreComment = pendingPreComment ? `${pendingPreComment} ${text}` : text;
+        }
+      }
+      i++;
+      continue;
+    }
+
+    if (tok.startsWith("$")) {
+      const glyph = NAG_GLYPHS[parseInt(tok.slice(1), 10)] ?? tok;
+      if (nodes.length > 0) nodes[nodes.length - 1].nags.push(glyph);
+      i++;
+      continue;
+    }
+
+    if (/^[!?]{1,2}$/.test(tok)) {
+      // Suffix annotation emitted by the tokenizer ("!", "?!", …)
+      if (nodes.length > 0) nodes[nodes.length - 1].nags.push(tok);
+      i++;
+      continue;
+    }
+
+    // SAN move — chess.js validates it and yields the resulting FEN.
+    try {
+      const moveResult = chess.move(tok);
+      if (moveResult) {
+        nodes.push({
+          id: `node-${_nodeCounter++}`,
+          fen: chess.fen(),
+          san: moveResult.san,
+          // moveNumber(): unchanged after a white move, incremented after black's.
+          moveNumber: moveResult.color === "b" ? chess.moveNumber() - 1 : chess.moveNumber(),
+          color: moveResult.color as "w" | "b",
+          commentBefore: pendingPreComment,
+          nags: [],
+          variations: [],
+          depth,
+        });
+        pendingPreComment = undefined;
+      }
+    } catch {
+      /* illegal token in this position — skip it */
+    }
+    i++;
+  }
+
+  return { nodes, nextIndex: i };
+}
+
+function parsePgnTree(pgn: string): {
+  nodes: PgnNode[];
+  fens: string[];
+  headers: Record<string, string>;
+} {
+  _nodeCounter = 0;
+
+  // Header tags — line-anchored so bracketed text INSIDE comments
+  // ([%clk …]) is never mistaken for a header.
+  const headers: Record<string, string> = {};
+  const headerRegex = /^\s*\[(\w+)\s+"([^"]*)"\]\s*$/gm;
+  let m: RegExpExecArray | null;
+  while ((m = headerRegex.exec(pgn)) !== null) headers[m[1]] = m[2];
+  const moveText = pgn.replace(/^\s*\[\w+\s+"[^"]*"\]\s*$/gm, "").trim();
+
+  const startFen = new Chess().fen();
+  const chess = new Chess();
+  const tokens = tokenizePgn(moveText);
+  const { nodes } = buildPgnTree(tokens, 0, chess, 0, startFen);
+
+  // Flat main-line FEN list for board/keyboard navigation and the engine.
+  const fens: string[] = [startFen];
+  for (const node of nodes) fens.push(node.fen);
+
+  return { nodes, fens, headers };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// S49-24: recursive move-list renderer — flowing main line, indented sideline
+// blocks, italic comments, terracotta NAG glyphs. EVERY move (sidelines too)
+// is clickable: the board + engine jump to that position.
+// ═══════════════════════════════════════════════════════════════════════════
+
+function MoveList({
+  nodes,
+  displayFen,
+  depth,
+  onSelectMainline,
+  onSelectFen,
+}: {
+  nodes: PgnNode[];
+  displayFen: string;
+  depth: number;
+  onSelectMainline: (fenIndex: number) => void;
+  onSelectFen: (fen: string) => void;
+}) {
+  return (
+    <span>
+      {nodes.map((node, idx) => {
+        const isActive = node.fen === displayFen;
+        const prev = idx > 0 ? nodes[idx - 1] : null;
+        // Show "N." for white; "N…" for black when the flow was interrupted
+        // (branch start, or the previous move carried a comment/variation).
+        const interrupted =
+          idx === 0 || !!prev?.comment || (prev?.variations.length ?? 0) > 0;
+        const showNumber = node.color === "w" || interrupted;
+
+        return (
+          <span key={node.id}>
+            {node.commentBefore && (
+              <span className="text-[11px] text-muted-foreground italic mr-1 font-sans">
+                {node.commentBefore}
+              </span>
+            )}
+            {showNumber && (
+              <span className="text-muted-foreground text-xs mr-0.5 select-none">
+                {node.moveNumber}{node.color === "w" ? "." : "…"}
+              </span>
+            )}
+            <button
+              onClick={() =>
+                depth === 0 ? onSelectMainline(idx + 1) : onSelectFen(node.fen)
+              }
+              className={`inline text-xs px-0.5 rounded cursor-pointer hover:bg-muted/40 ${
+                isActive ? "font-bold" : depth > 0 ? "opacity-90" : ""
+              }`}
+              style={isActive ? { color: BRAND } : undefined}
+            >
+              {node.san}
+              {node.nags.length > 0 && (
+                <span style={{ color: BRAND }}>{node.nags.join("")}</span>
+              )}
+            </button>{" "}
+            {node.comment && (
+              <span className="text-[11px] text-muted-foreground italic mr-1 font-sans">
+                {node.comment}{" "}
+              </span>
+            )}
+            {node.variations.map((varNodes, vi) => (
+              <span
+                key={vi}
+                className="block my-0.5 ml-2 pl-2 border-l border-border/40 text-muted-foreground"
+              >
+                <span className="text-xs select-none">( </span>
+                <MoveList
+                  nodes={varNodes}
+                  displayFen={displayFen}
+                  depth={depth + 1}
+                  onSelectMainline={onSelectMainline}
+                  onSelectFen={onSelectFen}
+                />
+                <span className="text-xs select-none"> )</span>
+              </span>
+            ))}
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
 export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerModalProps) {
-  const [moves, setMoves] = useState<string[]>([]);
+  const [pgnNodes, setPgnNodes] = useState<PgnNode[]>([]);
   const [fens, setFens] = useState<string[]>([new Chess().fen()]);
   const [headers, setHeaders] = useState<Record<string, string | null>>({});
   const [parseError, setParseError] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
+  // S49-24: a sideline move the user clicked — overrides the main-line cursor.
+  // null = following the main line at currentIndex.
+  const [selectedFen, setSelectedFen] = useState<string | null>(null);
   const [boardOrientation, setBoardOrientation] = useState<"white" | "black">("white");
   const [evaluation, setEvaluation] = useState<Evaluation>(null);
   const [bestMove, setBestMove] = useState<string | null>(null);
@@ -152,36 +457,25 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
     worker.postMessage("go infinite");
   }, []);
 
-  // ── Parse PGN ──────────────────────────────────────────────────────────────
+  // ── Parse PGN (S49-24: full tree — sidelines, comments, NAGs) ────────────────
   useEffect(() => {
     if (!open || !pgn) return;
-    const chess = new Chess();
     try {
-      chess.loadPgn(pgn);
+      const { nodes, fens: newFens, headers: newHeaders } = parsePgnTree(pgn);
+      setParseError(nodes.length === 0 && pgn.trim().length > 0);
+      setPgnNodes(nodes);
+      setHeaders(newHeaders);
+      setFens(newFens);
+      setSelectedFen(null);
+      setCurrentIndex(newFens.length - 1); // start at the final position
     } catch {
       setParseError(true);
-      setMoves([]);
+      setPgnNodes([]);
       setHeaders({});
       setFens([new Chess().fen()]);
+      setSelectedFen(null);
       setCurrentIndex(0);
-      return;
     }
-    const history = chess.history();
-    const fenList: string[] = [new Chess().fen()];
-    const tmp = new Chess();
-    for (const m of history) {
-      try {
-        tmp.move(m);
-        fenList.push(tmp.fen());
-      } catch {
-        break;
-      }
-    }
-    setParseError(false);
-    setMoves(history);
-    setHeaders(chess.header());
-    setFens(fenList);
-    setCurrentIndex(fenList.length - 1); // start at the final position
   }, [pgn, open]);
 
   // ── Stockfish worker lifecycle (S49-10: restartable) ─────────────────────────
@@ -322,8 +616,13 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
   // the FEN, and let the bestmove handler dispatch it once the engine acks.
   // Rapid navigation only ever replaces the parked FEN; exactly one search is
   // in flight at any moment, and exactly one `stop` per stop-cycle.
+  // S49-24: the position on the board — a clicked sideline move overrides the
+  // main-line cursor. Everything downstream (board, engine, PV rendering)
+  // derives from this single value.
+  const displayFen = selectedFen ?? fens[currentIndex] ?? fens[0];
+
   useEffect(() => {
-    const fen = fens[currentIndex];
+    const fen = displayFen;
     if (!engineReady || !stockfishRef.current || !fen) return;
     // Reset display state immediately for the new position.
     setBestMove(null);
@@ -354,27 +653,33 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
       // Already stopping — just replace the parked FEN (no second stop).
       pendingFenRef.current = fen;
     }
-  }, [currentIndex, fens, engineReady, dispatchSearch]);
+  }, [displayFen, engineReady, dispatchSearch]);
 
-  // ── Keyboard navigation ──────────────────────────────────────────────────────
+  // ── Keyboard navigation (main line; arrows leave any selected sideline) ──────
   useEffect(() => {
     if (!open) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "ArrowLeft") { e.preventDefault(); setCurrentIndex((i) => Math.max(0, i - 1)); }
-      if (e.key === "ArrowRight") { e.preventDefault(); setCurrentIndex((i) => Math.min(fens.length - 1, i + 1)); }
-      if (e.key === "ArrowUp") { e.preventDefault(); setCurrentIndex(0); }
-      if (e.key === "ArrowDown") { e.preventDefault(); setCurrentIndex(fens.length - 1); }
+      if (e.key === "ArrowLeft") { e.preventDefault(); setSelectedFen(null); setCurrentIndex((i) => Math.max(0, i - 1)); }
+      if (e.key === "ArrowRight") { e.preventDefault(); setSelectedFen(null); setCurrentIndex((i) => Math.min(fens.length - 1, i + 1)); }
+      if (e.key === "ArrowUp") { e.preventDefault(); setSelectedFen(null); setCurrentIndex(0); }
+      if (e.key === "ArrowDown") { e.preventDefault(); setSelectedFen(null); setCurrentIndex(fens.length - 1); }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [open, fens.length]);
 
   const goTo = useCallback((i: number) => {
+    setSelectedFen(null);
     setCurrentIndex((prev) => {
       const next = Math.max(0, Math.min(fens.length - 1, i));
       return next === prev ? prev : next;
     });
   }, [fens.length]);
+
+  // S49-24: jump straight to a sideline position (board + engine follow).
+  const selectFen = useCallback((fen: string) => {
+    setSelectedFen(fen);
+  }, []);
 
   const arrows =
     bestMove && bestMove.length >= 4
@@ -404,14 +709,13 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
         ) : null}
 
         {/* S49-17: fixed-size main area — dialog never resizes with content */}
-        <div className="flex-1 flex flex-col sm:flex-row gap-4 overflow-hidden min-h-0 sm:justify-center">
-          {/* S49-21 board size: explicit column width — min(height budget, width
-              budget) so the square board always fits BOTH dimensions; flex-1 on
-              the wrapper now resolves against a definite size. 296px = 280px
-              right panel + 16px gap. self-start is KEPT (height is the cross
-              axis): without it the column stretches to main-area height and the
-              eval bar's self-stretch would exceed the board again (S49-18). */}
-          <div className="flex gap-1.5 shrink-0 min-w-0 self-start w-full sm:w-[min(calc(90vh-8rem),calc(100%-296px))]">
+        <div className="flex-1 flex flex-col sm:flex-row gap-4 overflow-hidden min-h-0">
+          {/* S49-23: left column is flex-1 — fills ALL space not taken by the
+              300px right panel. self-start is KEPT (cross-axis): without it the
+              column stretches to main-area height and the eval bar's
+              self-stretch would exceed the board again (S49-18). justify-center
+              centers the bar+board pair when the height cap leaves spare width. */}
+          <div className="flex-1 flex gap-1.5 min-w-0 self-start justify-center">
             {/* S49-19: clean eval bar — dark bg, orange fill, midpoint notch,
                 NO floating label (the eval is shown in the engine panel). */}
             <div
@@ -433,12 +737,18 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
                 }}
               />
             </div>
-            {/* Board fills the column minus the eval bar; the column's min()
-                width already guarantees the square fits the dialog height. */}
-            <div className="flex-1 min-w-0">
+            {/* S49-23: board fills the column (minus the 18px eval bar + gap)
+                but is height-capped — the square board sizes by WIDTH, so
+                without min(…, 90vh-8rem) it would overflow the fixed-height
+                dialog vertically on wide/short screens. This is the largest
+                square that fits both budgets. */}
+            <div
+              className="shrink-0 min-w-0"
+              style={{ width: "min(calc(100% - 18px), calc(90vh - 8rem))" }}
+            >
               <Chessboard
                 options={{
-                  position: fens[currentIndex],
+                  position: displayFen,
                   boardOrientation,
                   allowDragging: false,
                   arrows,
@@ -480,36 +790,29 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
             </div>
           </div>
 
-          {/* S49-20: right panel — fixed width, scrolls internally so its
+          {/* S49-20/S49-23: right panel — fixed 300px, scrolls internally so its
               content can never change the dialog's size (S49-17). */}
-          <div className="w-full sm:w-[280px] shrink-0 flex flex-col gap-3 overflow-y-auto min-h-0">
+          <div className="w-full sm:w-[300px] shrink-0 flex flex-col gap-3 overflow-y-auto min-h-0">
             <div className="flex-1 min-h-[120px] overflow-y-auto font-mono text-sm border border-border/40 rounded-md">
-              {moves.length === 0 ? (
+              {pgnNodes.length === 0 ? (
                 <p className="text-xs text-muted-foreground p-3">No moves to display.</p>
               ) : (
-                Array.from({ length: Math.ceil(moves.length / 2) }, (_, i) => (
-                  <div key={i} className="flex gap-2 px-2 py-0.5 hover:bg-muted/30">
-                    <span className="text-muted-foreground w-6 shrink-0">{i + 1}.</span>
-                    <button
-                      onClick={() => goTo(2 * i + 1)}
-                      className={`flex-1 text-left ${currentIndex === 2 * i + 1 ? "font-bold" : ""}`}
-                      style={currentIndex === 2 * i + 1 ? { color: BRAND } : undefined}
-                    >
-                      {moves[2 * i]}
-                    </button>
-                    {moves[2 * i + 1] ? (
-                      <button
-                        onClick={() => goTo(2 * i + 2)}
-                        className={`flex-1 text-left ${currentIndex === 2 * i + 2 ? "font-bold" : ""}`}
-                        style={currentIndex === 2 * i + 2 ? { color: BRAND } : undefined}
-                      >
-                        {moves[2 * i + 1]}
-                      </button>
-                    ) : (
-                      <span className="flex-1" />
-                    )}
-                  </div>
-                ))
+                <div className="p-2 leading-relaxed">
+                  {/* S49-24: full notation — sidelines, comments, NAGs. Every
+                      move is clickable, sidelines included. */}
+                  <MoveList
+                    nodes={pgnNodes}
+                    displayFen={displayFen}
+                    depth={0}
+                    onSelectMainline={goTo}
+                    onSelectFen={selectFen}
+                  />
+                  {headers.Result && headers.Result !== "*" && (
+                    <span className="text-xs text-muted-foreground ml-1 select-none">
+                      {headers.Result}
+                    </span>
+                  )}
+                </div>
               )}
             </div>
 
@@ -579,7 +882,7 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
                   {bestMove && (
                     <div style={{ color: BRAND }}>
                       Best:{" "}
-                      {uciToSan(bestMove, fens[currentIndex]) ??
+                      {uciToSan(bestMove, displayFen) ??
                         `${bestMove.slice(0, 2)}→${bestMove.slice(2, 4)}`}
                     </div>
                   )}
@@ -593,7 +896,7 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
                             {evalLabel(v.eval)}
                           </span>
                           <span className="text-foreground leading-relaxed">
-                            {pvToSan(v.pvUci, fens[currentIndex])}
+                            {pvToSan(v.pvUci, displayFen)}
                           </span>
                         </div>
                       ))}
