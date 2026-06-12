@@ -1056,5 +1056,5 @@
 
 ## Sprint 49 Fix-7 — PGN Viewer Board Size + Full PGN Notation (S49-23, S49-24)
 
-- [ ] S49-23: Board too small — min(calc(90vh-8rem), calc(100%-296px)) resolves incorrectly; left column should use flex-1 min-w-0 so it takes all remaining space; right panel stays w-[300px] shrink-0; remove explicit style width
-- [ ] S49-24: PGN notation only shows main line — chess.history() returns flat array; need full PGN tree: sidelines (parentheses), comments ({curly braces}), NAG annotations ($1=$!, $2=$?, etc.), chapter text; render like Lichess analysis board with clickable moves, indented sidelines, italic comments
+- [x] S49-23: Board too small — min(calc(90vh-8rem), calc(100%-296px)) resolves incorrectly; left column should use flex-1 min-w-0 so it takes all remaining space; right panel stays w-[300px] shrink-0; remove explicit style width
+- [x] S49-24: PGN notation only shows main line — chess.history() returns flat array; need full PGN tree: sidelines (parentheses), comments ({curly braces}), NAG annotations ($1=$!, $2=$?, etc.), chapter text; render like Lichess analysis board with clickable moves, indented sidelines, italic comments
