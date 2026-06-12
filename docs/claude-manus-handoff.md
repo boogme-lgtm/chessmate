@@ -539,6 +539,41 @@ arrow 20× fast → depth must climb on the final position; navigate to a game-e
 mate position and back → engine keeps working; if you can ever freeze it, the 3s
 watchdog must revive it on its own.
 
+## 3q. Sprint 49 fix-7 — full PGN reader + board fills dialog (BUILT, commit 1c18315)
+
+All in `PgnViewerModal.tsx`; engine machine untouched (input key only: `displayFen`).
+
+**S49-24** full notation per the handoff architecture, with these fixes/upgrades:
+1. **Branch-start rewind bug fixed**: the handoff's `nodes[len-2] : new Chess().fen()`
+   fallback rewound nested variations on a branch's FIRST move to the *game* start —
+   the branch start FEN is now threaded through `buildPgnTree`.
+2. **Suffix annotations** ("Qd2?!", "d4!") tokenized and attached as NAGs — Lichess
+   exports these as text; the handoff's tokenizer dropped them.
+3. **Header stripping line-anchored** — the handoff's `/\[.*?\]/gs` would have mangled
+   comments containing `[%clk]`-style tags; those command tags are also stripped from
+   comment prose for display.
+4. **moveNumber via `chess.moveNumber()`** (the handoff's primary snippet was broken;
+   its own note recommended this form).
+5. Pre-move comments (`commentBefore`), appended multi-comments, "N…" re-numbering
+   after interruptions, result token at the end of the move list.
+6. **Beyond the spec: sidelines are CLICKABLE** — board + engine jump to any variation
+   move (Lichess-grade). `displayFen = selectedFen ?? fens[currentIndex]` is the single
+   source for board/engine/PV/highlight; keyboard + mainline clicks clear the overlay.
+
+**S49-23** left column `flex-1` + panel 300px per the handoff — **plus a kept
+height-cap on the board wrapper** `min(calc(100%-18px), calc(90vh-8rem))`: the
+flex-1-only fix re-introduces vertical clipping on wide/short screens (square board
+sizes by width inside the fixed-height dialog). `self-start` kept (S49-18 guard).
+
+Parser verified by direct execution against annotated fixtures (20/20 assertions):
+nested variations, branch-start sub-variations, NAGs + suffixes, clk stripping,
+pre-game comments, black-first numbering, FEN integrity vs chess.js, garbage safety.
+
+Verification: 376 tests, tsc 0, build clean. Manual smoke: open an annotated study
+PGN → indented sidelines, italic comments, NAG glyphs all render; click a sideline
+move → board + engine follow; arrow keys return to the main line; board fills the
+dialog with no clipping at any window size.
+
 ## 4. Remaining open items
 
 - **Live Stripe end-to-end test** — needs a human with Stripe test cards; I can't run
