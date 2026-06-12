@@ -1048,3 +1048,8 @@
 - [x] S49-18: Eval bar not parallel to board — bar is currently positioned below the board (self-stretch on a flex column), not alongside it; must be a fixed-height bar exactly matching the board height, flush left of the board
 - [x] S49-19: Eval bar label/aesthetic — bar should have a small notch/line at the midpoint; label should not float awkwardly; match Lichess style (thin bar, midpoint marker, no floating label)
 - [x] S49-20: Board too small — board needs to be much larger; layout should be horizontal: [eval bar] [board] | [move list + engine panel]; board should dominate the left side
+
+## Sprint 49 Fix-6 — Engine Death Root Cause + Board Size (S49-21 through S49-22)
+
+- [ ] S49-21: Engine death on 3rd move — root cause: stop→position→go without waiting for bestmove confirmation; fix: pendingFenRef + bestmove gate (stop → wait for bestmove → position → go infinite)
+- [ ] S49-22: Board size regression — left column has no explicit width so flex-1 on board resolves to 0; fix: explicit style width using min(calc(90vh-8rem), calc(100%-296px))
