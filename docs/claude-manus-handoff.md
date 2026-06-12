@@ -636,6 +636,49 @@ Manual smoke: click any square/piece → NO white ring ever; → at a move with 
 variation → picker with starred main line; click a sideline → board + engine jump with
 highlight; → → at a bifurcation = straight through the main line; Escape = main line.
 
+## 3t. Sprint 50 — analysis mode + send-to-coach (BUILT, latest commit)
+
+All ten items shipped. **Eight corrections to the handoff spec, each verified:**
+1. `server/analysisRouter.ts` (authRouter convention) — a `server/routers/` DIRECTORY
+   would shadow `./routers` module resolution.
+2. The codebase has **no `db.query.*` API** (drizzle initialized without schema) —
+   builder-based helpers added to `server/db.ts` instead.
+3. **Security**: coachId derived from the LESSON server-side + membership check —
+   client coachId never trusted; Send gated on `lessonId` only.
+4. `notifyOwner()` notifies the PLATFORM owner, not the coach — replaced with a
+   best-effort coach email; the chat unread badge is the in-app signal. The note goes
+   in as its own text message before the pgn message.
+5. v5 board API is `allowDragging` + `onPieceDrop({sourceSquare,targetSquare})` — the
+   handoff's `arePiecesDraggable`/(src,tgt,piece) is v4 and would not compile.
+6. Nodes store NAG **glyphs**, not `$N` — the toolbar toggles glyphs, and the
+   serializer re-emits suffix glyphs inline (`Nf3!?`) and symbol glyphs as canonical
+   `$N` via a reverse map; the handoff's `nags.join("")` would not round-trip symbols.
+   Serializer also fixes the handoff's numbering (interruption-aware `4... d5` —
+   theirs produced invalid PGN after variations) and sanitizes `}` in comments.
+7. Tree mutations are **in place + root identity bump** — the handoff's
+   `structuredClone` would orphan SidelineContext references and break arrow nav.
+   Drop semantics are GUI-standard: matching-next steps forward, matching variation
+   enters it, otherwise insert/extend (mainline extension keeps fens/lastMoves
+   aligned).
+8. The global keyboard handler now ignores inputs/textareas (it would have hijacked
+   the comment editor), and the S49-28 focus suppressor is skipped while analysing
+   (preventDefault would interfere with drag initiation). Annotation UI is a single
+   panel bound to the current move (calmer than inline-in-list editing).
+
+### ACTION REQUIRED (Manus)
+- Apply migration **drizzle/0021_striped_mandroid.sql** (`pnpm db:push`) — the
+  `pgn_analyses` table must exist before Save works live.
+
+Verified: tsc 0 · **388 tests** (+12 behavioral router tests) · build clean · audit
+unchanged · serializer round-trip fixtures all pass (annotated nested tree
+parse→serialize→parse structurally identical; analysis-appended moves + annotations
+survive).
+
+Manual smoke: open a lesson PGN → Analyse → drag a move → it appears as a variation
+and the engine follows; replay the existing next move → no duplicate variation; add
+!/± and a comment → they render; Save → reopen via analysisId → annotations load;
+Send to Coach → note + PGN appear in the lesson chat, coach gets an email.
+
 ## 4. Remaining open items
 
 - **Live Stripe end-to-end test** — needs a human with Stripe test cards; I can't run
