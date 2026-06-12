@@ -366,13 +366,13 @@ function MoveList({
   displayFen,
   depth,
   onSelectMainline,
-  onSelectFen,
+  onSelectNode,
 }: {
   nodes: PgnNode[];
   displayFen: string;
   depth: number;
   onSelectMainline: (fenIndex: number) => void;
-  onSelectFen: (fen: string, from: string, to: string) => void;
+  onSelectNode: (node: PgnNode, varArray: PgnNode[], varIndex: number) => void;
 }) {
   return (
     <span>
@@ -402,7 +402,7 @@ function MoveList({
               onClick={() =>
                 depth === 0
                   ? onSelectMainline(idx + 1)
-                  : onSelectFen(node.fen, node.from, node.to)
+                  : onSelectNode(node, nodes, idx)
               }
               className={`inline text-xs px-0.5 rounded cursor-pointer hover:bg-muted/40 ${
                 isActive ? "font-bold" : depth > 0 ? "opacity-90" : ""
@@ -430,7 +430,7 @@ function MoveList({
                   displayFen={displayFen}
                   depth={depth + 1}
                   onSelectMainline={onSelectMainline}
-                  onSelectFen={onSelectFen}
+                  onSelectNode={onSelectNode}
                 />
                 <span className="text-xs select-none"> )</span>
               </span>
@@ -450,13 +450,22 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
   const [headers, setHeaders] = useState<Record<string, string | null>>({});
   const [parseError, setParseError] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
-  // S49-24: a sideline move the user clicked — overrides the main-line cursor.
-  // null = following the main line at currentIndex.
-  const [selectedFen, setSelectedFen] = useState<string | null>(null);
-  // S49-27: from/to squares of the clicked sideline move (for the highlight).
-  const [selectedLastMove, setSelectedLastMove] = useState<{ from: string; to: string } | null>(null);
+  // S49-24: sideline navigation context — replaces the old selectedFen/selectedLastMove pair.
+  // When non-null the board shows a sideline position; arrow keys navigate within the variation.
+  type SidelineContext = {
+    node: PgnNode;       // current node in the sideline
+    varArray: PgnNode[]; // the variation array this node belongs to
+    varIndex: number;    // index of node within varArray
+  };
+  const [sidelineCtx, setSidelineCtx] = useState<SidelineContext | null>(null);
   // S49-29: candidate continuations shown when → hits a bifurcation.
-  type BranchChoice = { label: string; fen: string; from: string; to: string; isMainLine: boolean };
+  type BranchChoice = {
+    label: string;
+    node: PgnNode;
+    varArray: PgnNode[] | null; // null = main line
+    varIndex: number;
+    isMainLine: boolean;
+  };
   const [branchChoices, setBranchChoices] = useState<BranchChoice[] | null>(null);
   // S49-30: which row in the picker is keyboard-focused (0 = main line).
   const [focusedChoiceIndex, setFocusedChoiceIndex] = useState(0);
@@ -508,8 +517,7 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
       setHeaders(newHeaders);
       setFens(newFens);
       setLastMoves(newLastMoves);
-      setSelectedFen(null);
-      setSelectedLastMove(null);
+      setSidelineCtx(null);
       setBranchChoices(null);
       setCurrentIndex(newFens.length - 1); // start at the final position
     } catch {
@@ -518,8 +526,7 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
       setHeaders({});
       setFens([new Chess().fen()]);
       setLastMoves([null]);
-      setSelectedFen(null);
-      setSelectedLastMove(null);
+      setSidelineCtx(null);
       setBranchChoices(null);
       setCurrentIndex(0);
     }
@@ -666,7 +673,7 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
   // S49-24: the position on the board — a clicked sideline move overrides the
   // main-line cursor. Everything downstream (board, engine, PV rendering)
   // derives from this single value.
-  const displayFen = selectedFen ?? fens[currentIndex] ?? fens[0];
+  const displayFen = sidelineCtx?.node.fen ?? fens[currentIndex] ?? fens[0];
 
   // S49-31: scroll the active move into view in the notation panel. `nearest`
   // only scrolls when the element is outside the visible area and moves the
@@ -719,50 +726,75 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
   // fens[currentIndex] TO fens[currentIndex+1]; its .variations are the
   // sidelines playable from the current position.
   const handleRightArrow = useCallback(() => {
-    // Pressing → again while the picker is open = accept the main line.
-    if (branchChoices !== null) {
-      setBranchChoices(null);
-      setSelectedFen(null);
-      setSelectedLastMove(null);
-      setCurrentIndex((i) => Math.min(fens.length - 1, i + 1));
+    // When inside a sideline, advance within that variation array.
+    if (sidelineCtx !== null) {
+      const { varArray, varIndex } = sidelineCtx;
+      const nextIdx = varIndex + 1;
+      if (nextIdx >= varArray.length) return; // end of sideline — do nothing
+      const nextNode = varArray[nextIdx];
+      // If the next node has sub-variations, open the picker.
+      if (nextNode.variations.length > 0) {
+        setBranchChoices([
+          {
+            label: nextNode.san + nextNode.nags.join(""),
+            node: nextNode,
+            varArray,
+            varIndex: nextIdx,
+            isMainLine: true, // "main" within this sideline
+          },
+          ...nextNode.variations
+            .filter((v) => v.length > 0)
+            .map((subVar) => ({
+              label: subVar[0].san + subVar[0].nags.join(""),
+              node: subVar[0],
+              varArray: subVar,
+              varIndex: 0,
+              isMainLine: false,
+            })),
+        ]);
+        setFocusedChoiceIndex(0);
+      } else {
+        setSidelineCtx({ node: nextNode, varArray, varIndex: nextIdx });
+      }
       return;
     }
-    setSelectedFen(null);
-    setSelectedLastMove(null);
+    // On the main line — advance or open picker at bifurcation.
     const nextNode = pgnNodes[currentIndex];
     if (!nextNode) return; // already at the end
     if (nextNode.variations.length > 0) {
       setBranchChoices([
         {
           label: nextNode.san + nextNode.nags.join(""),
-          fen: nextNode.fen,
-          from: nextNode.from,
-          to: nextNode.to,
+          node: nextNode,
+          varArray: null,
+          varIndex: currentIndex,
           isMainLine: true,
         },
         ...nextNode.variations
           .filter((v) => v.length > 0)
           .map((varNodes) => ({
             label: varNodes[0].san + varNodes[0].nags.join(""),
-            fen: varNodes[0].fen,
-            from: varNodes[0].from,
-            to: varNodes[0].to,
+            node: varNodes[0],
+            varArray: varNodes,
+            varIndex: 0,
             isMainLine: false,
           })),
       ]);
-      setFocusedChoiceIndex(0); // S49-30: always start with main line highlighted
+      setFocusedChoiceIndex(0);
     } else {
       setCurrentIndex((i) => Math.min(fens.length - 1, i + 1));
     }
-  }, [branchChoices, pgnNodes, currentIndex, fens.length]);
+  }, [sidelineCtx, pgnNodes, currentIndex, fens.length]);
 
   const chooseBranch = useCallback((choice: BranchChoice) => {
     setBranchChoices(null);
-    if (choice.isMainLine) {
+    if (choice.varArray === null) {
+      // Main line choice — return to main-line navigation.
+      setSidelineCtx(null);
       setCurrentIndex((i) => Math.min(fens.length - 1, i + 1));
     } else {
-      setSelectedFen(choice.fen);
-      setSelectedLastMove({ from: choice.from, to: choice.to });
+      // Sideline choice — enter (or stay in) sideline navigation.
+      setSidelineCtx({ node: choice.node, varArray: choice.varArray, varIndex: choice.varIndex });
     }
   }, [fens.length]);
 
@@ -771,8 +803,7 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
   useEffect(() => {
     if (!open) return;
     const leaveSideline = () => {
-      setSelectedFen(null);
-      setSelectedLastMove(null);
+      setSidelineCtx(null);
       setBranchChoices(null);
     };
     const handler = (e: KeyboardEvent) => {
@@ -789,29 +820,45 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
           chooseBranch(branchChoices[focusedChoiceIndex]);
         } else if (e.key === "Escape") {
           e.preventDefault();
-          setBranchChoices(null);
-          setCurrentIndex((i) => Math.min(fens.length - 1, i + 1));
+          // Escape while picker is open: accept the focused choice.
+          chooseBranch(branchChoices[focusedChoiceIndex]);
         } else if (e.key === "ArrowRight") {
-          // → again while picker is open = accept the main line (fix-9)
+          // → while picker is open = accept focused choice directly.
           e.preventDefault();
-          handleRightArrow();
+          chooseBranch(branchChoices[focusedChoiceIndex]);
         }
         return; // consume all keys while picker is open
       }
 
       // ── Normal navigation — picker is closed ──
-      if (e.key === "ArrowLeft") { e.preventDefault(); leaveSideline(); setCurrentIndex((i) => Math.max(0, i - 1)); }
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        if (sidelineCtx !== null) {
+          // Inside a sideline: go back one move, or exit to main line at varIndex 0.
+          if (sidelineCtx.varIndex > 0) {
+            const prevIdx = sidelineCtx.varIndex - 1;
+            setSidelineCtx({
+              node: sidelineCtx.varArray[prevIdx],
+              varArray: sidelineCtx.varArray,
+              varIndex: prevIdx,
+            });
+          } else {
+            setSidelineCtx(null);
+          }
+        } else {
+          setCurrentIndex((i) => Math.max(0, i - 1));
+        }
+      }
       if (e.key === "ArrowRight") { e.preventDefault(); handleRightArrow(); }
       if (e.key === "ArrowUp") { e.preventDefault(); leaveSideline(); setCurrentIndex(0); }
       if (e.key === "ArrowDown") { e.preventDefault(); leaveSideline(); setCurrentIndex(fens.length - 1); }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [open, fens.length, handleRightArrow, branchChoices, focusedChoiceIndex, chooseBranch]);
+  }, [open, fens.length, handleRightArrow, branchChoices, focusedChoiceIndex, chooseBranch, sidelineCtx]);
 
   const goTo = useCallback((i: number) => {
-    setSelectedFen(null);
-    setSelectedLastMove(null);
+    setSidelineCtx(null);
     setBranchChoices(null);
     setCurrentIndex((prev) => {
       const next = Math.max(0, Math.min(fens.length - 1, i));
@@ -821,10 +868,9 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
 
   // S49-24/S49-27: jump straight to a sideline position (board + engine follow;
   // the highlight shows the sideline move's squares).
-  const selectFen = useCallback((fen: string, from: string, to: string) => {
+  const selectNode = useCallback((node: PgnNode, varArray: PgnNode[], varIndex: number) => {
     setBranchChoices(null);
-    setSelectedFen(fen);
-    setSelectedLastMove({ from, to });
+    setSidelineCtx({ node, varArray, varIndex });
   }, []);
 
   const arrows =
@@ -836,7 +882,7 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
   // carries its own from/to; otherwise the main-line parallel array applies.
   // Index 0 (start position) is null — no highlight.
   const lastMoveSquares =
-    selectedFen !== null ? selectedLastMove : lastMoves[currentIndex] ?? null;
+    sidelineCtx !== null ? { from: sidelineCtx.node.from, to: sidelineCtx.node.to } : lastMoves[currentIndex] ?? null;
   // v5 has NO `lastMove` option — per-square styles are the supported API.
   // The style lands on an inner overlay div, so the translucent terracotta
   // TINTS over the square color instead of replacing it.
@@ -988,7 +1034,7 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
                     displayFen={displayFen}
                     depth={0}
                     onSelectMainline={goTo}
-                    onSelectFen={selectFen}
+                    onSelectNode={selectNode}
                   />
                   {headers.Result && headers.Result !== "*" && (
                     <span className="text-xs text-muted-foreground ml-1 select-none">
