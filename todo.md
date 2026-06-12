@@ -1014,3 +1014,10 @@
 ## Sprint 49 — Interactive PGN Viewer with Engine Analysis (S49-1)
 
 - [x] S49-1: Add interactive PGN viewer modal — clicking a PGN message opens a full analysis board with move navigation, annotations, and Stockfish engine evaluation
+
+## Sprint 49 Fix — PGN Viewer Visual & Engine Bugs (found post-deploy)
+
+- [ ] S49-2: Board too narrow — chessboard squeezed by flex layout; needs to be square and fill available width
+- [ ] S49-3: Board square colors indistinguishable — dark #1a1a2e and light #2d2d4e too similar; use higher-contrast colors
+- [ ] S49-4: Stockfish does not re-evaluate on move navigation — engine evaluates once then locks; changing moves does not trigger a new search
+- [ ] S49-5: No best-move text displayed — best move shown only as arrow; add text label (e.g. "Best: Nf3") in engine status line
