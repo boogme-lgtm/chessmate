@@ -121,6 +121,8 @@ type PgnNode = {
   id: string; // unique key for React rendering
   fen: string; // FEN after this move
   san: string; // SAN notation (e.g. "Nf3")
+  from: string; // origin square (e.g. "e2") — S49-27 last-move highlight
+  to: string; // destination square (e.g. "e4")
   moveNumber: number; // 1-based full move number
   color: "w" | "b"; // side that made this move
   commentBefore?: string; // comment immediately BEFORE this move
@@ -130,11 +132,26 @@ type PgnNode = {
   depth: number; // 0 = main line, 1 = first-level sideline, …
 };
 
+// S49-26: complete standard NAG set. Note two corrections to the handoff's
+// table: $20/$21 are White/Black *crushing* advantage (+- / -+; the handoff had
+// them swapped), and $141 is "aimed against" (∇), not △.
 const NAG_GLYPHS: Record<number, string> = {
   1: "!", 2: "?", 3: "!!", 4: "??", 5: "!?", 6: "?!",
-  7: "□", 10: "=", 13: "∞", 14: "⩲", 15: "⩱", 16: "±",
-  17: "∓", 18: "+-", 19: "-+", 22: "⨀", 32: "⟳", 36: "→",
-  40: "↑", 132: "⇆", 138: "⊕",
+  7: "□", 8: "□",
+  10: "=", 11: "=", 12: "=",
+  13: "∞", 14: "⩲", 15: "⩱", 16: "±", 17: "∓",
+  18: "+-", 19: "-+",
+  20: "+-", 21: "-+",
+  22: "⨀", 23: "⨀",
+  32: "⟳", 33: "⟳",
+  36: "→", 37: "→",
+  40: "↑", 41: "↑",
+  44: "=∞", 45: "=∞",
+  132: "⇆", 133: "⇆",
+  138: "⊕", 139: "⊕",
+  140: "△", 141: "∇",
+  142: "⌓", 143: "⌓",
+  145: "RR", 146: "N",
 };
 
 // Strip embedded command tags ([%clk 0:03:00], [%eval 0.4], [%csl …]) that
@@ -261,8 +278,9 @@ function buildPgnTree(
     }
 
     if (tok.startsWith("$")) {
-      const glyph = NAG_GLYPHS[parseInt(tok.slice(1), 10)] ?? tok;
-      if (nodes.length > 0) nodes[nodes.length - 1].nags.push(glyph);
+      // S49-26: unknown NAG codes render as NOTHING, never as raw "$N" text.
+      const glyph = NAG_GLYPHS[parseInt(tok.slice(1), 10)] ?? "";
+      if (glyph && nodes.length > 0) nodes[nodes.length - 1].nags.push(glyph);
       i++;
       continue;
     }
@@ -282,6 +300,8 @@ function buildPgnTree(
           id: `node-${_nodeCounter++}`,
           fen: chess.fen(),
           san: moveResult.san,
+          from: moveResult.from, // S49-27: last-move highlight squares
+          to: moveResult.to,
           // moveNumber(): unchanged after a white move, incremented after black's.
           moveNumber: moveResult.color === "b" ? chess.moveNumber() - 1 : chess.moveNumber(),
           color: moveResult.color as "w" | "b",
@@ -304,6 +324,7 @@ function buildPgnTree(
 function parsePgnTree(pgn: string): {
   nodes: PgnNode[];
   fens: string[];
+  lastMoves: Array<{ from: string; to: string } | null>;
   headers: Record<string, string>;
 } {
   _nodeCounter = 0;
@@ -321,11 +342,16 @@ function parsePgnTree(pgn: string): {
   const tokens = tokenizePgn(moveText);
   const { nodes } = buildPgnTree(tokens, 0, chess, 0, startFen);
 
-  // Flat main-line FEN list for board/keyboard navigation and the engine.
+  // Flat main-line FEN list for board/keyboard navigation and the engine,
+  // plus the parallel last-move array (index-aligned: [0] = start, no move).
   const fens: string[] = [startFen];
-  for (const node of nodes) fens.push(node.fen);
+  const lastMoves: Array<{ from: string; to: string } | null> = [null];
+  for (const node of nodes) {
+    fens.push(node.fen);
+    lastMoves.push({ from: node.from, to: node.to });
+  }
 
-  return { nodes, fens, headers };
+  return { nodes, fens, lastMoves, headers };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -345,7 +371,7 @@ function MoveList({
   displayFen: string;
   depth: number;
   onSelectMainline: (fenIndex: number) => void;
-  onSelectFen: (fen: string) => void;
+  onSelectFen: (fen: string, from: string, to: string) => void;
 }) {
   return (
     <span>
@@ -372,7 +398,9 @@ function MoveList({
             )}
             <button
               onClick={() =>
-                depth === 0 ? onSelectMainline(idx + 1) : onSelectFen(node.fen)
+                depth === 0
+                  ? onSelectMainline(idx + 1)
+                  : onSelectFen(node.fen, node.from, node.to)
               }
               className={`inline text-xs px-0.5 rounded cursor-pointer hover:bg-muted/40 ${
                 isActive ? "font-bold" : depth > 0 ? "opacity-90" : ""
@@ -415,12 +443,16 @@ function MoveList({
 export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerModalProps) {
   const [pgnNodes, setPgnNodes] = useState<PgnNode[]>([]);
   const [fens, setFens] = useState<string[]>([new Chess().fen()]);
+  // S49-27: main-line last-move squares, index-aligned with fens.
+  const [lastMoves, setLastMoves] = useState<Array<{ from: string; to: string } | null>>([null]);
   const [headers, setHeaders] = useState<Record<string, string | null>>({});
   const [parseError, setParseError] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   // S49-24: a sideline move the user clicked — overrides the main-line cursor.
   // null = following the main line at currentIndex.
   const [selectedFen, setSelectedFen] = useState<string | null>(null);
+  // S49-27: from/to squares of the clicked sideline move (for the highlight).
+  const [selectedLastMove, setSelectedLastMove] = useState<{ from: string; to: string } | null>(null);
   const [boardOrientation, setBoardOrientation] = useState<"white" | "black">("white");
   const [evaluation, setEvaluation] = useState<Evaluation>(null);
   const [bestMove, setBestMove] = useState<string | null>(null);
@@ -461,19 +493,23 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
   useEffect(() => {
     if (!open || !pgn) return;
     try {
-      const { nodes, fens: newFens, headers: newHeaders } = parsePgnTree(pgn);
+      const { nodes, fens: newFens, lastMoves: newLastMoves, headers: newHeaders } = parsePgnTree(pgn);
       setParseError(nodes.length === 0 && pgn.trim().length > 0);
       setPgnNodes(nodes);
       setHeaders(newHeaders);
       setFens(newFens);
+      setLastMoves(newLastMoves);
       setSelectedFen(null);
+      setSelectedLastMove(null);
       setCurrentIndex(newFens.length - 1); // start at the final position
     } catch {
       setParseError(true);
       setPgnNodes([]);
       setHeaders({});
       setFens([new Chess().fen()]);
+      setLastMoves([null]);
       setSelectedFen(null);
+      setSelectedLastMove(null);
       setCurrentIndex(0);
     }
   }, [pgn, open]);
@@ -658,11 +694,12 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
   // ── Keyboard navigation (main line; arrows leave any selected sideline) ──────
   useEffect(() => {
     if (!open) return;
+    const leaveSideline = () => { setSelectedFen(null); setSelectedLastMove(null); };
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "ArrowLeft") { e.preventDefault(); setSelectedFen(null); setCurrentIndex((i) => Math.max(0, i - 1)); }
-      if (e.key === "ArrowRight") { e.preventDefault(); setSelectedFen(null); setCurrentIndex((i) => Math.min(fens.length - 1, i + 1)); }
-      if (e.key === "ArrowUp") { e.preventDefault(); setSelectedFen(null); setCurrentIndex(0); }
-      if (e.key === "ArrowDown") { e.preventDefault(); setSelectedFen(null); setCurrentIndex(fens.length - 1); }
+      if (e.key === "ArrowLeft") { e.preventDefault(); leaveSideline(); setCurrentIndex((i) => Math.max(0, i - 1)); }
+      if (e.key === "ArrowRight") { e.preventDefault(); leaveSideline(); setCurrentIndex((i) => Math.min(fens.length - 1, i + 1)); }
+      if (e.key === "ArrowUp") { e.preventDefault(); leaveSideline(); setCurrentIndex(0); }
+      if (e.key === "ArrowDown") { e.preventDefault(); leaveSideline(); setCurrentIndex(fens.length - 1); }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -670,15 +707,18 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
 
   const goTo = useCallback((i: number) => {
     setSelectedFen(null);
+    setSelectedLastMove(null);
     setCurrentIndex((prev) => {
       const next = Math.max(0, Math.min(fens.length - 1, i));
       return next === prev ? prev : next;
     });
   }, [fens.length]);
 
-  // S49-24: jump straight to a sideline position (board + engine follow).
-  const selectFen = useCallback((fen: string) => {
+  // S49-24/S49-27: jump straight to a sideline position (board + engine follow;
+  // the highlight shows the sideline move's squares).
+  const selectFen = useCallback((fen: string, from: string, to: string) => {
     setSelectedFen(fen);
+    setSelectedLastMove({ from, to });
   }, []);
 
   const arrows =
@@ -686,13 +726,41 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
       ? [{ startSquare: bestMove.slice(0, 2), endSquare: bestMove.slice(2, 4), color: ARROW_COLOR }]
       : [];
 
+  // S49-27: last-move squares for the displayed position. Sideline selection
+  // carries its own from/to; otherwise the main-line parallel array applies.
+  // Index 0 (start position) is null — no highlight.
+  const lastMoveSquares =
+    selectedFen !== null ? selectedLastMove : lastMoves[currentIndex] ?? null;
+  // v5 has NO `lastMove` option — per-square styles are the supported API.
+  // The style lands on an inner overlay div, so the translucent terracotta
+  // TINTS over the square color instead of replacing it.
+  const lastMoveStyle = { backgroundColor: "rgba(232, 99, 58, 0.35)" };
+  const squareStyles = lastMoveSquares
+    ? { [lastMoveSquares.from]: lastMoveStyle, [lastMoveSquares.to]: lastMoveStyle }
+    : {};
+
   const headerLine = [headers.White, headers.Black].filter(Boolean).join("  vs  ");
   const metaLine = [headers.Event, headers.Date, headers.Result].filter(Boolean).join(" · ");
   const evalPct = evalToPercent(evaluation);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[96vw] w-full h-[90vh] flex flex-col overflow-hidden p-6">
+      {/* S49-25 — THE definitive sizing.
+          (1) sm:max-w-[96vw] is load-bearing: the shadcn DialogContent base
+              includes sm:max-w-lg (512px). tailwind-merge only collapses
+              conflicts within the SAME variant, so a base max-w-[96vw] never
+              beats the sm: variant — the dialog has been silently capped at
+              512px on every desktop screen. This override removes the cap.
+          (2) --board-size is a concrete viewport-based square consumed by BOTH
+              the board wrapper and the eval bar, so they are pixel-identical
+              and never depend on flex/percentage resolution.
+              Desktop budget: 96vw dialog − 48 p-6 − 16 gap − 300 panel − 18
+              eval bar+gap = 96vw−382 (384 used, 2px slack). Height: 90vh − 48
+              p-6 − ~48 header − 16 gap = 90vh−112 (130 used for slack).
+              Mobile (<sm): panel stacks below → width budget is 96vw−70.
+              NOTE: Tailwind arbitrary values need _ for spaces — calc()
+              REQUIRES spaces around minus or the rule is invalid CSS. */}
+      <DialogContent className="max-w-[96vw] sm:max-w-[96vw] w-full h-[90vh] flex flex-col overflow-hidden p-6 [--board-size:min(calc(90vh_-_130px),calc(96vw_-_70px))] sm:[--board-size:min(calc(90vh_-_130px),calc(96vw_-_384px))]">
         <DialogHeader className="shrink-0">
           <DialogTitle className="text-base">
             {headerLine || "Game Analysis"}
@@ -708,19 +776,18 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
           </p>
         ) : null}
 
-        {/* S49-17: fixed-size main area — dialog never resizes with content */}
-        <div className="flex-1 flex flex-col sm:flex-row gap-4 overflow-hidden min-h-0">
-          {/* S49-23: left column is flex-1 — fills ALL space not taken by the
-              300px right panel. self-start is KEPT (cross-axis): without it the
-              column stretches to main-area height and the eval bar's
-              self-stretch would exceed the board again (S49-18). justify-center
-              centers the bar+board pair when the height cap leaves spare width. */}
-          <div className="flex-1 flex gap-1.5 min-w-0 self-start justify-center">
+        {/* S49-17: fixed-height main area — the dialog never resizes with
+            content. Desktop: board left, panel right, the pair centered.
+            Mobile: stacked, scrollable so the panel stays reachable. */}
+        <div className="flex-1 flex flex-col sm:flex-row gap-4 min-h-0 overflow-y-auto sm:overflow-hidden items-center sm:items-start sm:justify-center">
+          {/* S49-25: bar + board are BOTH sized by var(--board-size) — no
+              flex-1, no self-start, no percentages. They cannot disagree. */}
+          <div className="shrink-0 flex gap-1.5 items-start">
             {/* S49-19: clean eval bar — dark bg, orange fill, midpoint notch,
                 NO floating label (the eval is shown in the engine panel). */}
             <div
-              className="w-3 shrink-0 self-stretch rounded-sm overflow-hidden relative"
-              style={{ backgroundColor: "#151B22" }}
+              className="w-3 shrink-0 rounded-sm overflow-hidden relative"
+              style={{ height: "var(--board-size)", backgroundColor: "#151B22" }}
               title={`Engine evaluation: ${evalLabel(evaluation)}`}
             >
               <div
@@ -737,18 +804,15 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
                 }}
               />
             </div>
-            {/* S49-23: board fills the column (minus the 18px eval bar + gap)
-                but is height-capped — the square board sizes by WIDTH, so
-                without min(…, 90vh-8rem) it would overflow the fixed-height
-                dialog vertically on wide/short screens. This is the largest
-                square that fits both budgets. */}
-            <div
-              className="shrink-0 min-w-0"
-              style={{ width: "min(calc(100% - 18px), calc(90vh - 8rem))" }}
-            >
+            {/* S49-25: explicit square — the largest that fits both the dialog
+                height and the width beside the panel. */}
+            <div style={{ width: "var(--board-size)", height: "var(--board-size)" }}>
               <Chessboard
                 options={{
                   position: displayFen,
+                  // S49-27: last-move tint on from/to squares (v5's API is
+                  // squareStyles — there is no lastMove option).
+                  squareStyles,
                   boardOrientation,
                   allowDragging: false,
                   arrows,
@@ -790,9 +854,10 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
             </div>
           </div>
 
-          {/* S49-20/S49-23: right panel — fixed 300px, scrolls internally so its
-              content can never change the dialog's size (S49-17). */}
-          <div className="w-full sm:w-[300px] shrink-0 flex flex-col gap-3 overflow-y-auto min-h-0">
+          {/* S49-25: right panel — fixed 300px wide, EXACTLY board-height on
+              desktop (top and bottom edges align with the board), scrolls
+              internally so its content can never change the dialog's size. */}
+          <div className="w-full sm:w-[300px] shrink-0 flex flex-col gap-3 overflow-y-auto min-h-0 sm:h-[var(--board-size)]">
             <div className="flex-1 min-h-[120px] overflow-y-auto font-mono text-sm border border-border/40 rounded-md">
               {pgnNodes.length === 0 ? (
                 <p className="text-xs text-muted-foreground p-3">No moves to display.</p>
