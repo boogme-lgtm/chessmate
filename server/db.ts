@@ -23,6 +23,8 @@ import {
   InsertCoachApplication,
   InsertMessage,
   referralCodes,
+  pgnAnalyses,
+  InsertPgnAnalysis,
   referrals,
   InsertReferralCode,
   InsertReferral,
@@ -1958,4 +1960,59 @@ export async function getStuckPostPayoutRefundLessons(stuckBeforeMs: number): Pr
     coachPayoutCents: r.coachPayoutCents,
     adminOverrideReason: r.adminOverrideReason ?? null,
   }));
+}
+
+// ============ PGN ANALYSIS OPERATIONS (Sprint 50) ============
+
+export async function createPgnAnalysis(data: InsertPgnAnalysis) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(pgnAnalyses).values(data);
+  return { id: Number(result[0].insertId) };
+}
+
+/** Update the annotated PGN. Scoped to the owning student — returns false if
+ *  no row matched (not found OR not owned). */
+export async function updatePgnAnalysis(
+  id: number,
+  studentId: number,
+  annotatedPgn: string
+): Promise<boolean> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result: any = await db
+    .update(pgnAnalyses)
+    .set({ annotatedPgn })
+    .where(and(eq(pgnAnalyses.id, id), eq(pgnAnalyses.studentId, studentId)));
+  return (result[0]?.affectedRows ?? 0) > 0;
+}
+
+export async function getPgnAnalysisById(id: number, studentId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(pgnAnalyses)
+    .where(and(eq(pgnAnalyses.id, id), eq(pgnAnalyses.studentId, studentId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function listPgnAnalysesByStudent(studentId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return await db
+    .select()
+    .from(pgnAnalyses)
+    .where(eq(pgnAnalyses.studentId, studentId))
+    .orderBy(desc(pgnAnalyses.updatedAt));
+}
+
+export async function markPgnAnalysisSent(id: number, annotatedPgn: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(pgnAnalyses)
+    .set({ status: "sent", sentAt: new Date(), annotatedPgn })
+    .where(eq(pgnAnalyses.id, id));
 }

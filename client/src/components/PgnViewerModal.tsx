@@ -13,11 +13,17 @@ import { Chessboard } from "react-chessboard";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { AnnotationToolbar } from "@/components/AnnotationToolbar";
+import { trpc } from "@/lib/trpc";
+import { toast } from "sonner";
 import {
   ChevronFirst,
   ChevronLeft,
@@ -25,12 +31,20 @@ import {
   ChevronLast,
   FlipHorizontal2,
   Power,
+  Pencil,
+  Save,
+  Send,
 } from "lucide-react";
 
 interface PgnViewerModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   pgn: string;
+  /** S50: analysis context — when set, Save/Send-to-Coach become available.
+   *  The coach is derived from the lesson SERVER-side, never passed here. */
+  lessonId?: number;
+  /** S50: reopen a previously saved analysis (loads its annotated PGN). */
+  analysisId?: number;
 }
 
 type Evaluation =
@@ -356,6 +370,79 @@ function parsePgnTree(pgn: string): {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// S50-7: PGN serializer — the inverse of parsePgnTree. Converts the in-memory
+// tree (including moves played in analysis mode and annotations) back to a
+// valid PGN string for saving/sending.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Suffix annotations are emitted inline after the SAN ("Nf3!?") — most
+// readable, and our own tokenizer parses them back. Everything else maps to
+// its canonical $N token. (Nodes store glyphs; this is the reverse of
+// NAG_GLYPHS using each glyph's canonical code.)
+const SUFFIX_GLYPHS = new Set(["!", "?", "!!", "??", "!?", "?!"]);
+const GLYPH_TO_NAG: Record<string, number> = {
+  "□": 7, "=": 10, "∞": 13, "⩲": 14, "⩱": 15, "±": 16, "∓": 17,
+  "+-": 18, "-+": 19, "⨀": 22, "⟳": 32, "→": 36, "↑": 40, "=∞": 44,
+  "⇆": 132, "⊕": 138, "△": 140, "∇": 141, "⌓": 142, "RR": 145, "N": 146,
+};
+
+// "}" inside a comment would terminate the brace early and corrupt the PGN.
+function sanitizeComment(text: string): string {
+  return text.replace(/\}/g, ")").trim();
+}
+
+function serializeLine(nodes: PgnNode[]): string {
+  const parts: string[] = [];
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i];
+    const prev = i > 0 ? nodes[i - 1] : null;
+
+    if (node.commentBefore) parts.push(`{${sanitizeComment(node.commentBefore)}}`);
+
+    // Move number: always for white; for black when the flow was interrupted
+    // (line start, a comment, or a variation between the moves) — without the
+    // re-number ("4... e5") the PGN is invalid after an interruption.
+    const interrupted =
+      i === 0 ||
+      !!prev?.comment ||
+      (prev?.variations.length ?? 0) > 0 ||
+      !!node.commentBefore;
+    if (node.color === "w") {
+      parts.push(`${node.moveNumber}.`);
+    } else if (interrupted) {
+      parts.push(`${node.moveNumber}...`);
+    }
+
+    // SAN + suffix glyphs inline; symbol glyphs as canonical $N tokens.
+    let moveToken = node.san;
+    const nagTokens: string[] = [];
+    for (const glyph of node.nags) {
+      if (SUFFIX_GLYPHS.has(glyph)) moveToken += glyph;
+      else if (GLYPH_TO_NAG[glyph] !== undefined) nagTokens.push(`$${GLYPH_TO_NAG[glyph]}`);
+      // unknown glyphs are dropped (parser would have dropped them anyway)
+    }
+    parts.push(moveToken, ...nagTokens);
+
+    if (node.comment) parts.push(`{${sanitizeComment(node.comment)}}`);
+
+    for (const varNodes of node.variations) {
+      if (varNodes.length > 0) parts.push(`(${serializeLine(varNodes)})`);
+    }
+  }
+  return parts.join(" ");
+}
+
+function serializePgn(headers: Record<string, string | null>, nodes: PgnNode[]): string {
+  const headerLines = Object.entries(headers)
+    .filter(([, v]) => v != null && v !== "")
+    .map(([k, v]) => `[${k} "${String(v).replace(/"/g, "'")}"]`)
+    .join("\n");
+  const result = headers.Result && headers.Result !== "" ? headers.Result : "*";
+  const moveText = serializeLine(nodes);
+  return `${headerLines}${headerLines ? "\n\n" : ""}${moveText}${moveText ? " " : ""}${result}\n`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // S49-24: recursive move-list renderer — flowing main line, indented sideline
 // blocks, italic comments, terracotta NAG glyphs. EVERY move (sidelines too)
 // is clickable: the board + engine jump to that position.
@@ -442,7 +529,13 @@ function MoveList({
   );
 }
 
-export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerModalProps) {
+export default function PgnViewerModal({
+  open,
+  onOpenChange,
+  pgn,
+  lessonId,
+  analysisId,
+}: PgnViewerModalProps) {
   const [pgnNodes, setPgnNodes] = useState<PgnNode[]>([]);
   const [fens, setFens] = useState<string[]>([new Chess().fen()]);
   // S49-27: main-line last-move squares, index-aligned with fens.
@@ -467,6 +560,25 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
     isMainLine: boolean;
   };
   const [branchChoices, setBranchChoices] = useState<BranchChoice[] | null>(null);
+  // ── S50: analysis mode ──────────────────────────────────────────────────────
+  const [analysisMode, setAnalysisMode] = useState(false);
+  const [savedAnalysisId, setSavedAnalysisId] = useState<number | null>(analysisId ?? null);
+  const [commentDraft, setCommentDraft] = useState("");
+  const [sendDialogOpen, setSendDialogOpen] = useState(false);
+  const [sendNote, setSendNote] = useState("");
+
+  const createAnalysis = trpc.analysis.create.useMutation();
+  const saveAnalysis = trpc.analysis.save.useMutation();
+  const sendAnalysis = trpc.analysis.sendToCoach.useMutation();
+  // S50-10: when reopening a saved analysis, its annotated PGN replaces the
+  // raw prop as the parse source.
+  const { data: savedAnalysis } = trpc.analysis.byId.useQuery(
+    { id: analysisId! },
+    { enabled: open && !!analysisId }
+  );
+  const sourcePgn = savedAnalysis
+    ? savedAnalysis.annotatedPgn ?? savedAnalysis.originalPgn
+    : pgn;
   // S49-30: which row in the picker is keyboard-focused (0 = main line).
   const [focusedChoiceIndex, setFocusedChoiceIndex] = useState(0);
   const [boardOrientation, setBoardOrientation] = useState<"white" | "black">("white");
@@ -509,10 +621,10 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
 
   // ── Parse PGN (S49-24: full tree — sidelines, comments, NAGs) ────────────────
   useEffect(() => {
-    if (!open || !pgn) return;
+    if (!open || !sourcePgn) return;
     try {
-      const { nodes, fens: newFens, lastMoves: newLastMoves, headers: newHeaders } = parsePgnTree(pgn);
-      setParseError(nodes.length === 0 && pgn.trim().length > 0);
+      const { nodes, fens: newFens, lastMoves: newLastMoves, headers: newHeaders } = parsePgnTree(sourcePgn);
+      setParseError(nodes.length === 0 && sourcePgn.trim().length > 0);
       setPgnNodes(nodes);
       setHeaders(newHeaders);
       setFens(newFens);
@@ -530,7 +642,7 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
       setBranchChoices(null);
       setCurrentIndex(0);
     }
-  }, [pgn, open]);
+  }, [sourcePgn, open]);
 
   // ── Stockfish worker lifecycle (S49-10: restartable) ─────────────────────────
   const stopEngine = useCallback(() => {
@@ -807,6 +919,10 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
       setBranchChoices(null);
     };
     const handler = (e: KeyboardEvent) => {
+      // S50: never hijack typing — the comment editor and send-note textarea
+      // need their arrow keys, Space, Enter and Escape.
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
       // ── S49-30: branch picker is open — keyboard navigates the list ──
       if (branchChoices !== null) {
         if (e.key === "ArrowUp") {
@@ -872,6 +988,170 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
     setBranchChoices(null);
     setSidelineCtx({ node, varArray, varIndex });
   }, []);
+
+  // ── S50: analysis mode — mutable tree ────────────────────────────────────────
+  // The node that produced the displayed position = the annotation target.
+  const currentNode: PgnNode | null =
+    sidelineCtx?.node ?? (currentIndex > 0 ? pgnNodes[currentIndex - 1] ?? null : null);
+
+  // Mutations edit tree nodes IN PLACE and bump the root array identity to
+  // re-render. (Deviation from the handoff's structuredClone: cloning would
+  // orphan the SidelineContext's node/varArray references and break subsequent
+  // arrow-key navigation; in-place mutation keeps every reference valid, and
+  // nothing memoizes on nested identity.)
+  const bumpTree = useCallback(() => setPgnNodes((prev) => [...prev]), []);
+
+  const toggleNag = useCallback(
+    (glyph: string) => {
+      if (!currentNode) return;
+      const idx = currentNode.nags.indexOf(glyph);
+      if (idx >= 0) currentNode.nags.splice(idx, 1);
+      else currentNode.nags.push(glyph);
+      bumpTree();
+    },
+    [currentNode, bumpTree]
+  );
+
+  const saveComment = useCallback(
+    (text: string) => {
+      if (!currentNode) return;
+      currentNode.comment = text.trim() || undefined;
+      bumpTree();
+    },
+    [currentNode, bumpTree]
+  );
+
+  // Keep the comment draft in sync with the move the board is on.
+  useEffect(() => {
+    setCommentDraft(currentNode?.comment ?? "");
+  }, [currentNode?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const newNodeSeqRef = useRef(0);
+  const makeNodeId = useCallback(() => {
+    // Distinct prefix from the parser's "node-N" ids — a re-parse resets the
+    // parser counter, so reusing it could collide with existing keys.
+    newNodeSeqRef.current += 1;
+    return `an-${Date.now().toString(36)}-${newNodeSeqRef.current}`;
+  }, []);
+
+  // S50-4: a move played on the board. Standard GUI semantics:
+  //   1. matches the next move of the current line  → just step forward
+  //   2. matches an existing variation's first move → enter that variation
+  //   3. otherwise → insert as a new variation (or extend the end of the line)
+  const handlePieceDrop = useCallback(
+    ({ sourceSquare, targetSquare }: { sourceSquare: string; targetSquare: string | null }): boolean => {
+      if (!analysisMode || !targetSquare) return false;
+      let chess: Chess;
+      let move: ReturnType<Chess["move"]>;
+      try {
+        chess = new Chess(displayFen);
+        move = chess.move({ from: sourceSquare, to: targetSquare, promotion: "q" });
+      } catch {
+        return false; // illegal move — board snaps back
+      }
+      if (!move) return false;
+
+      const line = sidelineCtx ? sidelineCtx.varArray : pgnNodes;
+      const nextIdx = sidelineCtx ? sidelineCtx.varIndex + 1 : currentIndex;
+      const nextNode = line[nextIdx];
+
+      // (1) Played the move that's already next in this line — navigate.
+      if (nextNode && nextNode.san === move.san) {
+        if (sidelineCtx) {
+          setSidelineCtx({ node: nextNode, varArray: line, varIndex: nextIdx });
+        } else {
+          setCurrentIndex((i) => Math.min(fens.length - 1, i + 1));
+        }
+        return true;
+      }
+      // (2) Played the first move of an existing variation — enter it.
+      if (nextNode) {
+        const existing = nextNode.variations.find((v) => v[0]?.san === move.san);
+        if (existing) {
+          setSidelineCtx({ node: existing[0], varArray: existing, varIndex: 0 });
+          return true;
+        }
+      }
+
+      const lineDepth = sidelineCtx ? sidelineCtx.node.depth : 0;
+      const newNode: PgnNode = {
+        id: makeNodeId(),
+        fen: chess.fen(),
+        san: move.san,
+        from: move.from,
+        to: move.to,
+        moveNumber: move.color === "b" ? chess.moveNumber() - 1 : chess.moveNumber(),
+        color: move.color as "w" | "b",
+        nags: [],
+        variations: [],
+        depth: nextNode ? lineDepth + 1 : lineDepth,
+      };
+
+      if (nextNode) {
+        // (3a) Mid-line — new variation branching off the next move.
+        const newVar = [newNode];
+        nextNode.variations.push(newVar);
+        bumpTree();
+        setSidelineCtx({ node: newNode, varArray: newVar, varIndex: 0 });
+      } else if (sidelineCtx) {
+        // (3b) Extend the current sideline.
+        line.push(newNode);
+        bumpTree();
+        setSidelineCtx({ node: newNode, varArray: line, varIndex: nextIdx });
+      } else {
+        // (3c) Extend the main line — fens/lastMoves stay index-aligned so
+        // keyboard navigation covers the new move.
+        const newIndex = fens.length;
+        setPgnNodes((prev) => [...prev, newNode]);
+        setFens((prev) => [...prev, newNode.fen]);
+        setLastMoves((prev) => [...prev, { from: newNode.from, to: newNode.to }]);
+        setCurrentIndex(newIndex);
+      }
+      return true;
+    },
+    [analysisMode, displayFen, sidelineCtx, pgnNodes, currentIndex, fens.length, bumpTree, makeNodeId]
+  );
+
+  // S50-8: serialize + persist. First save creates the DB row.
+  const handleSave = useCallback(async (): Promise<number | null> => {
+    const serialized = serializePgn(headers, pgnNodes);
+    try {
+      let id = savedAnalysisId;
+      if (!id) {
+        const title =
+          [headers.White, headers.Black].filter(Boolean).join(" vs ") ||
+          headers.Event ||
+          "Game analysis";
+        const res = await createAnalysis.mutateAsync({
+          lessonId,
+          originalPgn: pgn,
+          title: String(title).slice(0, 255),
+        });
+        id = res.id;
+        setSavedAnalysisId(id);
+      }
+      await saveAnalysis.mutateAsync({ id, annotatedPgn: serialized });
+      toast.success("Analysis saved");
+      return id;
+    } catch (err: any) {
+      toast.error(err?.message ?? "Failed to save analysis");
+      return null;
+    }
+  }, [headers, pgnNodes, savedAnalysisId, lessonId, pgn, createAnalysis, saveAnalysis]);
+
+  // S50-9: save, then send into the lesson chat (server derives the coach).
+  const handleSendToCoach = useCallback(async () => {
+    const id = await handleSave();
+    if (!id) return;
+    try {
+      await sendAnalysis.mutateAsync({ id, note: sendNote.trim() || undefined });
+      setSendDialogOpen(false);
+      setSendNote("");
+      toast.success("Analysis sent to your coach!");
+    } catch (err: any) {
+      toast.error(err?.message ?? "Failed to send analysis");
+    }
+  }, [handleSave, sendAnalysis, sendNote]);
 
   const arrows =
     bestMove && bestMove.length >= 4
@@ -968,7 +1248,9 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
             <div
               style={{ width: "var(--board-size)", height: "var(--board-size)" }}
               onMouseDownCapture={(e) => {
-                if (e.button === 0) e.preventDefault();
+                // S50: skip while analysing — preventDefault on mousedown can
+                // interfere with piece-drag initiation.
+                if (!analysisMode && e.button === 0) e.preventDefault();
               }}
             >
               <Chessboard
@@ -977,8 +1259,14 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
                   // S49-27: last-move tint on from/to squares (v5's API is
                   // squareStyles — there is no lastMove option).
                   squareStyles,
+                  // S50: pieces become draggable in analysis mode; drops insert
+                  // variations into the tree. (v5 names: allowDragging +
+                  // onPieceDrop({sourceSquare,targetSquare}) — the handoff's
+                  // arePiecesDraggable/(src,tgt,piece) signature is v4.)
+                  onPieceDrop: ({ sourceSquare, targetSquare }) =>
+                    handlePieceDrop({ sourceSquare, targetSquare }),
                   boardOrientation,
-                  allowDragging: false,
+                  allowDragging: analysisMode,
                   arrows,
                   // S49-6: v5's defaultBoardStyle sets height:'100%', which stretches
                   // grid rows past the squares' aspectRatio and leaves gaps. Same
@@ -1133,6 +1421,81 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
               </span>
             </div>
 
+            {/* S50-4/8/9: analysis mode toggle + save + send */}
+            <div className="flex items-center gap-2 shrink-0 flex-wrap">
+              <Button
+                variant={analysisMode ? "default" : "outline"}
+                size="sm"
+                onClick={() => setAnalysisMode((m) => !m)}
+                className="gap-1.5 text-xs"
+                title={
+                  analysisMode
+                    ? "Exit analysis mode"
+                    : "Enter analysis mode — play moves and annotate"
+                }
+              >
+                <Pencil className="h-3.5 w-3.5" />
+                {analysisMode ? "Analysing" : "Analyse"}
+              </Button>
+              {analysisMode && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void handleSave()}
+                  disabled={createAnalysis.isPending || saveAnalysis.isPending}
+                  className="gap-1.5 text-xs"
+                >
+                  <Save className="h-3.5 w-3.5" />
+                  Save
+                </Button>
+              )}
+              {analysisMode && lessonId && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSendDialogOpen(true)}
+                  className="gap-1.5 text-xs"
+                  style={{ color: BRAND }}
+                >
+                  <Send className="h-3.5 w-3.5" />
+                  Send to Coach
+                </Button>
+              )}
+            </div>
+
+            {/* S50-5/6: annotation panel — NAG glyphs + comment for the current
+                move. (Deviation from the handoff's inline-in-MoveList editor:
+                a single panel bound to the move the board is on is calmer —
+                clicking moves keeps its existing navigate-only meaning.) */}
+            {analysisMode && (
+              <div className="shrink-0 space-y-2 border border-border/40 rounded-md p-2">
+                <div className="text-xs text-muted-foreground font-mono">
+                  {currentNode
+                    ? `Annotating: ${currentNode.moveNumber}${currentNode.color === "w" ? "." : "…"} ${currentNode.san}`
+                    : "Navigate to a move to annotate it"}
+                </div>
+                <AnnotationToolbar
+                  activeNags={currentNode?.nags ?? []}
+                  onToggleNag={toggleNag}
+                  disabled={!currentNode}
+                />
+                <input
+                  type="text"
+                  className="w-full text-xs bg-muted/40 border border-border/50 rounded px-1.5 py-1 font-sans disabled:opacity-40"
+                  placeholder="Comment on this move… (Enter saves)"
+                  disabled={!currentNode}
+                  value={commentDraft}
+                  onChange={(e) => setCommentDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") saveComment(commentDraft);
+                  }}
+                  onBlur={() => {
+                    if ((currentNode?.comment ?? "") !== commentDraft.trim()) saveComment(commentDraft);
+                  }}
+                />
+              </div>
+            )}
+
             {/* Engine status — three states (S49-10) */}
             <div className="text-xs text-muted-foreground font-mono space-y-0.5 shrink-0">
               {!engineEnabled ? (
@@ -1180,6 +1543,32 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
           </div>
         </div>
       </DialogContent>
+      {/* S50-9: send-to-coach dialog */}
+      <Dialog open={sendDialogOpen} onOpenChange={setSendDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Send Analysis to Coach</DialogTitle>
+            <DialogDescription>
+              Your annotated game will be saved and sent as a message in your lesson chat.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            placeholder="Add a personal note (optional)…"
+            value={sendNote}
+            onChange={(e) => setSendNote(e.target.value)}
+            rows={3}
+            className="resize-none"
+          />
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setSendDialogOpen(false)} disabled={sendAnalysis.isPending}>
+              Cancel
+            </Button>
+            <Button onClick={() => void handleSendToCoach()} disabled={sendAnalysis.isPending}>
+              {sendAnalysis.isPending ? "Sending…" : "Send"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 }
