@@ -611,6 +611,31 @@ Manual smoke: on a laptop the dialog should now be dramatically wider (~96vw, no
 follows every move incl. sideline clicks; `$11` renders `=`; board size never changes
 during navigation.
 
+## 3s. Sprint 49 fix-9 — white click-frame + branch picker (BUILT, commit fccd1aa)
+
+**S49-28 — root cause corrected from the handoff.** The white frame is mouse-click
+FOCUS: dnd-kit gives every piece `tabIndex=0` even with dragging disabled (verified in
+the dist — attributes spread unconditionally; only `aria-disabled` changes), and the
+app's global outline styles ring the focused piece. **`onSquareClick: () => {}` is a
+pure optional callback in v5 (`onSquareClick?.()`) — it suppresses nothing.** Real fix:
+the board wrapper prevents `mousedown` default (left button only) so focus is never
+acquired by mouse — no ring, right-drag arrows and keyboard-Tab a11y untouched,
+mechanism-agnostic.
+
+**S49-29** — branch picker per the handoff (its tree-indexing insight is correct and
+now fixture-verified). Plus the design detail its code snippet missed: **→ again while
+the picker is open accepts the main line** (as the Design section specified). Escape =
+dismiss + main line; ←/↑/↓, move-list clicks, sideline clicks, and new parses all
+dismiss; empty variation arrays filtered.
+
+Verified: tsc 0 · 376 tests · build clean · bifurcation-indexing fixture 4/4 · ten
+interaction flows traced (double-→, dual Escape paths, outside-click, trigger
+re-click) — each resolves to one correct transition.
+
+Manual smoke: click any square/piece → NO white ring ever; → at a move with a
+variation → picker with starred main line; click a sideline → board + engine jump with
+highlight; → → at a bifurcation = straight through the main line; Escape = main line.
+
 ## 4. Remaining open items
 
 - **Live Stripe end-to-end test** — needs a human with Stripe test cards; I can't run
