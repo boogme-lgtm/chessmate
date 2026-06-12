@@ -507,6 +507,38 @@ all moves; bar flush left of the board at exactly board height with a visible no
 board large and fully visible (no vertical clipping); right panel scrolls internally;
 depth climbs past 9 with no stall.
 
+## 3p. Sprint 49 fix-6 — bestmove-gated engine + deterministic board size (BUILT, commit 248140c)
+
+The handoff's diagnosis (bestmove is the stop-ack; never send position/go before it)
+is implemented — **hardened into a full state machine** with four additions beyond the
+spec, each closing a real deadlock/corruption path:
+
+1. **Terminal-position deadlock**: mate/stalemate under `go infinite` emits an
+   UNSOLICITED `bestmove (none)` immediately. The handler marks the engine idle on any
+   bestmove, and navigation from idle dispatches directly — without this, the next nav
+   would send `stop` to an idle engine and wait forever for an ack that never comes.
+2. **Stale-line gate**: while a stop is in flight, all info lines belong to the dying
+   search and are ignored — no stale eval/arrow/variation flashes (and no sign-flipped
+   scores from normalizing old-position lines against the new side-to-move).
+3. **One stop per stop-cycle**: already-stopping navigations only replace the parked
+   FEN (the spec re-sent `stop` on every nav; harmless but unprovable — this keeps the
+   protocol trivially verifiable).
+4. **Self-healing watchdog**: if the engine ever fails to ack a stop within 3s, the
+   worker is fully restarted and the current position re-analyzes automatically. The
+   viewer can no longer be permanently frozen, whatever the engine does.
+
+Board size: explicit responsive column width `w-full
+sm:w-[min(calc(90vh-8rem),calc(100%-296px))]` — the square fits BOTH height and width
+budgets deterministically. **Deviation: `self-start` is KEPT** (the handoff said to
+remove it) — explicit width is the main axis; the cross-axis stretch is what made the
+eval bar exceed the board in S49-18, and removing self-start would regress it.
+`sm:justify-center` centers the pair on ultrawide (scoped to sm+ for mobile safety).
+
+Verification: 376 tests, tsc 0, build clean. THE definitive smoke: hammer the right
+arrow 20× fast → depth must climb on the final position; navigate to a game-ending
+mate position and back → engine keeps working; if you can ever freeze it, the 3s
+watchdog must revive it on its own.
+
 ## 4. Remaining open items
 
 - **Live Stripe end-to-end test** — needs a human with Stripe test cards; I can't run
