@@ -17,6 +17,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   ChevronFirst,
   ChevronLeft,
@@ -453,6 +454,9 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
   const [selectedFen, setSelectedFen] = useState<string | null>(null);
   // S49-27: from/to squares of the clicked sideline move (for the highlight).
   const [selectedLastMove, setSelectedLastMove] = useState<{ from: string; to: string } | null>(null);
+  // S49-29: candidate continuations shown when → hits a bifurcation.
+  type BranchChoice = { label: string; fen: string; from: string; to: string; isMainLine: boolean };
+  const [branchChoices, setBranchChoices] = useState<BranchChoice[] | null>(null);
   const [boardOrientation, setBoardOrientation] = useState<"white" | "black">("white");
   const [evaluation, setEvaluation] = useState<Evaluation>(null);
   const [bestMove, setBestMove] = useState<string | null>(null);
@@ -501,6 +505,7 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
       setLastMoves(newLastMoves);
       setSelectedFen(null);
       setSelectedLastMove(null);
+      setBranchChoices(null);
       setCurrentIndex(newFens.length - 1); // start at the final position
     } catch {
       setParseError(true);
@@ -510,6 +515,7 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
       setLastMoves([null]);
       setSelectedFen(null);
       setSelectedLastMove(null);
+      setBranchChoices(null);
       setCurrentIndex(0);
     }
   }, [pgn, open]);
@@ -691,23 +697,86 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
     }
   }, [displayFen, engineReady, dispatchSearch]);
 
-  // ── Keyboard navigation (main line; arrows leave any selected sideline) ──────
+  // ── Navigation ────────────────────────────────────────────────────────────
+  // S49-29: → at a bifurcation opens a continuation picker instead of silently
+  // taking the main line. pgnNodes[currentIndex] is the move FROM
+  // fens[currentIndex] TO fens[currentIndex+1]; its .variations are the
+  // sidelines playable from the current position.
+  const handleRightArrow = useCallback(() => {
+    // Pressing → again while the picker is open = accept the main line.
+    if (branchChoices !== null) {
+      setBranchChoices(null);
+      setSelectedFen(null);
+      setSelectedLastMove(null);
+      setCurrentIndex((i) => Math.min(fens.length - 1, i + 1));
+      return;
+    }
+    setSelectedFen(null);
+    setSelectedLastMove(null);
+    const nextNode = pgnNodes[currentIndex];
+    if (!nextNode) return; // already at the end
+    if (nextNode.variations.length > 0) {
+      setBranchChoices([
+        {
+          label: nextNode.san + nextNode.nags.join(""),
+          fen: nextNode.fen,
+          from: nextNode.from,
+          to: nextNode.to,
+          isMainLine: true,
+        },
+        ...nextNode.variations
+          .filter((v) => v.length > 0)
+          .map((varNodes) => ({
+            label: varNodes[0].san + varNodes[0].nags.join(""),
+            fen: varNodes[0].fen,
+            from: varNodes[0].from,
+            to: varNodes[0].to,
+            isMainLine: false,
+          })),
+      ]);
+    } else {
+      setCurrentIndex((i) => Math.min(fens.length - 1, i + 1));
+    }
+  }, [branchChoices, pgnNodes, currentIndex, fens.length]);
+
+  const chooseBranch = useCallback((choice: BranchChoice) => {
+    setBranchChoices(null);
+    if (choice.isMainLine) {
+      setCurrentIndex((i) => Math.min(fens.length - 1, i + 1));
+    } else {
+      setSelectedFen(choice.fen);
+      setSelectedLastMove({ from: choice.from, to: choice.to });
+    }
+  }, [fens.length]);
+
+  // Keyboard: arrows walk the main line (leaving any selected sideline);
+  // Escape dismisses the branch picker and defaults to the main line.
   useEffect(() => {
     if (!open) return;
-    const leaveSideline = () => { setSelectedFen(null); setSelectedLastMove(null); };
+    const leaveSideline = () => {
+      setSelectedFen(null);
+      setSelectedLastMove(null);
+      setBranchChoices(null);
+    };
     const handler = (e: KeyboardEvent) => {
       if (e.key === "ArrowLeft") { e.preventDefault(); leaveSideline(); setCurrentIndex((i) => Math.max(0, i - 1)); }
-      if (e.key === "ArrowRight") { e.preventDefault(); leaveSideline(); setCurrentIndex((i) => Math.min(fens.length - 1, i + 1)); }
+      if (e.key === "ArrowRight") { e.preventDefault(); handleRightArrow(); }
       if (e.key === "ArrowUp") { e.preventDefault(); leaveSideline(); setCurrentIndex(0); }
       if (e.key === "ArrowDown") { e.preventDefault(); leaveSideline(); setCurrentIndex(fens.length - 1); }
+      if (e.key === "Escape" && branchChoices !== null) {
+        e.preventDefault();
+        setBranchChoices(null);
+        setCurrentIndex((i) => Math.min(fens.length - 1, i + 1));
+      }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [open, fens.length]);
+  }, [open, fens.length, handleRightArrow, branchChoices]);
 
   const goTo = useCallback((i: number) => {
     setSelectedFen(null);
     setSelectedLastMove(null);
+    setBranchChoices(null);
     setCurrentIndex((prev) => {
       const next = Math.max(0, Math.min(fens.length - 1, i));
       return next === prev ? prev : next;
@@ -717,6 +786,7 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
   // S49-24/S49-27: jump straight to a sideline position (board + engine follow;
   // the highlight shows the sideline move's squares).
   const selectFen = useCallback((fen: string, from: string, to: string) => {
+    setBranchChoices(null);
     setSelectedFen(fen);
     setSelectedLastMove({ from, to });
   }, []);
@@ -805,8 +875,20 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
               />
             </div>
             {/* S49-25: explicit square — the largest that fits both the dialog
-                height and the width beside the panel. */}
-            <div style={{ width: "var(--board-size)", height: "var(--board-size)" }}>
+                height and the width beside the panel.
+                S49-28: the persistent white frame is mouse-click FOCUS — dnd-kit
+                gives every piece tabIndex=0 even with dragging disabled, and the
+                app's global outline styles ring the focused piece. Preventing
+                mousedown's default (left button only) stops focus acquisition
+                entirely; right-drag arrow drawing and keyboard Tab a11y are
+                unaffected. (The handoff's onSquareClick:()=>{} is a pure
+                callback in v5 and suppresses nothing.) */}
+            <div
+              style={{ width: "var(--board-size)", height: "var(--board-size)" }}
+              onMouseDownCapture={(e) => {
+                if (e.button === 0) e.preventDefault();
+              }}
+            >
               <Chessboard
                 options={{
                   position: displayFen,
@@ -889,9 +971,47 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
               <Button variant="outline" size="icon" onClick={() => goTo(currentIndex - 1)} aria-label="Previous move">
                 <ChevronLeft className="h-4 w-4" />
               </Button>
-              <Button variant="outline" size="icon" onClick={() => goTo(currentIndex + 1)} aria-label="Next move">
-                <ChevronRight className="h-4 w-4" />
-              </Button>
+              {/* S49-29: → opens a continuation picker at bifurcations */}
+              <Popover
+                open={branchChoices !== null}
+                onOpenChange={(o) => { if (!o) setBranchChoices(null); }}
+              >
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={handleRightArrow}
+                    aria-label="Next move"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </PopoverTrigger>
+                {branchChoices && (
+                  <PopoverContent
+                    className="w-auto p-1"
+                    side="top"
+                    align="center"
+                    onOpenAutoFocus={(e) => e.preventDefault()}
+                  >
+                    <div className="text-xs text-muted-foreground px-2 py-1 font-sans">
+                      Choose continuation:
+                    </div>
+                    {branchChoices.map((choice, i) => (
+                      <button
+                        key={i}
+                        onClick={() => chooseBranch(choice)}
+                        className={`block w-full text-left text-xs px-3 py-1.5 rounded hover:bg-muted/60 font-mono ${
+                          choice.isMainLine ? "font-semibold" : "text-muted-foreground"
+                        }`}
+                        style={choice.isMainLine ? { color: BRAND } : undefined}
+                      >
+                        {choice.isMainLine ? "★ " : "   "}
+                        {choice.label}
+                      </button>
+                    ))}
+                  </PopoverContent>
+                )}
+              </Popover>
               <Button variant="outline" size="icon" onClick={() => goTo(fens.length - 1)} aria-label="Last move">
                 <ChevronLast className="h-4 w-4" />
               </Button>
