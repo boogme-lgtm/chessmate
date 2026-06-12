@@ -413,6 +413,29 @@ Verification: 376 tests, tsc 0, build clean. Manual smoke after merge: navigate 
 confirm the depth counter resets + climbs on every move, board is square, colors are the
 Lichess scheme, and the Best: line updates.
 
+## 3l. Sprint 49 fix-2 — board gaps + engine stall (BUILT, commit b648049)
+
+Both in `PgnViewerModal.tsx` only.
+- **S49-6** boardStyle override (v5 defaults but `height:'auto'`) so grid rows size to
+  the squares' 1:1 aspect — board naturally square, no dark gaps. `aspect-square`
+  removed from the wrapper.
+- **S49-7** barrier removed (`pendingFenRef` deleted); eval effect sends
+  `stop → position fen → go infinite` directly. `engineReady` flips on `readyok`.
+
+### One necessary deviation (please review)
+Under `go infinite` the engine emits `bestmove` **only after a stop** — i.e. it always
+belongs to the previous, aborted position. Handling those lines (as the handoff spec
+retained) would only ever show stale/illegal moves and the arrow would never update
+mid-search. So `bestmove` lines are now **ignored**, and the live best move is parsed
+from the **principal variation** in info lines (`… pv e2e4 …`), which streams
+continuously — this is how real GUIs drive their arrows and is what actually delivers
+the handoff's own expected-behavior table (arrow + "Best:" updating as depth climbs).
+Regex `\bpv (\S+)` cannot match inside "multipv" (word boundary).
+
+Verification: 376 tests, tsc 0, build clean. Manual smoke: no row gaps; depth climbs
+1,2,3… continuously per position; rapid arrow-keys never stall at depth 0; arrow +
+"Best:" update live during the search.
+
 ## 4. Remaining open items
 
 - **Live Stripe end-to-end test** — needs a human with Stripe test cards; I can't run
