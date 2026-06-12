@@ -1056,5 +1056,11 @@
 
 ## Sprint 49 Fix-7 — PGN Viewer Board Size + Full PGN Notation (S49-23, S49-24)
 
-- [ ] S49-23: Board too small — min(calc(90vh-8rem), calc(100%-296px)) resolves incorrectly; left column should use flex-1 min-w-0 so it takes all remaining space; right panel stays w-[300px] shrink-0; remove explicit style width
-- [ ] S49-24: PGN notation only shows main line — chess.history() returns flat array; need full PGN tree: sidelines (parentheses), comments ({curly braces}), NAG annotations ($1=$!, $2=$?, etc.), chapter text; render like Lichess analysis board with clickable moves, indented sidelines, italic comments
+- [x] S49-23: Board too small — min(calc(90vh-8rem), calc(100%-296px)) resolves incorrectly; left column should use flex-1 min-w-0 so it takes all remaining space; right panel stays w-[300px] shrink-0; remove explicit style width
+- [x] S49-24: PGN notation only shows main line — chess.history() returns flat array; need full PGN tree: sidelines (parentheses), comments ({curly braces}), NAG annotations ($1=$!, $2=$?, etc.), chapter text; render like Lichess analysis board with clickable moves, indented sidelines, italic comments
+
+## Sprint 49 Fix-8 — PGN Viewer Board Size (Definitive), NAG $11, Last-Move Highlight (S49-25, S49-26, S49-27)
+
+- [ ] S49-25: Board still too small — flex-1 left column + min(calc(100%-18px), calc(90vh-8rem)) board wrapper still resolves too small; root cause is self-start collapsing the left column to zero height so 100% inside it is 0; fix: remove self-start, give the board wrapper an explicit pixel size using a CSS container query or a simpler approach: make the main area a fixed-height flex row and let the board wrapper use aspect-ratio:1 with height:100%
+- [ ] S49-26: NAG $11 shows raw text — NAG 11 is not in the NAG_GLYPHS map; it should map to "⩲" (White is slightly better) or display nothing rather than the raw "$11" token; add all missing common NAG codes
+- [ ] S49-27: Last-move highlight square doesn't follow keyboard navigation — react-chessboard v5 has a lastMove prop (or lastMoveSquares) that should be driven by the from/to squares of the current move; currently the highlight stays on the last mouse-touched move instead of the current board position
