@@ -130,6 +130,27 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
   // Side-to-move for the position currently being analyzed, so we can normalize
   // the engine's side-to-move score into a white-POV evaluation.
   const sideToMoveRef = useRef<"w" | "b">("w");
+  // ── S49-21 UCI state machine (bestmove-gated; see fix-6 handoff) ─────────────
+  // searchingRef: a `go infinite` is in flight (no bestmove received yet).
+  // pendingFenRef: position waiting for the engine's bestmove stop-ack.
+  // Invariant: pendingFenRef !== null ⟹ searchingRef === true (a stop is in flight).
+  const searchingRef = useRef(false);
+  const pendingFenRef = useRef<string | null>(null);
+  // Watchdog: if the engine never acks a stop with bestmove (wedged), restart it.
+  const stopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const startEngineRef = useRef<(() => void) | null>(null);
+
+  // Single dispatch point — the ONLY place `position` + `go` are ever sent.
+  // Sets sideToMoveRef at dispatch time so score normalization always matches
+  // the position actually being searched.
+  const dispatchSearch = useCallback((fen: string) => {
+    const worker = stockfishRef.current;
+    if (!worker) return;
+    sideToMoveRef.current = fen.split(" ")[1] === "b" ? "b" : "w";
+    searchingRef.current = true;
+    worker.postMessage(`position fen ${fen}`);
+    worker.postMessage("go infinite");
+  }, []);
 
   // ── Parse PGN ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -165,6 +186,10 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
 
   // ── Stockfish worker lifecycle (S49-10: restartable) ─────────────────────────
   const stopEngine = useCallback(() => {
+    if (stopTimerRef.current) {
+      clearTimeout(stopTimerRef.current);
+      stopTimerRef.current = null;
+    }
     if (stockfishRef.current) {
       try {
         stockfishRef.current.postMessage("quit");
@@ -172,6 +197,8 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
       } catch { /* noop */ }
       stockfishRef.current = null;
     }
+    searchingRef.current = false;
+    pendingFenRef.current = null;
     setEngineReady(false);
     setEngineDepth(0);
     setEvaluation(null);
@@ -209,9 +236,33 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
       if (line === "readyok") {
         // S49-7: engineReady flips here (not on uciok) so the evaluation effect
         // only fires once the engine has confirmed it is ready.
+        searchingRef.current = false; // engine is idle after init
         setEngineReady(true);
         return;
       }
+
+      // S49-21: `bestmove` is the engine's stop-acknowledgment — the ONLY safe
+      // moment to start the next search. (It also arrives unsolicited on
+      // terminal positions: mate/stalemate under `go infinite` emits
+      // "bestmove (none)" immediately — handled identically, engine goes idle.)
+      if (line.startsWith("bestmove")) {
+        if (stopTimerRef.current) {
+          clearTimeout(stopTimerRef.current);
+          stopTimerRef.current = null;
+        }
+        searchingRef.current = false;
+        const pending = pendingFenRef.current;
+        if (pending) {
+          pendingFenRef.current = null;
+          dispatchSearch(pending);
+        }
+        return;
+      }
+
+      // S49-21: while a stop is in flight (pending set) or no search is running,
+      // any info lines belong to a dying/previous search — ignore them so stale
+      // evals/arrows/variations can never flash on the new position.
+      if (pendingFenRef.current !== null || !searchingRef.current) return;
 
       // Depth updates from any info line while `go infinite` runs.
       const depthMatch = line.match(/\bdepth (\d+)/);
@@ -220,8 +271,6 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
       // S49-11: MultiPV-aware parsing. With MultiPV=3 every PV info line carries
       // "multipv N"; route each line into its variation slot. multipv 1 is the
       // main line and also drives the eval bar, the arrow, and the Best: text.
-      // (`bestmove` lines are still ignored — under `go infinite` they only
-      // arrive after a stop and always belong to the previous position.)
       const multipvMatch = line.match(/\bmultipv (\d+)/);
       // S49-13: the "pv" token is followed by ALL remaining moves to end of line.
       const pvIdx = line.indexOf(" pv ");
@@ -255,6 +304,12 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
     worker.postMessage("uci");
   }, [stopEngine]);
 
+  // Keep a ref to startEngine so the watchdog (created inside the eval effect)
+  // can trigger a full restart without dependency cycles.
+  useEffect(() => {
+    startEngineRef.current = startEngine;
+  }, [startEngine]);
+
   useEffect(() => {
     if (!open) return;
     if (engineEnabled) startEngine();
@@ -262,24 +317,44 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
   }, [open, engineEnabled, startEngine, stopEngine]);
 
   // ── Trigger evaluation when the viewed position changes ──────────────────────
-  // S49-7: single-threaded WASM processes `stop` synchronously in its message
-  // queue, so no isready/readyok barrier is needed — send stop → position → go
-  // directly. `go infinite` keeps the engine improving its eval until the next
-  // navigation stops it (standard chess-GUI pattern).
+  // S49-21: bestmove-gated UCI protocol (the pattern every real GUI uses).
+  // Never send `position`/`go` while a search is in flight — send `stop`, park
+  // the FEN, and let the bestmove handler dispatch it once the engine acks.
+  // Rapid navigation only ever replaces the parked FEN; exactly one search is
+  // in flight at any moment, and exactly one `stop` per stop-cycle.
   useEffect(() => {
     const fen = fens[currentIndex];
     if (!engineReady || !stockfishRef.current || !fen) return;
-    sideToMoveRef.current = fen.split(" ")[1] === "b" ? "b" : "w";
+    // Reset display state immediately for the new position.
     setBestMove(null);
     setEvaluation(null);
     setEngineDepth(0);
-    setVariations([]); // S49-11: variations repopulate for the new position
-    // S49-12: minimal 3-command hot path — MultiPV is configured once at engine
-    // init (uciok handler), never mid-stream.
-    stockfishRef.current.postMessage("stop");
-    stockfishRef.current.postMessage(`position fen ${fen}`);
-    stockfishRef.current.postMessage("go infinite");
-  }, [currentIndex, fens, engineReady]);
+    setVariations([]);
+
+    if (!searchingRef.current) {
+      // Engine idle (after init, or after a terminal-position search ended) —
+      // start directly.
+      pendingFenRef.current = null;
+      dispatchSearch(fen);
+    } else if (pendingFenRef.current === null) {
+      // Search in flight, no stop pending yet — park the FEN and send ONE stop.
+      pendingFenRef.current = fen;
+      stockfishRef.current.postMessage("stop");
+      // Watchdog: a healthy engine acks `stop` with bestmove within ms. If it
+      // ever wedges (the historical "engine death"), restart it — stopEngine
+      // resets all refs and the engineReady toggle re-runs this effect, so the
+      // current position is re-analyzed automatically. Self-healing.
+      if (stopTimerRef.current) clearTimeout(stopTimerRef.current);
+      stopTimerRef.current = setTimeout(() => {
+        stopTimerRef.current = null;
+        console.warn("[PgnViewer] Engine did not ack stop within 3s — restarting worker.");
+        startEngineRef.current?.();
+      }, 3000);
+    } else {
+      // Already stopping — just replace the parked FEN (no second stop).
+      pendingFenRef.current = fen;
+    }
+  }, [currentIndex, fens, engineReady, dispatchSearch]);
 
   // ── Keyboard navigation ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -329,11 +404,14 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
         ) : null}
 
         {/* S49-17: fixed-size main area — dialog never resizes with content */}
-        <div className="flex-1 flex flex-col sm:flex-row gap-4 overflow-hidden min-h-0">
-          {/* S49-18: left column is self-start so its height collapses to its
-              content (the board) instead of stretching to the main area — that
-              makes the eval bar's self-stretch match the BOARD height exactly. */}
-          <div className="flex-1 flex gap-1.5 justify-center min-w-0 self-start">
+        <div className="flex-1 flex flex-col sm:flex-row gap-4 overflow-hidden min-h-0 sm:justify-center">
+          {/* S49-21 board size: explicit column width — min(height budget, width
+              budget) so the square board always fits BOTH dimensions; flex-1 on
+              the wrapper now resolves against a definite size. 296px = 280px
+              right panel + 16px gap. self-start is KEPT (height is the cross
+              axis): without it the column stretches to main-area height and the
+              eval bar's self-stretch would exceed the board again (S49-18). */}
+          <div className="flex gap-1.5 shrink-0 min-w-0 self-start w-full sm:w-[min(calc(90vh-8rem),calc(100%-296px))]">
             {/* S49-19: clean eval bar — dark bg, orange fill, midpoint notch,
                 NO floating label (the eval is shown in the engine panel). */}
             <div
@@ -355,10 +433,9 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
                 }}
               />
             </div>
-            {/* S49-20: board takes all remaining width, but capped by the dialog
-                height (square board sizes by width — without the cap it would
-                overflow vertically on wide/short screens, e.g. 1440×900). */}
-            <div className="flex-1 min-w-0 max-w-[calc(90vh-8rem)]">
+            {/* Board fills the column minus the eval bar; the column's min()
+                width already guarantees the square fits the dialog height. */}
+            <div className="flex-1 min-w-0">
               <Chessboard
                 options={{
                   position: fens[currentIndex],
