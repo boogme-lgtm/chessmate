@@ -1013,4 +1013,4 @@
 
 ## Sprint 49 — Interactive PGN Viewer with Engine Analysis (S49-1)
 
-- [ ] S49-1: Add interactive PGN viewer modal — clicking a PGN message opens a full analysis board with move navigation, annotations, and Stockfish engine evaluation
+- [x] S49-1: Add interactive PGN viewer modal — clicking a PGN message opens a full analysis board with move navigation, annotations, and Stockfish engine evaluation
