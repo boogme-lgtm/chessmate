@@ -1026,3 +1026,10 @@
 
 - [x] S49-6: Dark gaps between board rows — boardStyle height:100% stretches grid rows beyond square size; fix by overriding boardStyle to {height:'auto'} and removing aspect-square from wrapper
 - [x] S49-7: Stockfish stalls at depth 0 after navigation — isready/readyok barrier is wrong for single-threaded WASM; replace with stop→position fen→go infinite (no barrier needed); engine should analyze continuously per position
+
+## Sprint 49 Fix-3 — PGN Viewer Polish (S49-8 through S49-11)
+
+- [ ] S49-8: Board colors not branded — square colors should use BooGMe palette (dark #0F1419 bg, primary #E8633A accent) instead of Lichess brown/cream
+- [ ] S49-9: File/rank notation overlaps pieces — default 13px notation is too large; reduce font size and ensure it doesn't overlap pieces
+- [ ] S49-10: Stockfish engine freezes with no recovery — add on/off toggle button that terminates and restarts the worker; show engine status clearly
+- [ ] S49-11: No variation lines displayed — add multipv 3 analysis showing top 3 engine variations with eval score and first move in SAN
