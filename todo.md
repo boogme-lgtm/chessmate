@@ -1036,8 +1036,15 @@
 
 ## Sprint 49 Fix-4 — PGN Viewer Engine Stability + UX (S49-12 through S49-16)
 
-- [ ] S49-12: Engine 3-step degradation — setoption MultiPV 3 in per-position hot path causes stalls; move to init sequence (after uci, before isready)
-- [ ] S49-13: Variation lines show only 1 move — show 4-5 moves deep PV line per variation (full line, not just first move)
-- [ ] S49-14: Dialog too small — increase max-w from max-w-4xl to max-w-6xl or max-w-[90vw]; board should be larger
-- [ ] S49-15: Eval bar midpoint wrong — bar should grow from center: white advantage fills upward from center, black fills downward; currently fills from bottom
-- [ ] S49-16: Missing flip board button — FlipHorizontal2 button exists but is in wrong position; ensure it is clearly visible
+- [x] S49-12: Engine 3-step degradation — setoption MultiPV 3 in per-position hot path causes stalls; move to init sequence (after uci, before isready)
+- [x] S49-13: Variation lines show only 1 move — show 4-5 moves deep PV line per variation (full line, not just first move)
+- [x] S49-14: Dialog too small — increase max-w from max-w-4xl to max-w-6xl or max-w-[90vw]; board should be larger
+- [x] S49-15: Eval bar midpoint wrong — bar should grow from center: white advantage fills upward from center, black fills downward; currently fills from bottom
+- [x] S49-16: Missing flip board button — FlipHorizontal2 button exists but is in wrong position; ensure it is clearly visible
+
+## Sprint 49 Fix-5 — PGN Viewer Layout Overhaul (S49-17 through S49-20)
+
+- [ ] S49-17: Dialog shrinks on 3rd move — DialogContent max-w-[92vw] is not being respected; dialog reverts to smaller size after content changes; root cause likely DialogContent overflow or max-height constraint
+- [ ] S49-18: Eval bar not parallel to board — bar is currently positioned below the board (self-stretch on a flex column), not alongside it; must be a fixed-height bar exactly matching the board height, flush left of the board
+- [ ] S49-19: Eval bar label/aesthetic — bar should have a small notch/line at the midpoint; label should not float awkwardly; match Lichess style (thin bar, midpoint marker, no floating label)
+- [ ] S49-20: Board too small — board needs to be much larger; layout should be horizontal: [eval bar] [board] | [move list + engine panel]; board should dominate the left side
