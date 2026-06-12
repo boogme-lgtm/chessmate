@@ -2016,3 +2016,40 @@ export async function markPgnAnalysisSent(id: number, annotatedPgn: string) {
     .set({ status: "sent", sentAt: new Date(), annotatedPgn })
     .where(eq(pgnAnalyses.id, id));
 }
+
+// ============ PGN ANALYSIS — COACH-SCOPED HELPERS (Sprint 50 Fix-1) ============
+
+export async function getPgnAnalysisByIdForCoach(id: number, coachId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(pgnAnalyses)
+    .where(and(eq(pgnAnalyses.id, id), eq(pgnAnalyses.coachId, coachId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function updatePgnAnalysisForCoach(
+  id: number,
+  coachId: number,
+  annotatedPgn: string
+): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  const result: any = await db
+    .update(pgnAnalyses)
+    .set({ annotatedPgn })
+    .where(and(eq(pgnAnalyses.id, id), eq(pgnAnalyses.coachId, coachId)));
+  return (result[0]?.affectedRows ?? 0) > 0;
+}
+
+export async function listPgnAnalysesByCoach(coachId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return await db
+    .select()
+    .from(pgnAnalyses)
+    .where(eq(pgnAnalyses.coachId, coachId))
+    .orderBy(desc(pgnAnalyses.updatedAt));
+}
