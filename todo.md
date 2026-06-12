@@ -1024,5 +1024,5 @@
 
 ## Sprint 49 Fix-2 — PGN Viewer Board & Engine (S49-6, S49-7)
 
-- [ ] S49-6: Dark gaps between board rows — boardStyle height:100% stretches grid rows beyond square size; fix by overriding boardStyle to {height:'auto'} and removing aspect-square from wrapper
-- [ ] S49-7: Stockfish stalls at depth 0 after navigation — isready/readyok barrier is wrong for single-threaded WASM; replace with stop→position fen→go infinite (no barrier needed); engine should analyze continuously per position
+- [x] S49-6: Dark gaps between board rows — boardStyle height:100% stretches grid rows beyond square size; fix by overriding boardStyle to {height:'auto'} and removing aspect-square from wrapper
+- [x] S49-7: Stockfish stalls at depth 0 after navigation — isready/readyok barrier is wrong for single-threaded WASM; replace with stop→position fen→go infinite (no barrier needed); engine should analyze continuously per position
