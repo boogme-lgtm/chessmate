@@ -41,7 +41,7 @@ type Evaluation =
 type Variation = {
   multipv: number; // 1, 2, or 3
   eval: Evaluation; // white-POV
-  bestMove: string | null; // UCI string of the variation's first move
+  pvUci: string[]; // S49-13: full PV as UCI moves (e.g. ["e2e4", "e7e5", "g1f3"])
 };
 
 const ARROW_COLOR = "rgba(0, 255, 200, 0.7)"; // electric cyan (arrow stays cyan — reads on both square colors)
@@ -76,6 +76,38 @@ function uciToSan(uci: string | null, fen: string | undefined): string | null {
   } catch {
     return null;
   }
+}
+
+// S49-13: convert a UCI PV sequence to SAN from a starting position, up to
+// maxMoves deep ("Nf3 d5 e3 Nc6 Bb5"). A move that fails to apply (stale PV
+// from a previous position) truncates the line at the last legal move; if not
+// even the first move applies, fall back to arrow notation.
+function pvToSan(pvUci: string[], startFen: string | undefined, maxMoves = 5): string {
+  if (!pvUci.length || !startFen) return "";
+  const san: string[] = [];
+  try {
+    const chess = new Chess(startFen);
+    for (const uci of pvUci.slice(0, maxMoves)) {
+      try {
+        const move = chess.move({
+          from: uci.slice(0, 2),
+          to: uci.slice(2, 4),
+          promotion: uci[4] ?? undefined,
+        });
+        if (!move) break;
+        san.push(move.san);
+      } catch {
+        break;
+      }
+    }
+  } catch {
+    /* invalid FEN — fall through to fallback */
+  }
+  if (san.length > 0) return san.join(" ");
+  return pvUci
+    .slice(0, maxMoves)
+    .map((u) => `${u.slice(0, 2)}→${u.slice(2, 4)}`)
+    .join(" ");
 }
 
 export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerModalProps) {
@@ -165,6 +197,11 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
       if (typeof line !== "string") return;
 
       if (line === "uciok") {
+        // S49-12: setoption is an INITIALIZATION command — set MultiPV exactly
+        // once per worker lifetime, here between uci and isready. Sending it in
+        // the per-position hot path progressively stalled the single-threaded
+        // engine (works → depth-9 stall → depth 0).
+        worker.postMessage("setoption name MultiPV value 3");
         worker.postMessage("isready");
         return;
       }
@@ -185,8 +222,10 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
       // (`bestmove` lines are still ignored — under `go infinite` they only
       // arrive after a stop and always belong to the previous position.)
       const multipvMatch = line.match(/\bmultipv (\d+)/);
-      const pvMatch = line.match(/\bpv (\S+)/);
-      if (multipvMatch && pvMatch) {
+      // S49-13: the "pv" token is followed by ALL remaining moves to end of line.
+      const pvIdx = line.indexOf(" pv ");
+      const pvUci = pvIdx >= 0 ? line.slice(pvIdx + 4).trim().split(/\s+/) : [];
+      if (multipvMatch && pvUci.length > 0) {
         const mpv = parseInt(multipvMatch[1], 10);
         const cpMatch = line.match(/score cp (-?\d+)/);
         const mateMatch = line.match(/score mate (-?\d+)/);
@@ -200,12 +239,12 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
         }
         setVariations((prev) => {
           const next = prev.filter((v) => v.multipv !== mpv);
-          return [...next, { multipv: mpv, eval: ev, bestMove: pvMatch[1] }].sort(
+          return [...next, { multipv: mpv, eval: ev, pvUci }].sort(
             (a, b) => a.multipv - b.multipv
           );
         });
         if (mpv === 1) {
-          setBestMove(pvMatch[1]);
+          setBestMove(pvUci[0] ?? null); // arrow still uses the first move only
           if (ev) setEvaluation(ev);
         }
       }
@@ -234,9 +273,10 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
     setEvaluation(null);
     setEngineDepth(0);
     setVariations([]); // S49-11: variations repopulate for the new position
+    // S49-12: minimal 3-command hot path — MultiPV is configured once at engine
+    // init (uciok handler), never mid-stream.
     stockfishRef.current.postMessage("stop");
     stockfishRef.current.postMessage(`position fen ${fen}`);
-    stockfishRef.current.postMessage("setoption name MultiPV value 3"); // S49-11
     stockfishRef.current.postMessage("go infinite");
   }, [currentIndex, fens, engineReady]);
 
@@ -271,7 +311,7 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl">
+      <DialogContent className="max-w-[92vw] w-full">
         <DialogHeader>
           <DialogTitle className="text-base">
             {headerLine || "Game Analysis"}
@@ -296,13 +336,28 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
               style={{ backgroundColor: "#151B22" }}
               title="Engine evaluation"
             >
+              {/* White (advantage) fill — grows upward from bottom */}
               <div
                 className="absolute bottom-0 left-0 right-0 transition-[height] duration-500"
                 style={{ height: `${evalPct}%`, backgroundColor: BRAND }}
               />
+              {/* S49-15: center line — fill at this line = equal position */}
+              <div
+                className="absolute left-0 right-0"
+                style={{
+                  top: "50%",
+                  height: "1px",
+                  backgroundColor: "rgba(244,239,230,0.25)",
+                  zIndex: 2,
+                }}
+              />
+              {/* S49-15: label floats at the fill boundary so it tracks the eval */}
               <span
-                className="absolute bottom-1 left-1/2 -translate-x-1/2 text-[8px] font-mono z-10 whitespace-nowrap"
-                style={{ color: BRAND }}
+                className="absolute left-1/2 -translate-x-1/2 text-[8px] font-mono z-10 whitespace-nowrap"
+                style={{
+                  bottom: evalPct > 15 ? `${evalPct}%` : "2px",
+                  color: BRAND,
+                }}
               >
                 {evalLabel(evaluation)}
               </span>
@@ -357,7 +412,7 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
 
           {/* Right: move list + controls */}
           <div className="sm:flex-[2] flex flex-col min-h-0">
-            <div className="overflow-y-auto max-h-[260px] sm:max-h-[360px] font-mono text-sm border border-border/40 rounded-md">
+            <div className="overflow-y-auto max-h-[320px] sm:max-h-[480px] font-mono text-sm border border-border/40 rounded-md">
               {moves.length === 0 ? (
                 <p className="text-xs text-muted-foreground p-3">No moves to display.</p>
               ) : (
@@ -401,15 +456,6 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
               <Button variant="outline" size="icon" onClick={() => goTo(fens.length - 1)} aria-label="Last move">
                 <ChevronLast className="h-4 w-4" />
               </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => setBoardOrientation((o) => (o === "white" ? "black" : "white"))}
-                aria-label="Flip board"
-                className="ml-auto"
-              >
-                <FlipHorizontal2 className="h-4 w-4" />
-              </Button>
               {/* S49-10: engine power toggle — off terminates the worker, on spawns
                   a fresh one. Reliable recovery if the engine ever freezes. */}
               <Button
@@ -418,10 +464,27 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
                 onClick={() => setEngineEnabled((e) => !e)}
                 aria-label={engineEnabled ? "Stop engine" : "Start engine"}
                 title={engineEnabled ? "Engine on — click to stop" : "Engine off — click to start"}
-                className={`ml-2 ${engineEnabled ? "border-primary/50" : "opacity-50"}`}
+                className={`ml-auto ${engineEnabled ? "border-primary/50" : "opacity-50"}`}
               >
                 <Power className="h-4 w-4" style={engineEnabled ? { color: BRAND } : undefined} />
               </Button>
+            </div>
+
+            {/* S49-16: flip board — dedicated labeled row so it can't be missed */}
+            <div className="flex items-center gap-2 mt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setBoardOrientation((o) => (o === "white" ? "black" : "white"))}
+                aria-label="Flip board"
+                className="gap-1.5 text-xs"
+              >
+                <FlipHorizontal2 className="h-3.5 w-3.5" />
+                Flip board
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                {boardOrientation === "white" ? "White's perspective" : "Black's perspective"}
+              </span>
             </div>
 
             {/* Engine status — three states (S49-10) */}
@@ -449,20 +512,17 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
                         `${bestMove.slice(0, 2)}→${bestMove.slice(2, 4)}`}
                     </div>
                   )}
-                  {/* S49-11: top-3 MultiPV variation lines, live-updating */}
+                  {/* S49-11/S49-13: top-3 MultiPV lines, full 5-move PVs, live */}
                   {variations.length > 0 && (
                     <div className="mt-2 space-y-0.5">
                       {variations.map((v) => (
-                        <div key={v.multipv} className="flex items-center gap-2 text-xs font-mono">
-                          <span className="text-muted-foreground w-3">{v.multipv}</span>
-                          <span style={{ color: BRAND, minWidth: "3rem" }}>
+                        <div key={v.multipv} className="flex items-start gap-2 text-xs font-mono py-0.5">
+                          <span className="text-muted-foreground w-3 shrink-0">{v.multipv}</span>
+                          <span style={{ color: BRAND, minWidth: "3rem", flexShrink: 0 }}>
                             {evalLabel(v.eval)}
                           </span>
-                          <span className="text-foreground">
-                            {uciToSan(v.bestMove, fens[currentIndex]) ??
-                              (v.bestMove
-                                ? `${v.bestMove.slice(0, 2)}→${v.bestMove.slice(2, 4)}`
-                                : "–")}
+                          <span className="text-foreground leading-relaxed">
+                            {pvToSan(v.pvUci, fens[currentIndex])}
                           </span>
                         </div>
                       ))}
