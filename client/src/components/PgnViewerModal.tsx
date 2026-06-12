@@ -23,6 +23,7 @@ import {
   ChevronRight,
   ChevronLast,
   FlipHorizontal2,
+  Power,
 } from "lucide-react";
 
 interface PgnViewerModalProps {
@@ -36,7 +37,15 @@ type Evaluation =
   | { type: "mate"; value: number } // white-POV mate-in-N (sign = who mates)
   | null;
 
-const ARROW_COLOR = "rgba(0, 255, 200, 0.7)"; // electric cyan
+// S49-11: one engine line from MultiPV analysis.
+type Variation = {
+  multipv: number; // 1, 2, or 3
+  eval: Evaluation; // white-POV
+  bestMove: string | null; // UCI string of the variation's first move
+};
+
+const ARROW_COLOR = "rgba(0, 255, 200, 0.7)"; // electric cyan (arrow stays cyan — reads on both square colors)
+const BRAND = "#E8633A"; // BooGMe terracotta (S49-8)
 
 function evalToPercent(ev: Evaluation): number {
   if (!ev) return 50;
@@ -80,6 +89,10 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
   const [bestMove, setBestMove] = useState<string | null>(null);
   const [engineDepth, setEngineDepth] = useState(0);
   const [engineReady, setEngineReady] = useState(false);
+  // S49-10: user-controlled engine power switch (off = worker terminated).
+  const [engineEnabled, setEngineEnabled] = useState(true);
+  // S49-11: top-3 MultiPV lines for the variations table.
+  const [variations, setVariations] = useState<Variation[]>([]);
 
   const stockfishRef = useRef<Worker | null>(null);
   // Side-to-move for the position currently being analyzed, so we can normalize
@@ -118,9 +131,25 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
     setCurrentIndex(fenList.length - 1); // start at the final position
   }, [pgn, open]);
 
-  // ── Stockfish worker lifecycle ───────────────────────────────────────────────
-  useEffect(() => {
-    if (!open) return;
+  // ── Stockfish worker lifecycle (S49-10: restartable) ─────────────────────────
+  const stopEngine = useCallback(() => {
+    if (stockfishRef.current) {
+      try {
+        stockfishRef.current.postMessage("quit");
+        stockfishRef.current.terminate();
+      } catch { /* noop */ }
+      stockfishRef.current = null;
+    }
+    setEngineReady(false);
+    setEngineDepth(0);
+    setEvaluation(null);
+    setBestMove(null);
+    setVariations([]);
+  }, []);
+
+  const startEngine = useCallback(() => {
+    stopEngine(); // terminate any existing worker first — fresh start every time
+
     let worker: Worker;
     try {
       // Single-threaded build served from /public — no SharedArrayBuffer / COOP-COEP.
@@ -146,43 +175,51 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
         return;
       }
 
-      // info lines — update depth and eval continuously while `go infinite` runs.
+      // Depth updates from any info line while `go infinite` runs.
       const depthMatch = line.match(/\bdepth (\d+)/);
       if (depthMatch) setEngineDepth(parseInt(depthMatch[1], 10));
 
-      const cpMatch = line.match(/score cp (-?\d+)/);
-      if (cpMatch) {
-        const cp = parseInt(cpMatch[1], 10);
-        const white = sideToMoveRef.current === "w" ? cp : -cp;
-        setEvaluation({ type: "cp", value: white });
-      }
-      const mateMatch = line.match(/score mate (-?\d+)/);
-      if (mateMatch) {
-        const m = parseInt(mateMatch[1], 10);
-        const white = sideToMoveRef.current === "w" ? m : -m;
-        setEvaluation({ type: "mate", value: white });
-      }
-      // S49-7: under `go infinite`, `bestmove` is only emitted AFTER a stop — i.e.
-      // it always belongs to the previous (aborted) position and must be ignored.
-      // The live best move is the first move of the principal variation instead,
-      // streamed in every info line: "info depth N score cp X ... pv e2e4 e7e5 ..."
+      // S49-11: MultiPV-aware parsing. With MultiPV=3 every PV info line carries
+      // "multipv N"; route each line into its variation slot. multipv 1 is the
+      // main line and also drives the eval bar, the arrow, and the Best: text.
+      // (`bestmove` lines are still ignored — under `go infinite` they only
+      // arrive after a stop and always belong to the previous position.)
+      const multipvMatch = line.match(/\bmultipv (\d+)/);
       const pvMatch = line.match(/\bpv (\S+)/);
-      if (pvMatch) setBestMove(pvMatch[1]);
+      if (multipvMatch && pvMatch) {
+        const mpv = parseInt(multipvMatch[1], 10);
+        const cpMatch = line.match(/score cp (-?\d+)/);
+        const mateMatch = line.match(/score mate (-?\d+)/);
+        let ev: Evaluation = null;
+        if (cpMatch) {
+          const cp = parseInt(cpMatch[1], 10);
+          ev = { type: "cp", value: sideToMoveRef.current === "w" ? cp : -cp };
+        } else if (mateMatch) {
+          const m = parseInt(mateMatch[1], 10);
+          ev = { type: "mate", value: sideToMoveRef.current === "w" ? m : -m };
+        }
+        setVariations((prev) => {
+          const next = prev.filter((v) => v.multipv !== mpv);
+          return [...next, { multipv: mpv, eval: ev, bestMove: pvMatch[1] }].sort(
+            (a, b) => a.multipv - b.multipv
+          );
+        });
+        if (mpv === 1) {
+          setBestMove(pvMatch[1]);
+          if (ev) setEvaluation(ev);
+        }
+      }
     };
 
     worker.onerror = (err) => console.error("[PgnViewer] Stockfish worker error:", err);
     worker.postMessage("uci");
+  }, [stopEngine]);
 
-    return () => {
-      try {
-        worker.postMessage("quit");
-        worker.terminate();
-      } catch { /* noop */ }
-      stockfishRef.current = null;
-      setEngineReady(false);
-      setEngineDepth(0);
-    };
-  }, [open]);
+  useEffect(() => {
+    if (!open) return;
+    if (engineEnabled) startEngine();
+    return () => stopEngine();
+  }, [open, engineEnabled, startEngine, stopEngine]);
 
   // ── Trigger evaluation when the viewed position changes ──────────────────────
   // S49-7: single-threaded WASM processes `stop` synchronously in its message
@@ -196,8 +233,10 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
     setBestMove(null);
     setEvaluation(null);
     setEngineDepth(0);
+    setVariations([]); // S49-11: variations repopulate for the new position
     stockfishRef.current.postMessage("stop");
     stockfishRef.current.postMessage(`position fen ${fen}`);
+    stockfishRef.current.postMessage("setoption name MultiPV value 3"); // S49-11
     stockfishRef.current.postMessage("go infinite");
   }, [currentIndex, fens, engineReady]);
 
@@ -251,13 +290,20 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
         <div className="flex flex-col sm:flex-row gap-4">
           {/* Left: eval bar + board — board must be square (S49-2) */}
           <div className="flex gap-2 sm:flex-[3] min-w-0">
-            {/* Evaluation bar — full height of the board */}
-            <div className="relative w-4 shrink-0 self-stretch rounded overflow-hidden bg-gray-800 border border-border/30" title="Engine evaluation">
+            {/* Evaluation bar — brand surface bg + terracotta fill (S49-8) */}
+            <div
+              className="relative w-4 shrink-0 self-stretch rounded overflow-hidden border border-border/30"
+              style={{ backgroundColor: "#151B22" }}
+              title="Engine evaluation"
+            >
               <div
-                className="absolute bottom-0 left-0 right-0 bg-white transition-[height] duration-500"
-                style={{ height: `${evalPct}%` }}
+                className="absolute bottom-0 left-0 right-0 transition-[height] duration-500"
+                style={{ height: `${evalPct}%`, backgroundColor: BRAND }}
               />
-              <span className="absolute bottom-1 left-1/2 -translate-x-1/2 text-[8px] font-mono text-cyan-400 z-10 whitespace-nowrap">
+              <span
+                className="absolute bottom-1 left-1/2 -translate-x-1/2 text-[8px] font-mono z-10 whitespace-nowrap"
+                style={{ color: BRAND }}
+              >
                 {evalLabel(evaluation)}
               </span>
             </div>
@@ -282,10 +328,28 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
                     height: "auto",
                     position: "relative",
                   },
-                  // S49-3: Lichess classic palette — high contrast, instantly
-                  // recognizable, readable on the dark modal background.
-                  darkSquareStyle: { backgroundColor: "#b58863" },
-                  lightSquareStyle: { backgroundColor: "#f0d9b5" },
+                  // S49-8: BooGMe branded palette — deep navy (echoes
+                  // --surface-elevated) + warm tan complementing the terracotta.
+                  darkSquareStyle: { backgroundColor: "#1A2C3D" },
+                  lightSquareStyle: { backgroundColor: "#C8B89A" },
+                  // S49-9: 9px notation so it never overlaps pieces; color is set
+                  // per square type below (opposite-tone convention, like Lichess).
+                  alphaNotationStyle: {
+                    fontSize: "9px",
+                    position: "absolute",
+                    bottom: 1,
+                    right: 3,
+                    userSelect: "none",
+                  },
+                  numericNotationStyle: {
+                    fontSize: "9px",
+                    position: "absolute",
+                    top: 1,
+                    left: 2,
+                    userSelect: "none",
+                  },
+                  darkSquareNotationStyle: { color: "rgba(200,184,154,0.7)" },
+                  lightSquareNotationStyle: { color: "rgba(26,44,61,0.7)" },
                 }}
               />
             </div>
@@ -302,14 +366,16 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
                     <span className="text-muted-foreground w-6 shrink-0">{i + 1}.</span>
                     <button
                       onClick={() => goTo(2 * i + 1)}
-                      className={`flex-1 text-left ${currentIndex === 2 * i + 1 ? "text-cyan-400 font-bold" : ""}`}
+                      className={`flex-1 text-left ${currentIndex === 2 * i + 1 ? "font-bold" : ""}`}
+                      style={currentIndex === 2 * i + 1 ? { color: BRAND } : undefined}
                     >
                       {moves[2 * i]}
                     </button>
                     {moves[2 * i + 1] ? (
                       <button
                         onClick={() => goTo(2 * i + 2)}
-                        className={`flex-1 text-left ${currentIndex === 2 * i + 2 ? "text-cyan-400 font-bold" : ""}`}
+                        className={`flex-1 text-left ${currentIndex === 2 * i + 2 ? "font-bold" : ""}`}
+                        style={currentIndex === 2 * i + 2 ? { color: BRAND } : undefined}
                       >
                         {moves[2 * i + 1]}
                       </button>
@@ -344,27 +410,65 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
               >
                 <FlipHorizontal2 className="h-4 w-4" />
               </Button>
+              {/* S49-10: engine power toggle — off terminates the worker, on spawns
+                  a fresh one. Reliable recovery if the engine ever freezes. */}
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setEngineEnabled((e) => !e)}
+                aria-label={engineEnabled ? "Stop engine" : "Start engine"}
+                title={engineEnabled ? "Engine on — click to stop" : "Engine off — click to start"}
+                className={`ml-2 ${engineEnabled ? "border-primary/50" : "opacity-50"}`}
+              >
+                <Power className="h-4 w-4" style={engineEnabled ? { color: BRAND } : undefined} />
+              </Button>
             </div>
 
-            {/* Engine status */}
+            {/* Engine status — three states (S49-10) */}
             <div className="mt-3 text-xs text-muted-foreground font-mono space-y-0.5">
-              {engineReady ? (
+              {!engineEnabled ? (
+                <div>
+                  Engine off ·{" "}
+                  <button onClick={() => setEngineEnabled(true)} className="underline">
+                    turn on
+                  </button>
+                </div>
+              ) : !engineReady ? (
+                <div>Starting engine…</div>
+              ) : (
                 <>
                   <div>
                     Stockfish · depth {engineDepth} ·{" "}
-                    <span className="text-cyan-400">{evalLabel(evaluation)}</span>
+                    <span style={{ color: BRAND }}>{evalLabel(evaluation)}</span>
                   </div>
                   {/* S49-5: best move in SAN, falling back to "e2→e4" if illegal */}
                   {bestMove && (
-                    <div className="text-cyan-300">
+                    <div style={{ color: BRAND }}>
                       Best:{" "}
                       {uciToSan(bestMove, fens[currentIndex]) ??
                         `${bestMove.slice(0, 2)}→${bestMove.slice(2, 4)}`}
                     </div>
                   )}
+                  {/* S49-11: top-3 MultiPV variation lines, live-updating */}
+                  {variations.length > 0 && (
+                    <div className="mt-2 space-y-0.5">
+                      {variations.map((v) => (
+                        <div key={v.multipv} className="flex items-center gap-2 text-xs font-mono">
+                          <span className="text-muted-foreground w-3">{v.multipv}</span>
+                          <span style={{ color: BRAND, minWidth: "3rem" }}>
+                            {evalLabel(v.eval)}
+                          </span>
+                          <span className="text-foreground">
+                            {uciToSan(v.bestMove, fens[currentIndex]) ??
+                              (v.bestMove
+                                ? `${v.bestMove.slice(0, 2)}→${v.bestMove.slice(2, 4)}`
+                                : "–")}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </>
-              ) : (
-                <div>Starting engine…</div>
               )}
             </div>
           </div>
