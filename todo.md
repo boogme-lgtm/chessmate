@@ -1044,7 +1044,7 @@
 
 ## Sprint 49 Fix-5 — PGN Viewer Layout Overhaul (S49-17 through S49-20)
 
-- [ ] S49-17: Dialog shrinks on 3rd move — DialogContent max-w-[92vw] is not being respected; dialog reverts to smaller size after content changes; root cause likely DialogContent overflow or max-height constraint
-- [ ] S49-18: Eval bar not parallel to board — bar is currently positioned below the board (self-stretch on a flex column), not alongside it; must be a fixed-height bar exactly matching the board height, flush left of the board
-- [ ] S49-19: Eval bar label/aesthetic — bar should have a small notch/line at the midpoint; label should not float awkwardly; match Lichess style (thin bar, midpoint marker, no floating label)
-- [ ] S49-20: Board too small — board needs to be much larger; layout should be horizontal: [eval bar] [board] | [move list + engine panel]; board should dominate the left side
+- [x] S49-17: Dialog shrinks on 3rd move — DialogContent max-w-[92vw] is not being respected; dialog reverts to smaller size after content changes; root cause likely DialogContent overflow or max-height constraint
+- [x] S49-18: Eval bar not parallel to board — bar is currently positioned below the board (self-stretch on a flex column), not alongside it; must be a fixed-height bar exactly matching the board height, flush left of the board
+- [x] S49-19: Eval bar label/aesthetic — bar should have a small notch/line at the midpoint; label should not float awkwardly; match Lichess style (thin bar, midpoint marker, no floating label)
+- [x] S49-20: Board too small — board needs to be much larger; layout should be horizontal: [eval bar] [board] | [move list + engine panel]; board should dominate the left side
