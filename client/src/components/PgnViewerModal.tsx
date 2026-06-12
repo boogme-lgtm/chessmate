@@ -52,6 +52,23 @@ function evalLabel(ev: Evaluation): string {
   return `${pawns >= 0 ? "+" : ""}${pawns.toFixed(1)}`;
 }
 
+// S49-5: convert a UCI move ("e2e4", "e7e8q") to SAN ("e4", "e8=Q") for the
+// status line. Returns null if the move is illegal in the given position.
+function uciToSan(uci: string | null, fen: string | undefined): string | null {
+  if (!uci || uci.length < 4 || !fen) return null;
+  try {
+    const chess = new Chess(fen);
+    const move = chess.move({
+      from: uci.slice(0, 2),
+      to: uci.slice(2, 4),
+      promotion: uci[4] ?? undefined,
+    });
+    return move?.san ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerModalProps) {
   const [moves, setMoves] = useState<string[]>([]);
   const [fens, setFens] = useState<string[]>([new Chess().fen()]);
@@ -68,6 +85,10 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
   // Side-to-move for the position currently being analyzed, so we can normalize
   // the engine's side-to-move score into a white-POV evaluation.
   const sideToMoveRef = useRef<"w" | "b">("w");
+  // S49-4: FEN waiting for the engine to confirm idle (readyok) before search.
+  // The single-threaded worker drops commands sent while it's still stopping, so
+  // we use the isready/readyok handshake as a sync barrier.
+  const pendingFenRef = useRef<string | null>(null);
 
   // ── Parse PGN ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -123,6 +144,22 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
         worker.postMessage("isready");
         return;
       }
+      if (line === "readyok") {
+        // S49-4: engine is idle — if a position is waiting (from navigation or
+        // the initial open), start its search now.
+        if (pendingFenRef.current) {
+          const fen = pendingFenRef.current;
+          pendingFenRef.current = null;
+          worker.postMessage(`position fen ${fen}`);
+          worker.postMessage("go depth 18");
+        }
+        return;
+      }
+
+      // While a new position is pending, any info/bestmove lines belong to the
+      // ABORTED search — ignore them so stale evals/arrows don't flash.
+      if (pendingFenRef.current) return;
+
       const depthMatch = line.match(/\bdepth (\d+)/);
       if (depthMatch) setEngineDepth(parseInt(depthMatch[1], 10));
 
@@ -151,12 +188,17 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
         worker.terminate();
       } catch { /* noop */ }
       stockfishRef.current = null;
+      pendingFenRef.current = null;
       setEngineReady(false);
       setEngineDepth(0);
     };
   }, [open]);
 
   // ── Trigger evaluation when the viewed position changes ──────────────────────
+  // S49-4: don't send position/go directly — the single-threaded worker drops
+  // commands while still stopping. Park the FEN in pendingFenRef and use
+  // stop + isready; the onmessage readyok branch dispatches the search once the
+  // engine confirms it is idle.
   useEffect(() => {
     const fen = fens[currentIndex];
     if (!engineReady || !stockfishRef.current || !fen) return;
@@ -164,9 +206,9 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
     setBestMove(null);
     setEvaluation(null);
     setEngineDepth(0);
+    pendingFenRef.current = fen;
     stockfishRef.current.postMessage("stop");
-    stockfishRef.current.postMessage(`position fen ${fen}`);
-    stockfishRef.current.postMessage("go depth 18");
+    stockfishRef.current.postMessage("isready");
   }, [currentIndex, fens, engineReady]);
 
   // ── Keyboard navigation ──────────────────────────────────────────────────────
@@ -217,27 +259,30 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
         ) : null}
 
         <div className="flex flex-col sm:flex-row gap-4">
-          {/* Left: eval bar + board */}
-          <div className="flex gap-2 sm:flex-[3]">
-            {/* Evaluation bar */}
-            <div className="relative w-3 shrink-0 rounded overflow-hidden bg-gray-900" title="Engine evaluation">
+          {/* Left: eval bar + board — board must be square (S49-2) */}
+          <div className="flex gap-2 sm:flex-[3] min-w-0">
+            {/* Evaluation bar — full height of the board */}
+            <div className="relative w-4 shrink-0 self-stretch rounded overflow-hidden bg-gray-800 border border-border/30" title="Engine evaluation">
               <div
-                className="absolute bottom-0 left-0 right-0 bg-white transition-[height] duration-300"
+                className="absolute bottom-0 left-0 right-0 bg-white transition-[height] duration-500"
                 style={{ height: `${evalPct}%` }}
               />
-              <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 text-[9px] font-mono text-cyan-400 z-10 whitespace-nowrap">
+              <span className="absolute bottom-1 left-1/2 -translate-x-1/2 text-[8px] font-mono text-cyan-400 z-10 whitespace-nowrap">
                 {evalLabel(evaluation)}
               </span>
             </div>
-            <div className="flex-1 min-w-0">
+            {/* aspect-square forces a 1:1 board regardless of flex width (S49-2) */}
+            <div className="flex-1 min-w-0 aspect-square">
               <Chessboard
                 options={{
                   position: fens[currentIndex],
                   boardOrientation,
                   allowDragging: false,
                   arrows,
-                  darkSquareStyle: { backgroundColor: "#1a1a2e" },
-                  lightSquareStyle: { backgroundColor: "#2d2d4e" },
+                  // S49-3: Lichess classic palette — high contrast, instantly
+                  // recognizable, readable on the dark modal background.
+                  darkSquareStyle: { backgroundColor: "#b58863" },
+                  lightSquareStyle: { backgroundColor: "#f0d9b5" },
                 }}
               />
             </div>
@@ -299,11 +344,24 @@ export default function PgnViewerModal({ open, onOpenChange, pgn }: PgnViewerMod
             </div>
 
             {/* Engine status */}
-            <div className="mt-3 text-xs text-muted-foreground font-mono">
+            <div className="mt-3 text-xs text-muted-foreground font-mono space-y-0.5">
               {engineReady ? (
-                <>Stockfish · depth {engineDepth} · <span className="text-cyan-400">{evalLabel(evaluation)}</span></>
+                <>
+                  <div>
+                    Stockfish · depth {engineDepth} ·{" "}
+                    <span className="text-cyan-400">{evalLabel(evaluation)}</span>
+                  </div>
+                  {/* S49-5: best move in SAN, falling back to "e2→e4" if illegal */}
+                  {bestMove && (
+                    <div className="text-cyan-300">
+                      Best:{" "}
+                      {uciToSan(bestMove, fens[currentIndex]) ??
+                        `${bestMove.slice(0, 2)}→${bestMove.slice(2, 4)}`}
+                    </div>
+                  )}
+                </>
               ) : (
-                "Starting engine…"
+                <div>Starting engine…</div>
               )}
             </div>
           </div>
