@@ -28,6 +28,8 @@ import {
   referrals,
   InsertReferralCode,
   InsertReferral,
+  tips,
+  InsertTip,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { computeCancellationRefund } from "@shared/cancellationPolicy";
@@ -2063,4 +2065,57 @@ export async function listPgnAnalysesByCoach(coachId: number) {
     .from(pgnAnalyses)
     .where(eq(pgnAnalyses.coachId, coachId))
     .orderBy(desc(pgnAnalyses.updatedAt));
+}
+
+// ============ TIPS (S-UI-1) ============
+
+export async function createTip(tip: InsertTip) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(tips).values(tip);
+  return result;
+}
+
+export async function getTipByLessonAndStudent(lessonId: number, studentId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(tips)
+    .where(and(eq(tips.lessonId, lessonId), eq(tips.studentId, studentId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getTipByCheckoutSession(sessionId: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(tips)
+    .where(eq(tips.stripeCheckoutSessionId, sessionId))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function updateTipStatus(
+  tipId: number,
+  status: "pending" | "paid" | "transferred" | "failed",
+  extra?: { paidAt?: Date; transferredAt?: Date; stripeTransferId?: string }
+) {
+  const db = await getDb();
+  if (!db) return;
+  await db
+    .update(tips)
+    .set({ status, ...extra })
+    .where(eq(tips.id, tipId));
+}
+
+export async function setTipCheckoutSession(tipId: number, sessionId: string) {
+  const db = await getDb();
+  if (!db) return;
+  await db
+    .update(tips)
+    .set({ stripeCheckoutSessionId: sessionId })
+    .where(eq(tips.id, tipId));
 }

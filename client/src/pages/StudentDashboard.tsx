@@ -100,8 +100,11 @@ export default function StudentDashboard() {
  * Extracted so the unified /dashboard page can render it alongside the
  * coach dashboard body under a single header with a role switcher.
  */
+const CANCELLED_STATUSES = ["cancelled", "declined", "refunded"];
+
 export function StudentDashboardContent({ user }: { user: any }) {
   const [, setLocation] = useLocation();
+  const [showCancelled, setShowCancelled] = useState(false);
 
   const { data: lessons, isLoading } = trpc.lesson.myLessons.useQuery(
     { limit: 50 },
@@ -138,9 +141,18 @@ export function StudentDashboardContent({ user }: { user: any }) {
     isFuture(new Date(l.scheduledAt)) && !["cancelled", "completed", "declined", "refunded", "released", "disputed"].includes(l.status)
   ) || [];
 
-  const pastLessons = lessons?.filter((l: any) =>
+  const allPastLessons = (lessons?.filter((l: any) =>
     isPast(new Date(l.scheduledAt)) || l.status === "completed" || l.status === "cancelled"
-  ) || [];
+  ) || []).sort((a: any, b: any) => {
+    const aCancelled = CANCELLED_STATUSES.includes(a.status) ? 1 : 0;
+    const bCancelled = CANCELLED_STATUSES.includes(b.status) ? 1 : 0;
+    if (aCancelled !== bCancelled) return aCancelled - bCancelled;
+    return new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime();
+  });
+  const cancelledCount = allPastLessons.filter((l: any) => CANCELLED_STATUSES.includes(l.status)).length;
+  const pastLessons = showCancelled
+    ? allPastLessons
+    : allPastLessons.filter((l: any) => !CANCELLED_STATUSES.includes(l.status));
 
   const unreadForLesson = (lessonId: number) =>
     (unreadCounts as Record<number, number> | undefined)?.[lessonId] || 0;
@@ -185,7 +197,7 @@ export function StudentDashboardContent({ user }: { user: any }) {
         </TabsContent>
 
         <TabsContent value="past" className="space-y-4">
-          {pastLessons.length === 0 ? (
+          {pastLessons.length === 0 && cancelledCount === 0 ? (
             <Card className="border-border/40">
               <CardContent className="py-16 text-center">
                 <Clock className="h-12 w-12 mx-auto mb-4 text-muted-foreground/30" />
@@ -196,14 +208,24 @@ export function StudentDashboardContent({ user }: { user: any }) {
               </CardContent>
             </Card>
           ) : (
-            pastLessons.map((lesson: any) => (
-              <LessonCard
-                key={lesson.id}
-                lesson={lesson}
-                isPast
-                unreadCount={unreadForLesson(lesson.id)}
-              />
-            ))
+            <>
+              {pastLessons.map((lesson: any) => (
+                <LessonCard
+                  key={lesson.id}
+                  lesson={lesson}
+                  isPast
+                  unreadCount={unreadForLesson(lesson.id)}
+                />
+              ))}
+              {cancelledCount > 0 && (
+                <button
+                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                  onClick={() => setShowCancelled(!showCancelled)}
+                >
+                  {showCancelled ? "Hide" : "Show"} cancelled ({cancelledCount})
+                </button>
+              )}
+            </>
           )}
         </TabsContent>
       </Tabs>
@@ -413,6 +435,7 @@ function LessonCard({ lesson, isPast = false, unreadCount = 0 }: LessonCardProps
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [showMessageThread, setShowMessageThread] = useState(false);
   const [showRaiseIssueDialog, setShowRaiseIssueDialog] = useState(false);
+  const [showDetailDialog, setShowDetailDialog] = useState(false);
   const [issueReason, setIssueReason] = useState("");
   const utils = trpc.useUtils();
 
@@ -712,6 +735,18 @@ function LessonCard({ lesson, isPast = false, unreadCount = 0 }: LessonCardProps
                   </Button>
                 )}
 
+                {isPast && ["completed", "released"].includes(lesson.status) && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-2"
+                    onClick={() => setShowDetailDialog(true)}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                    View Details
+                  </Button>
+                )}
+
                 {/* Raise Issue — only during the 24-hour issue window */}
                 {issueWindowActive && (
                   <Button
@@ -839,7 +874,165 @@ function LessonCard({ lesson, isPast = false, unreadCount = 0 }: LessonCardProps
         lessonId={lesson.id}
         otherPartyName={lesson.coachName || `Coach #${lesson.coachId}`}
       />
+
+      {showDetailDialog && (
+        <LessonDetailDialog
+          open={showDetailDialog}
+          onOpenChange={setShowDetailDialog}
+          lesson={lesson}
+        />
+      )}
     </>
+  );
+}
+
+function LessonDetailDialog({
+  open,
+  onOpenChange,
+  lesson,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  lesson: any;
+}) {
+  const { data: reviewData } = trpc.review.getForLesson.useQuery(
+    { lessonId: lesson.id },
+    { enabled: open }
+  );
+  const { data: tipData, refetch: refetchTip } = trpc.tip.getForLesson.useQuery(
+    { lessonId: lesson.id },
+    { enabled: open }
+  );
+  const [showTipForm, setShowTipForm] = useState(false);
+  const [customAmount, setCustomAmount] = useState("");
+  const tipMutation = trpc.tip.createCheckout.useMutation({
+    onSuccess: (data) => {
+      if (data.url) window.location.href = data.url;
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const handleTip = (amountCents: number) => {
+    tipMutation.mutate({ lessonId: lesson.id, tipAmountCents: amountCents });
+  };
+
+  const hasTipped = !!tipData?.tip;
+  const tipStatus = tipData?.tip?.status;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Lesson Details</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="bg-muted/50 rounded-lg p-4 space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Coach</span>
+              <span className="font-medium">{lesson.coachName || `Coach #${lesson.coachId}`}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Date</span>
+              <span className="font-medium">{format(new Date(lesson.scheduledAt), "MMMM d, yyyy")}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Time</span>
+              <span className="font-medium">{format(new Date(lesson.scheduledAt), "h:mm a")} · {lesson.durationMinutes} min</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Amount</span>
+              <span className="font-medium">${(lesson.amountCents / 100).toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Status</span>
+              <span className="font-medium capitalize">{lesson.status}</span>
+            </div>
+          </div>
+
+          {/* Reviews */}
+          <div className="space-y-3">
+            <h4 className="text-sm font-semibold">Reviews</h4>
+            {reviewData?.myReview ? (
+              <div className="rounded-lg border p-3 space-y-1">
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="font-medium">Your review</span>
+                  <span className="text-yellow-500">{"★".repeat(reviewData.myReview.rating)}</span>
+                </div>
+                {reviewData.myReview.comment && (
+                  <p className="text-sm text-muted-foreground">{reviewData.myReview.comment}</p>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">You haven't reviewed this lesson yet.</p>
+            )}
+
+            {reviewData?.counterpartReview ? (
+              <div className="rounded-lg border p-3 space-y-1">
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="font-medium">Coach's review</span>
+                  <span className="text-yellow-500">{"★".repeat(reviewData.counterpartReview.rating)}</span>
+                </div>
+                {reviewData.counterpartReview.comment && (
+                  <p className="text-sm text-muted-foreground">{reviewData.counterpartReview.comment}</p>
+                )}
+              </div>
+            ) : reviewData?.myReview ? (
+              <p className="text-sm text-muted-foreground">Waiting for the other party to submit their review.</p>
+            ) : null}
+          </div>
+
+          {/* Tip section */}
+          <div className="space-y-2">
+            <h4 className="text-sm font-semibold">Tip your coach</h4>
+            {hasTipped ? (
+              <div className="text-sm text-muted-foreground flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                Tip of ${((tipData.tip?.amountCents || 0) / 100).toFixed(2)} {tipStatus === "transferred" ? "sent" : tipStatus === "paid" ? "processing" : "pending"}
+              </div>
+            ) : showTipForm ? (
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  {[500, 1000, 2000].map((cents) => (
+                    <Button
+                      key={cents}
+                      size="sm"
+                      variant="outline"
+                      disabled={tipMutation.isPending}
+                      onClick={() => handleTip(cents)}
+                    >
+                      ${cents / 100}
+                    </Button>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    min="1"
+                    max="500"
+                    placeholder="Custom $"
+                    value={customAmount}
+                    onChange={(e) => setCustomAmount(e.target.value)}
+                    className="w-24 rounded-md border border-input bg-background px-2 py-1 text-sm"
+                  />
+                  <Button
+                    size="sm"
+                    disabled={!customAmount || Number(customAmount) < 1 || Number(customAmount) > 500 || tipMutation.isPending}
+                    onClick={() => handleTip(Math.round(Number(customAmount) * 100))}
+                  >
+                    {tipMutation.isPending ? "Redirecting…" : "Tip"}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <Button size="sm" variant="outline" className="gap-2" onClick={() => setShowTipForm(true)}>
+                <DollarSign className="h-4 w-4" />
+                Leave a Tip
+              </Button>
+            )}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

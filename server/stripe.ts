@@ -368,6 +368,54 @@ export async function createLessonCheckoutSession(params: {
   return session;
 }
 
+// ============ TIP CHECKOUT (S-UI-1) ============
+
+export async function createTipCheckoutSession(params: {
+  tipAmountCents: number;
+  currency: string;
+  lessonId: number;
+  studentId: number;
+  coachId: number;
+  studentEmail: string;
+  coachName: string;
+  successUrl: string;
+  cancelUrl: string;
+}) {
+  const {
+    tipAmountCents, currency, lessonId, studentId, coachId,
+    studentEmail, coachName, successUrl, cancelUrl,
+  } = params;
+
+  const session = await stripe.checkout.sessions.create({
+    mode: "payment",
+    payment_method_types: ["card"],
+    customer_email: studentEmail,
+    line_items: [
+      {
+        price_data: {
+          currency: currency.toLowerCase(),
+          product_data: {
+            name: `Tip for ${coachName}`,
+            description: "Thank your coach with a tip — 100% goes to them",
+          },
+          unit_amount: tipAmountCents,
+        },
+        quantity: 1,
+      },
+    ],
+    metadata: {
+      type: "tip",
+      lessonId: lessonId.toString(),
+      studentId: studentId.toString(),
+      coachId: coachId.toString(),
+    },
+    success_url: successUrl,
+    cancel_url: cancelUrl,
+  });
+
+  return session;
+}
+
 // ============ SUBSCRIPTION (PREMIUM PLANS) ============
 
 /**

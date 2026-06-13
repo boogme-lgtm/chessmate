@@ -839,3 +839,25 @@ export const pgnAnalyses = mysqlTable("pgn_analyses", {
 
 export type PgnAnalysis = typeof pgnAnalyses.$inferSelect;
 export type InsertPgnAnalysis = typeof pgnAnalyses.$inferInsert;
+
+/**
+ * Tips — student tips to coaches after completed lessons (S-UI-1).
+ * One tip per lesson. 100% goes to coach via Stripe Connect transfer (no platform fee).
+ */
+export const tips = mysqlTable("tips", {
+  id: int("id").autoincrement().primaryKey(),
+  lessonId: int("lessonId").notNull(),
+  studentId: int("studentId").notNull(),
+  coachId: int("coachId").notNull(),
+  amountCents: int("amountCents").notNull(),
+  currency: varchar("currency", { length: 3 }).default("USD"),
+  stripeCheckoutSessionId: varchar("stripeCheckoutSessionId", { length: 128 }),
+  stripeTransferId: varchar("stripeTransferId", { length: 64 }),
+  status: mysqlEnum("status", ["pending", "paid", "transferred", "failed"]).default("pending"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  paidAt: timestamp("paidAt"),
+  transferredAt: timestamp("transferredAt"),
+});
+
+export type Tip = typeof tips.$inferSelect;
+export type InsertTip = typeof tips.$inferInsert;
