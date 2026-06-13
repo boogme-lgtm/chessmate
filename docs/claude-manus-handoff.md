@@ -750,11 +750,76 @@ it's applied, both review dialogs will succeed with no further code change.
 
 ---
 
+## 3v. Sprint S-UI-1 — lesson detail + tipping + cancelled toggle (BUILT, commit `7123393`)
+
+Three features per the handoff.
+
+### 1. Lesson Detail Dialog (student + coach)
+- **`server/routers.ts`** — `review.getForLesson`: protected query, takes `{lessonId}`,
+  returns `{myReview, counterpartReview}`. Counterpart only returned if `isVisible=true`.
+  Reuses existing `getReviewByLessonAndReviewer` and `getCounterpartReview` helpers.
+- **`client/src/pages/StudentDashboard.tsx`** — "View Details" button on past
+  completed/released lessons opens `LessonDetailDialog` showing date, time, amount,
+  status, both reviews (counterpart hidden until both submit), and tipping.
+- **`client/src/pages/CoachDashboard.tsx`** — "Details" button on completed/released
+  lessons in the All Lessons list opens `CoachLessonDetailDialog` (same layout, minus
+  tipping). Imports `Dialog` components.
+
+### 2. Student Tipping
+- **`drizzle/schema.ts`** — `tips` table: id, lessonId, studentId, coachId, amountCents,
+  currency, stripeCheckoutSessionId, stripeTransferId, status enum, timestamps.
+- **`server/db.ts`** — `createTip`, `getTipByLessonAndStudent`, `getTipByCheckoutSession`,
+  `updateTipStatus`, `setTipCheckoutSession`.
+- **`server/stripe.ts`** — `createTipCheckoutSession`: single line item (tip amount),
+  metadata `{type:"tip", lessonId, studentId, coachId}`. No platform fee, no
+  `transfer_data` — tip is charged on the platform and transferred post-checkout.
+- **`server/routers.ts`** — `tip.createCheckout` (student-only, completed lessons, one
+  tip per lesson, $1–$500, validates coach has Connect account) and `tip.getForLesson`.
+- **`server/webhooks.ts`** — `handleTipCheckoutCompleted`: on `checkout.session.completed`
+  with `metadata.type === "tip"`, marks tip paid, calls `transferToCoach` (100% to coach
+  via `stripeConnect.ts`), marks transferred. Idempotent (skips non-pending tips).
+- **Student UI** — detail dialog has preset ($5/$10/$20) + custom amount, shows tip
+  status after payment.
+
+### 3. Cancelled Lesson Toggle
+- **StudentDashboard** — Past tab sorts completed/released before cancelled/declined/
+  refunded. "Show cancelled (N)" toggle (collapsed by default). Count badge in tab stays
+  unchanged (shows all).
+- **CoachDashboard** — All Lessons filtered by `showCancelled` toggle; sort unchanged
+  (`STATUS_PRIORITY` already sinks cancelled). Toggle at the bottom of the list.
+
+### ACTION REQUIRED (Manus)
+- Create the `tips` table on the live DB. Migration couldn't be generated (no DB URL in
+  this env). Schema:
+  ```sql
+  CREATE TABLE tips (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    lessonId INT NOT NULL,
+    studentId INT NOT NULL,
+    coachId INT NOT NULL,
+    amountCents INT NOT NULL,
+    currency VARCHAR(3) DEFAULT 'USD',
+    stripeCheckoutSessionId VARCHAR(128),
+    stripeTransferId VARCHAR(64),
+    status ENUM('pending','paid','transferred','failed') DEFAULT 'pending',
+    createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    paidAt TIMESTAMP NULL,
+    transferredAt TIMESTAMP NULL
+  );
+  ```
+  Add a unique index: `CREATE UNIQUE INDEX idx_tips_lesson_student ON tips(lessonId, studentId);`
+
+### Verification
+- **411 tests** (29 files, +11 new) · tsc 0 · build clean · audit unchanged.
+
+---
+
 ## 4. Remaining open items
 
 - **⛔ reviews live-DB ALTER (S-REV-1)** — drop or nullable-default the dead
   `reviewerId`/`revieweeId` columns on the live `reviews` table (SQL in §3u). This is
   the ONLY thing still blocking review submission; the code is done and pushed.
+- **Create `tips` table (S-UI-1)** — CREATE TABLE + unique index SQL in §3v above.
 - **Apply migration `drizzle/0021_striped_mandroid.sql`** (`pgn_analyses` table,
   Sprint 50) and **`drizzle/0020_free_ezekiel_stane.sql`** (messages `mediumtext`,
   Sprint 47) if not yet applied to the live DB.
