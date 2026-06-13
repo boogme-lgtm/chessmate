@@ -679,8 +679,85 @@ and the engine follows; replay the existing next move → no duplicate variation
 !/± and a comment → they render; Save → reopen via analysisId → annotations load;
 Send to Coach → note + PGN appear in the lesson chat, coach gets an email.
 
+## 3u. Sprint S-REV-1 — reviews submission failure (CODE DONE — needs a live-DB ALTER)
+
+Both review dialogs (coach reviewing student, student reviewing coach) failed at the
+INSERT. **Root cause: the drizzle `reviews` schema didn't match the live table.** The
+old schema declared `reviewerId`/`revieweeId`; the live table had been ALTERed to carry
+`studentId`/`coachId`/`reviewerType` as `NOT NULL`. So every Drizzle INSERT both
+referenced columns the live table no longer cared about AND omitted the live `NOT NULL`
+columns → rejected.
+
+### Code fix (BUILT, commit `0f4bf74`, merged into `9a47b10` — already on this branch)
+
+- **`drizzle/schema.ts`** — `reviews` table rewritten to match the live shape:
+  `studentId`/`coachId` (both `NOT NULL`) + `reviewerType` enum `['student','coach']`
+  (says which side WROTE the review). `reviewerId`/`revieweeId` removed.
+- **`server/db.ts`**
+  - `createReview` stats hook now keys on `review.coachId`; `getReviewsByCoach` and
+    `updateCoachStats` filter on `reviews.coachId`.
+  - `getReviewByLessonAndReviewer(lessonId, userId)` rewritten with a **role-paired**
+    predicate (added `or` to the drizzle import):
+    ```ts
+    .where(and(eq(reviews.lessonId, lessonId),
+      or(
+        and(eq(reviews.studentId, userId), eq(reviews.reviewerType, "student")),
+        and(eq(reviews.coachId,  userId), eq(reviews.reviewerType, "coach"))
+      )))
+    ```
+    **Correction to the S-REV-1 handoff spec**: the suggested
+    `WHERE lessonId=? AND (studentId=? OR coachId=?)` is buggy — both review rows of a
+    lesson share the same `studentId`/`coachId` pair, so it would match the OTHER
+    party's row and corrupt the duplicate check (and the "both submitted → flip
+    visible" gate). The role pairing is required for correctness.
+- **`server/routers.ts`** — both `createReview` call sites (the inline review in
+  `confirmCompletion` and `review.submit`) now pass
+  `studentId: lesson.studentId, coachId: lesson.coachId, reviewerType` (derived from
+  WHO is calling vs. the lesson), and no longer pass `reviewerId`/`revieweeId`.
+- **`server/sprint-rev1.test.ts`** (new, 5 behavioral tests via `createCaller`):
+  student-submit payload shape, coach-submit shape, duplicate rejection through the
+  caller-scoped lookup, both-submitted visibility flip, third-party rejection.
+
+Verification: **400 tests pass**, `tsc --noEmit` 0, `pnpm build` clean.
+
+### ⛔ ACTION REQUIRED (Manus) — this is the remaining blocker, not code
+
+After deploying the code fix, the live failure **persisted**, and the new error
+screenshots prove why: they now list the corrected columns (`studentId`, `coachId`,
+`reviewerType`; no `reviewerId`/`revieweeId`), so the code is deployed and correct. The
+remaining rejection is **purely a live-DB constraint** — the old `reviewerId` /
+`revieweeId` columns are still physically present on the live `reviews` table as
+`NOT NULL` with no default, so MySQL rejects every INSERT that (correctly) omits them.
+
+I **cannot** reach the DB to fix this. You must run ONE of these against the live DB:
+
+```sql
+-- Preferred: drop the dead columns the code no longer writes.
+ALTER TABLE reviews DROP COLUMN reviewerId, DROP COLUMN revieweeId;
+```
+```sql
+-- Or, if anything still reads them, make them tolerate the omission instead:
+ALTER TABLE reviews
+  MODIFY COLUMN reviewerId INT NULL DEFAULT 0,
+  MODIFY COLUMN revieweeId INT NULL DEFAULT 0;
+```
+
+I did **not** generate a drizzle migration for this: `drizzle-kit generate` requires an
+interactive TTY (unavailable here) to disambiguate rename-vs-drop, and a wrong
+auto-answer could emit a catastrophic `RENAME COLUMN reviewerId TO studentId` that
+would clobber live data. The ALTER above is safe and explicit — run it directly. Once
+it's applied, both review dialogs will succeed with no further code change.
+
+---
+
 ## 4. Remaining open items
 
+- **⛔ reviews live-DB ALTER (S-REV-1)** — drop or nullable-default the dead
+  `reviewerId`/`revieweeId` columns on the live `reviews` table (SQL in §3u). This is
+  the ONLY thing still blocking review submission; the code is done and pushed.
+- **Apply migration `drizzle/0021_striped_mandroid.sql`** (`pgn_analyses` table,
+  Sprint 50) and **`drizzle/0020_free_ezekiel_stane.sql`** (messages `mediumtext`,
+  Sprint 47) if not yet applied to the live DB.
 - **Live Stripe end-to-end test** — needs a human with Stripe test cards; I can't run
   it. Steps are in the Codex handoff. This is the last gate before enabling
   `AUTO_RELEASE_PAYOUTS_ENABLED=true` in production.
