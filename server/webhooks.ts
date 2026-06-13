@@ -9,6 +9,7 @@ import { Request, Response } from 'express';
 import Stripe from 'stripe';
 import { constructWebhookEvent } from './stripe';
 import * as db from './db';
+import { transferToCoach } from './stripeConnect';
 import { sendEmail, getStudentBookingConfirmationEmail, getCoachBookingNotificationEmail } from './emailService';
 import { ENV } from './_core/env';
 
@@ -86,6 +87,11 @@ async function handleCheckoutCompleted(event: Stripe.Event) {
   console.log(`[Webhook] Checkout completed for session: ${session.id}`);
   console.log(`[Webhook] Payment status: ${session.payment_status}`);
   console.log(`[Webhook] Metadata:`, session.metadata);
+
+  if (session.metadata?.type === 'tip') {
+    await handleTipCheckoutCompleted(session);
+    return;
+  }
 
   // Extract and validate lesson ID from metadata
   const rawLessonId = session.metadata?.lessonId;
@@ -214,6 +220,54 @@ async function handleCheckoutCompleted(event: Stripe.Event) {
     }
   } else {
     console.log(`[Webhook] Payment not completed yet for lesson ${lessonId}`);
+  }
+}
+
+async function handleTipCheckoutCompleted(session: Stripe.Checkout.Session) {
+  const tipRecord = await db.getTipByCheckoutSession(session.id);
+  if (!tipRecord) {
+    console.error(`[Webhook] No tip found for checkout session ${session.id}`);
+    return;
+  }
+  if (tipRecord.status !== 'pending') {
+    console.log(`[Webhook] Tip ${tipRecord.id} already processed (status: ${tipRecord.status})`);
+    return;
+  }
+  if (session.payment_status !== 'paid') {
+    console.log(`[Webhook] Tip payment not completed for session ${session.id}`);
+    return;
+  }
+
+  await db.updateTipStatus(tipRecord.id, 'paid', { paidAt: new Date() });
+  console.log(`[Webhook] Tip ${tipRecord.id} marked paid`);
+
+  const coach = await db.getUserById(tipRecord.coachId);
+  if (!coach?.stripeConnectAccountId) {
+    console.error(`[Webhook] Coach ${tipRecord.coachId} has no Connect account — tip ${tipRecord.id} cannot be transferred`);
+    await db.updateTipStatus(tipRecord.id, 'failed');
+    return;
+  }
+
+  const result = await transferToCoach({
+    accountId: coach.stripeConnectAccountId,
+    amountCents: tipRecord.amountCents,
+    description: `Tip for lesson #${tipRecord.lessonId}`,
+    metadata: {
+      tipId: tipRecord.id.toString(),
+      lessonId: tipRecord.lessonId.toString(),
+    },
+    idempotencyKey: `tip_transfer_${tipRecord.id}`,
+  });
+
+  if (result.success) {
+    await db.updateTipStatus(tipRecord.id, 'transferred', {
+      transferredAt: new Date(),
+      stripeTransferId: result.transferId,
+    });
+    console.log(`[Webhook] Tip ${tipRecord.id} transferred to coach ${tipRecord.coachId}`);
+  } else {
+    await db.updateTipStatus(tipRecord.id, 'failed');
+    console.error(`[Webhook] Tip ${tipRecord.id} transfer failed: ${result.error}`);
   }
 }
 

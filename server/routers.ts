@@ -1681,6 +1681,27 @@ export const appRouter = router({
       .query(async ({ input }) => {
         return await db.getReviewsByCoach(input.coachId, input.limit);
       }),
+
+    getForLesson: protectedProcedure
+      .input(z.object({ lessonId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        const lesson = await db.getLessonById(input.lessonId);
+        if (!lesson) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
+        }
+        const isStudent = lesson.studentId === ctx.user.id;
+        const isCoach = lesson.coachId === ctx.user.id;
+        if (!isStudent && !isCoach) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Not your lesson" });
+        }
+        const reviewerType: "student" | "coach" = isStudent ? "student" : "coach";
+        const myReview = await db.getReviewByLessonAndReviewer(input.lessonId, ctx.user.id);
+        const counterpartReview = await db.getCounterpartReview(input.lessonId, reviewerType);
+        return {
+          myReview: myReview || null,
+          counterpartReview: (counterpartReview && counterpartReview.isVisible) ? counterpartReview : null,
+        };
+      }),
   }),
 
   // ============ IN-APP MESSAGING ============
@@ -2272,6 +2293,78 @@ export const appRouter = router({
           }
           throw err;
         }
+      }),
+  }),
+
+  // ============ TIP OPERATIONS (S-UI-1) ============
+  tip: router({
+    createCheckout: protectedProcedure
+      .input(z.object({
+        lessonId: z.number(),
+        tipAmountCents: z.number().int().min(100).max(50000),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const lesson = await db.getLessonById(input.lessonId);
+        if (!lesson) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
+        }
+        if (lesson.studentId !== ctx.user.id) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Only the student can tip" });
+        }
+        if (!["completed", "released"].includes(lesson.status)) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Lesson is not completed" });
+        }
+        const existing = await db.getTipByLessonAndStudent(input.lessonId, ctx.user.id);
+        if (existing) {
+          throw new TRPCError({ code: "CONFLICT", message: "You have already tipped for this lesson" });
+        }
+        const coach = await db.getUserById(lesson.coachId);
+        if (!coach?.stripeConnectAccountId) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Coach has not completed payment setup" });
+        }
+
+        await db.createTip({
+          lessonId: input.lessonId,
+          studentId: ctx.user.id,
+          coachId: lesson.coachId,
+          amountCents: input.tipAmountCents,
+        });
+
+        const student = await db.getUserById(ctx.user.id);
+        const baseUrl = process.env.VITE_FRONTEND_URL || "http://localhost:3000";
+
+        const session = await stripeService.createTipCheckoutSession({
+          tipAmountCents: input.tipAmountCents,
+          currency: lesson.currency || "USD",
+          lessonId: input.lessonId,
+          studentId: ctx.user.id,
+          coachId: lesson.coachId,
+          studentEmail: student?.email || "",
+          coachName: coach.name || "Coach",
+          successUrl: `${baseUrl}/lessons/${lesson.id}?tip=success`,
+          cancelUrl: `${baseUrl}/lessons/${lesson.id}?tip=cancelled`,
+        });
+
+        const tip = await db.getTipByLessonAndStudent(input.lessonId, ctx.user.id);
+        if (tip) {
+          await db.setTipCheckoutSession(tip.id, session.id);
+        }
+
+        return { url: session.url };
+      }),
+
+    getForLesson: protectedProcedure
+      .input(z.object({ lessonId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        const lesson = await db.getLessonById(input.lessonId);
+        if (!lesson) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
+        }
+        if (lesson.studentId !== ctx.user.id && lesson.coachId !== ctx.user.id) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Not your lesson" });
+        }
+        const tip = await db.getTipByLessonAndStudent(input.lessonId, lesson.studentId);
+        return { tip: tip || null };
       }),
   }),
 

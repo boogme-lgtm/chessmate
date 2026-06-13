@@ -31,6 +31,12 @@ import {
   Zap,
   AlertTriangle
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Link } from "wouter";
 import { toast } from "sonner";
 import { useState } from "react";
@@ -140,7 +146,10 @@ export default function CoachDashboard() {
  * list. Extracted so the unified /dashboard page can render it alongside
  * the student dashboard body under a single header with a role switcher.
  */
+const CANCELLED_STATUSES = ["cancelled", "declined"];
+
 export function CoachDashboardContent({ user }: { user: any }) {
+  const [showCancelled, setShowCancelled] = useState(false);
   const { data: profileData } = trpc.coach.getMyProfile.useQuery(
     undefined,
     { enabled: !!user }
@@ -435,7 +444,7 @@ export function CoachDashboardContent({ user }: { user: any }) {
               <CardContent>
                 {lessons && lessons.length > 0 ? (
                   <div className="space-y-4">
-                    {sortedLessons.map((lesson: any) => {
+                    {sortedLessons.filter((l: any) => showCancelled || !CANCELLED_STATUSES.includes(l.status)).map((lesson: any) => {
                       const unread = (unreadCounts as Record<number, number> | undefined)?.[lesson.id] || 0;
                       const getStatusBadge = () => {
                         switch (lesson.status) {
@@ -528,6 +537,17 @@ export function CoachDashboardContent({ user }: { user: any }) {
                         />
                       );
                     })}
+                    {(() => {
+                      const cancelledCount = sortedLessons.filter((l: any) => CANCELLED_STATUSES.includes(l.status)).length;
+                      return cancelledCount > 0 ? (
+                        <button
+                          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                          onClick={() => setShowCancelled(!showCancelled)}
+                        >
+                          {showCancelled ? "Hide" : "Show"} cancelled ({cancelledCount})
+                        </button>
+                      ) : null;
+                    })()}
                   </div>
                 ) : (
                   <div className="text-center py-12 text-muted-foreground">
@@ -626,6 +646,7 @@ function CoachLessonRow({ lesson, unreadCount, formatCurrency, getStatusBadge }:
   getStatusBadge: () => React.ReactNode;
 }) {
   const [showMessages, setShowMessages] = useState(false);
+  const [showDetail, setShowDetail] = useState(false);
 
   return (
     <>
@@ -645,6 +666,16 @@ function CoachLessonRow({ lesson, unreadCount, formatCurrency, getStatusBadge }:
           </div>
         </div>
         <div className="flex items-center gap-3">
+          {["completed", "released"].includes(lesson.status) && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5"
+              onClick={() => setShowDetail(true)}
+            >
+              Details
+            </Button>
+          )}
           <Button
             size="sm"
             variant="outline"
@@ -674,7 +705,97 @@ function CoachLessonRow({ lesson, unreadCount, formatCurrency, getStatusBadge }:
         otherPartyName={lesson.studentName || `Student #${lesson.studentId}`}
         viewerRole="coach"
       />
+      {showDetail && (
+        <CoachLessonDetailDialog
+          open={showDetail}
+          onOpenChange={setShowDetail}
+          lesson={lesson}
+          formatCurrency={formatCurrency}
+        />
+      )}
     </>
+  );
+}
+
+function CoachLessonDetailDialog({
+  open,
+  onOpenChange,
+  lesson,
+  formatCurrency,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  lesson: any;
+  formatCurrency: (cents: number) => string;
+}) {
+  const { data: reviewData } = trpc.review.getForLesson.useQuery(
+    { lessonId: lesson.id },
+    { enabled: open }
+  );
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Lesson Details</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="bg-muted/50 rounded-lg p-4 space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Student</span>
+              <span className="font-medium">{lesson.studentName || `Student #${lesson.studentId}`}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Date</span>
+              <span className="font-medium">{new Date(lesson.scheduledAt).toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Duration</span>
+              <span className="font-medium">{lesson.durationMinutes} min</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Your Payout</span>
+              <span className="font-medium">{formatCurrency(lesson.coachPayoutCents || 0)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Status</span>
+              <span className="font-medium capitalize">{lesson.status}</span>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <h4 className="text-sm font-semibold">Reviews</h4>
+            {reviewData?.myReview ? (
+              <div className="rounded-lg border p-3 space-y-1">
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="font-medium">Your review</span>
+                  <span className="text-yellow-500">{"★".repeat(reviewData.myReview.rating)}</span>
+                </div>
+                {reviewData.myReview.comment && (
+                  <p className="text-sm text-muted-foreground">{reviewData.myReview.comment}</p>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">You haven't reviewed this student yet.</p>
+            )}
+
+            {reviewData?.counterpartReview ? (
+              <div className="rounded-lg border p-3 space-y-1">
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="font-medium">Student's review</span>
+                  <span className="text-yellow-500">{"★".repeat(reviewData.counterpartReview.rating)}</span>
+                </div>
+                {reviewData.counterpartReview.comment && (
+                  <p className="text-sm text-muted-foreground">{reviewData.counterpartReview.comment}</p>
+                )}
+              </div>
+            ) : reviewData?.myReview ? (
+              <p className="text-sm text-muted-foreground">Waiting for the other party to submit their review.</p>
+            ) : null}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
