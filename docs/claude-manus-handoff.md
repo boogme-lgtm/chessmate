@@ -814,8 +814,62 @@ Three features per the handoff.
 
 ---
 
+## 3w. Sprint S-PAY-1 — charge-sourced coach payouts (BUILT, commit `faa472c`)
+
+**Verdict: it was a real bug, not just test-mode noise.** The handoff's diagnosis is
+correct. `stripe.transfers.create()` with no `source_transaction` draws from the
+platform's **available** balance. In test mode payments never settle to available
+balance, so `releaseAllEligiblePayouts()` failed with `balance_insufficient`. In
+production it would eventually work after the ~2-day settlement, but the payout was
+untestable and unnecessarily fragile (a refund or low balance could starve payouts).
+
+Fixed exactly as specced — each payout now pulls from the originating charge:
+- **`drizzle/schema.ts`** — added `lessons.stripeChargeId`. **Deviation from the
+  handoff:** used `varchar("stripeChargeId", { length: 64 })` (camelCase, varchar 64)
+  to match every other Stripe-id column in the `lessons` table, not the handoff's
+  `text('stripe_charge_id')`. Charge ids (`ch_…`/`py_…`) are well under 64 chars, and
+  keeping the naming convention avoids a snake_case outlier in a camelCase table.
+- **`server/stripeConnect.ts`** — `transferToCoach` takes an optional
+  `sourceTransaction` and passes it as `source_transaction`. New
+  `getChargeIdForPaymentIntent(pi)` retrieves the PI and returns `latest_charge`
+  (best-effort: returns `null` on any error so it never blocks the payment path).
+- **`server/webhooks.ts`** — `handleCheckoutCompleted` resolves the charge and stores
+  it. **Beyond the spec:** the `payment_intent.succeeded` backup path also stores the
+  charge, read straight off the event's `latest_charge` (no extra API call), so the
+  charge is captured no matter which event lands first.
+- **`server/db.ts`** — `updateLessonPaymentCollected(lessonId, paymentIntentId,
+  chargeId?)` stores the charge; never nulls an existing charge on a webhook retry.
+- **`server/payoutService.ts`** — passes `sourceTransaction: lesson.stripeChargeId`,
+  falling back to `null` (prior balance-based behaviour) when no charge is stored.
+
+### ⛔ ACTION REQUIRED (Manus)
+1. **Add the column to the live `lessons` table** (drizzle-kit can't generate here — no
+   DB URL, same constraint as prior sprints):
+   ```sql
+   ALTER TABLE lessons ADD COLUMN stripeChargeId VARCHAR(64) NULL AFTER stripePaymentIntentId;
+   ```
+2. **Backfill lesson 330001 (and any other already-`completed`/`confirmed` lesson paid
+   before this deploy).** They have no stored charge, so their payout would still fall
+   back to the balance-based transfer and fail in test mode. For each, look up the
+   PaymentIntent's `latest_charge` and set it:
+   ```sql
+   UPDATE lessons SET stripeChargeId = '<ch_...>' WHERE id = 330001;
+   ```
+   (Get `<ch_...>` from `stripe.paymentIntents.retrieve(<pi>, {expand:['latest_charge']})`
+   for that lesson's `stripePaymentIntentId`.) New payments after deploy store it
+   automatically via the webhook. Once set, re-run `releaseAllEligiblePayouts()` and the
+   transfer should succeed.
+
+### Verification
+- **419 tests** (30 files, +5 new in `sprint-pay1.test.ts`; 2 existing webhook
+  assertions updated for the new 3-arg signature) · tsc 0 · build clean.
+
+---
+
 ## 4. Remaining open items
 
+- **⛔ lessons live-DB ALTER + backfill (S-PAY-1)** — add `stripeChargeId` column and
+  backfill in-flight completed lessons (SQL in §3w). Blocks coach payouts in test mode.
 - **⛔ reviews live-DB ALTER (S-REV-1)** — drop or nullable-default the dead
   `reviewerId`/`revieweeId` columns on the live `reviews` table (SQL in §3u). This is
   the ONLY thing still blocking review submission; the code is done and pushed.
