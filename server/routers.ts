@@ -1481,6 +1481,9 @@ export const appRouter = router({
           }
         }
 
+        // Update coach stats (lesson count etc.) now that the lesson is completed.
+        await db.updateCoachStats(lesson.coachId);
+
         // Award XP to student
         await db.updateStudentXp(ctx.user.id, 50);
 
@@ -2316,19 +2319,15 @@ export const appRouter = router({
         }
         const existing = await db.getTipByLessonAndStudent(input.lessonId, ctx.user.id);
         if (existing) {
-          throw new TRPCError({ code: "CONFLICT", message: "You have already tipped for this lesson" });
+          if (existing.status === "paid" || existing.status === "transferred") {
+            throw new TRPCError({ code: "CONFLICT", message: "You have already tipped for this lesson" });
+          }
+          await db.deleteTip(existing.id);
         }
         const coach = await db.getUserById(lesson.coachId);
         if (!coach?.stripeConnectAccountId) {
           throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Coach has not completed payment setup" });
         }
-
-        await db.createTip({
-          lessonId: input.lessonId,
-          studentId: ctx.user.id,
-          coachId: lesson.coachId,
-          amountCents: input.tipAmountCents,
-        });
 
         const student = await db.getUserById(ctx.user.id);
         const baseUrl = process.env.VITE_FRONTEND_URL || "http://localhost:3000";
@@ -2341,14 +2340,17 @@ export const appRouter = router({
           coachId: lesson.coachId,
           studentEmail: student?.email || "",
           coachName: coach.name || "Coach",
-          successUrl: `${baseUrl}/lessons/${lesson.id}?tip=success`,
-          cancelUrl: `${baseUrl}/lessons/${lesson.id}?tip=cancelled`,
+          successUrl: `${baseUrl}/dashboard?tip=success`,
+          cancelUrl: `${baseUrl}/dashboard?tip=cancelled`,
         });
 
-        const tip = await db.getTipByLessonAndStudent(input.lessonId, ctx.user.id);
-        if (tip) {
-          await db.setTipCheckoutSession(tip.id, session.id);
-        }
+        await db.createTip({
+          lessonId: input.lessonId,
+          studentId: ctx.user.id,
+          coachId: lesson.coachId,
+          amountCents: input.tipAmountCents,
+          stripeCheckoutSessionId: session.id,
+        });
 
         return { url: session.url };
       }),

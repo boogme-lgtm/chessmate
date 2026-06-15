@@ -108,26 +108,54 @@ describe("S-UI-1-B — tip.createCheckout", () => {
       .rejects.toThrow(/not completed/);
   });
 
-  it("rejects duplicate tip", async () => {
-    vi.mocked(db.getTipByLessonAndStudent).mockResolvedValue({ id: 1 } as any);
+  it("rejects duplicate tip when already paid", async () => {
+    vi.mocked(db.getTipByLessonAndStudent).mockResolvedValue({ id: 1, status: "paid" } as any);
     const caller = appRouter.createCaller(ctx(student));
     await expect(caller.tip.createCheckout({ lessonId: 7, tipAmountCents: 500 }))
       .rejects.toThrow(/already tipped/);
   });
 
-  it("happy path creates checkout and returns URL", async () => {
+  it("rejects duplicate tip when already transferred", async () => {
+    vi.mocked(db.getTipByLessonAndStudent).mockResolvedValue({ id: 1, status: "transferred" } as any);
+    const caller = appRouter.createCaller(ctx(student));
+    await expect(caller.tip.createCheckout({ lessonId: 7, tipAmountCents: 500 }))
+      .rejects.toThrow(/already tipped/);
+  });
+
+  it("allows retry when pending tip exists (deletes old, creates new)", async () => {
+    vi.mocked(db.getTipByLessonAndStudent).mockResolvedValue({ id: 5, status: "pending" } as any);
+    vi.mocked(db.deleteTip).mockResolvedValue(undefined);
+    const caller = appRouter.createCaller(ctx(student));
+    const result = await caller.tip.createCheckout({ lessonId: 7, tipAmountCents: 500 });
+    expect(result.url).toBe("https://checkout.stripe.com/tip");
+    expect(db.deleteTip).toHaveBeenCalledWith(5);
+    expect(db.createTip).toHaveBeenCalled();
+  });
+
+  it("allows retry when failed tip exists", async () => {
+    vi.mocked(db.getTipByLessonAndStudent).mockResolvedValue({ id: 6, status: "failed" } as any);
+    vi.mocked(db.deleteTip).mockResolvedValue(undefined);
     const caller = appRouter.createCaller(ctx(student));
     const result = await caller.tip.createCheckout({ lessonId: 7, tipAmountCents: 1000 });
     expect(result.url).toBe("https://checkout.stripe.com/tip");
+    expect(db.deleteTip).toHaveBeenCalledWith(6);
+  });
+
+  it("happy path creates session first then tip record", async () => {
+    const caller = appRouter.createCaller(ctx(student));
+    const result = await caller.tip.createCheckout({ lessonId: 7, tipAmountCents: 1000 });
+    expect(result.url).toBe("https://checkout.stripe.com/tip");
+    expect(stripeService.createTipCheckoutSession).toHaveBeenCalledWith(expect.objectContaining({
+      tipAmountCents: 1000,
+      coachName: "Coach",
+      successUrl: expect.stringContaining("/dashboard?tip=success"),
+    }));
     expect(db.createTip).toHaveBeenCalledWith(expect.objectContaining({
       lessonId: 7,
       studentId: 1,
       coachId: 42,
       amountCents: 1000,
-    }));
-    expect(stripeService.createTipCheckoutSession).toHaveBeenCalledWith(expect.objectContaining({
-      tipAmountCents: 1000,
-      coachName: "Coach",
+      stripeCheckoutSessionId: "cs_test_tip_123",
     }));
   });
 });

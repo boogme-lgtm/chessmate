@@ -317,7 +317,7 @@ export async function updateCoachStats(coachId: number) {
     .from(lessons)
     .where(and(
       eq(lessons.coachId, coachId),
-      eq(lessons.status, "released")
+      inArray(lessons.status, ["completed", "released"])
     ));
 
   const profile = await getCoachProfileByUserId(coachId);
@@ -1555,6 +1555,11 @@ export async function finalizeLessonPayout(lessonId: number, transferId: string)
     WHERE id = ${lessonId}
       AND stripeTransferId = '__pending_payout__'
   `);
+
+  const lesson = await getLessonById(lessonId);
+  if (lesson) {
+    await updateCoachStats(lesson.coachId);
+  }
 }
 
 /**
@@ -2118,4 +2123,10 @@ export async function setTipCheckoutSession(tipId: number, sessionId: string) {
     .update(tips)
     .set({ stripeCheckoutSessionId: sessionId })
     .where(eq(tips.id, tipId));
+}
+
+export async function deleteTip(tipId: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(tips).where(eq(tips.id, tipId));
 }
