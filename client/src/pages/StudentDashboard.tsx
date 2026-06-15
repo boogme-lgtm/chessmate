@@ -907,7 +907,8 @@ function LessonDetailDialog({
   const [customAmount, setCustomAmount] = useState("");
   const tipMutation = trpc.tip.createCheckout.useMutation({
     onSuccess: (data) => {
-      if (data.url) window.location.href = data.url;
+      if (data.url) window.open(data.url, '_blank');
+      refetchTip();
     },
     onError: (err) => toast.error(err.message),
   });
@@ -984,10 +985,30 @@ function LessonDetailDialog({
           {/* Tip section */}
           <div className="space-y-2">
             <h4 className="text-sm font-semibold">Tip your coach</h4>
-            {hasTipped ? (
+            {hasTipped && tipStatus === "transferred" ? (
               <div className="text-sm text-muted-foreground flex items-center gap-2">
                 <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                Tip of ${((tipData.tip?.amountCents || 0) / 100).toFixed(2)} {tipStatus === "transferred" ? "sent" : tipStatus === "paid" ? "processing" : "pending"}
+                Tip of ${((tipData.tip?.amountCents || 0) / 100).toFixed(2)} sent
+              </div>
+            ) : hasTipped && tipStatus === "paid" ? (
+              <div className="text-sm text-muted-foreground flex items-center gap-2">
+                <Timer className="h-4 w-4 text-amber-500" />
+                Tip of ${((tipData.tip?.amountCents || 0) / 100).toFixed(2)} processing…
+              </div>
+            ) : hasTipped && tipStatus === "pending" ? (
+              <div className="text-sm text-muted-foreground flex items-center gap-2">
+                <Timer className="h-4 w-4 text-muted-foreground" />
+                Tip checkout in progress — complete payment in the other tab
+              </div>
+            ) : hasTipped && tipStatus === "failed" ? (
+              <div className="space-y-1">
+                <div className="text-sm text-destructive flex items-center gap-2">
+                  <XCircle className="h-4 w-4" />
+                  Tip failed
+                </div>
+                <Button size="sm" variant="outline" onClick={() => setShowTipForm(true)}>
+                  Retry
+                </Button>
               </div>
             ) : showTipForm ? (
               <div className="space-y-2">
