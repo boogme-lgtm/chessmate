@@ -209,6 +209,11 @@ export const lessons = mysqlTable("lessons", {
   
   // Stripe payment tracking (only IDs, not sensitive data)
   stripePaymentIntentId: varchar("stripePaymentIntentId", { length: 64 }),
+  // The specific charge backing the payment intent. Stored so coach payouts can
+  // use stripe.transfers.create({ source_transaction }) — a charge-sourced
+  // transfer pulls from that charge instead of the platform's available
+  // balance, so it works in test mode and avoids balance_insufficient.
+  stripeChargeId: varchar("stripeChargeId", { length: 64 }),
   stripeTransferId: varchar("stripeTransferId", { length: 64 }),
   // R3-2: Active checkout session ID for idempotency (prevents multiple payable sessions)
   stripeCheckoutSessionId: varchar("stripeCheckoutSessionId", { length: 128 }),

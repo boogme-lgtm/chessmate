@@ -57,8 +57,10 @@ vi.mock("./emailService");
 vi.mock("./stripe", () => ({
   constructWebhookEvent: vi.fn(),
 }));
+vi.mock("./stripeConnect");
 
 import * as db from "./db";
+import * as stripeConnect from "./stripeConnect";
 import { constructWebhookEvent } from "./stripe";
 import { handleStripeWebhook } from "./webhooks";
 import type { Request, Response } from "express";
@@ -132,13 +134,15 @@ describe("S41-2: handleCheckoutCompleted — clearLessonCheckoutSession call beh
     vi.mocked(db.updateLessonPaymentCollected).mockResolvedValue(undefined as any);
     vi.mocked(db.clearLessonCheckoutSession).mockResolvedValue(1);
     vi.mocked(db.getUserById).mockResolvedValue(null);
+    // S-PAY-1: webhook resolves the backing charge before recording payment.
+    vi.mocked(stripeConnect.getChargeIdForPaymentIntent).mockResolvedValue("ch_test_123");
   });
 
   it("S41-2a: calls clearLessonCheckoutSession after updateLessonPaymentCollected on paid checkout", async () => {
     const { req, res } = makeReqRes(makeCheckoutEvent());
     await handleStripeWebhook(req, res);
 
-    expect(db.updateLessonPaymentCollected).toHaveBeenCalledWith(42, "pi_test_123");
+    expect(db.updateLessonPaymentCollected).toHaveBeenCalledWith(42, "pi_test_123", "ch_test_123");
     expect(db.clearLessonCheckoutSession).toHaveBeenCalledWith(42);
     // clearLessonCheckoutSession must be called AFTER updateLessonPaymentCollected
     const updateOrder = vi.mocked(db.updateLessonPaymentCollected).mock.invocationCallOrder[0];
