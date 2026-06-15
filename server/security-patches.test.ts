@@ -665,11 +665,13 @@ describe("checkout.session.completed webhook", () => {
     vi.mocked(db.updateLessonPaymentCollected).mockResolvedValue(undefined);
     vi.mocked(db.clearLessonCheckoutSession).mockResolvedValue(undefined as any);
     vi.mocked(db.getUserById).mockResolvedValue({ id: 1, name: "Student", email: "s@t.com" } as any);
+    // S-PAY-1: webhook resolves the backing charge and stores it alongside the PI.
+    vi.mocked(stripeConnect.getChargeIdForPaymentIntent).mockResolvedValue("ch_test_123");
 
     const { req, res } = createWebhookReqRes();
     await handleStripeWebhook(req, res);
 
-    expect(db.updateLessonPaymentCollected).toHaveBeenCalledWith(100, "pi_test_123");
+    expect(db.updateLessonPaymentCollected).toHaveBeenCalledWith(100, "pi_test_123", "ch_test_123");
     expect(res.json).toHaveBeenCalledWith({ received: true });
   });
 

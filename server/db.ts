@@ -510,13 +510,20 @@ export async function updateLessonPaymentIntent(lessonId: number, paymentIntentI
  * Sets status, stores the PaymentIntent ID, and resets the confirmation deadline
  * to 24 hours from now (coach has 24h to accept/decline after payment).
  */
-export async function updateLessonPaymentCollected(lessonId: number, paymentIntentId: string) {
+export async function updateLessonPaymentCollected(
+  lessonId: number,
+  paymentIntentId: string,
+  chargeId?: string | null,
+) {
   const db = await getDb();
   if (!db) return;
 
   await db.update(lessons)
     .set({
       stripePaymentIntentId: paymentIntentId,
+      // Only overwrite the charge when we actually resolved one — never null out
+      // a previously stored charge on a webhook retry.
+      ...(chargeId ? { stripeChargeId: chargeId } : {}),
       status: "payment_collected",
       confirmationDeadline: new Date(Date.now() + 24 * 60 * 60 * 1000),
     })

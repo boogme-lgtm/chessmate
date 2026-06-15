@@ -9,7 +9,7 @@ import { Request, Response } from 'express';
 import Stripe from 'stripe';
 import { constructWebhookEvent } from './stripe';
 import * as db from './db';
-import { transferToCoach } from './stripeConnect';
+import { transferToCoach, getChargeIdForPaymentIntent } from './stripeConnect';
 import { sendEmail, getStudentBookingConfirmationEmail, getCoachBookingNotificationEmail } from './emailService';
 import { ENV } from './_core/env';
 
@@ -137,12 +137,20 @@ async function handleCheckoutCompleted(event: Stripe.Event) {
       return;
     }
 
-    // Atomic update: set status = 'payment_collected' AND store payment intent.
+    // Resolve the charge backing this payment intent so the eventual coach
+    // payout can be a charge-sourced transfer (works in test mode, no
+    // available-balance requirement). Best-effort — never blocks payment.
+    const chargeId = await getChargeIdForPaymentIntent(paymentIntentId);
+    if (!chargeId) {
+      console.warn(`[Webhook] Could not resolve charge for payment intent ${paymentIntentId} on lesson ${lessonId} — payout will fall back to balance-based transfer`);
+    }
+
+    // Atomic update: set status = 'payment_collected' AND store payment intent + charge.
     // Also reset the confirmation deadline to 24h from now (coach has 24h to accept/decline).
-    await db.updateLessonPaymentCollected(lessonId, paymentIntentId);
+    await db.updateLessonPaymentCollected(lessonId, paymentIntentId, chargeId);
     // Clear the checkout session reference now that payment is complete
     await db.clearLessonCheckoutSession(lessonId);
-    console.log(`[Webhook] Lesson ${lessonId} marked 'payment_collected' with payment intent ${paymentIntentId}`);
+    console.log(`[Webhook] Lesson ${lessonId} marked 'payment_collected' with payment intent ${paymentIntentId}${chargeId ? ` (charge ${chargeId})` : ''}`);
 
     // Send confirmation emails to student and coach
     try {
@@ -297,8 +305,13 @@ async function handlePaymentSucceeded(event: Stripe.Event) {
     return;
   }
 
-  await db.updateLessonPaymentCollected(lesson.id, paymentIntent.id);
-  console.log(`[Webhook] Lesson ${lesson.id} marked 'payment_collected' via payment_intent.succeeded`);
+  // The PaymentIntent on this event carries latest_charge directly (a charge
+  // id string), so no extra API round-trip is needed on this backup path.
+  const latest = (paymentIntent as any).latest_charge;
+  const chargeId = latest ? (typeof latest === 'string' ? latest : latest.id) : null;
+
+  await db.updateLessonPaymentCollected(lesson.id, paymentIntent.id, chargeId);
+  console.log(`[Webhook] Lesson ${lesson.id} marked 'payment_collected' via payment_intent.succeeded${chargeId ? ` (charge ${chargeId})` : ''}`);
 }
 
 /**

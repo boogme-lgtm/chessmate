@@ -174,6 +174,10 @@ export async function releaseLessonPayoutToCoach(
     currency: lesson.currency || "usd",
     description: `Payout for lesson #${lesson.id}`,
     idempotencyKey,
+    // Charge-sourced transfer: pulls from the original lesson charge instead of
+    // the platform's available balance, so payouts succeed in test mode and
+    // never hit balance_insufficient. Falls back to balance-based when absent.
+    sourceTransaction: lesson.stripeChargeId ?? null,
     metadata: {
       lessonId: lesson.id.toString(),
       coachId: lesson.coachId.toString(),

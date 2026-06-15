@@ -145,8 +145,15 @@ export async function transferToCoach(params: {
   description: string;
   metadata?: Record<string, string>;
   idempotencyKey?: string;
+  /**
+   * The charge ID (ch_… / py_…) backing the original payment. When provided,
+   * the transfer pulls from this specific charge via Stripe's
+   * source_transaction — no available platform balance is required, so it
+   * succeeds in test mode and never returns balance_insufficient.
+   */
+  sourceTransaction?: string | null;
 }) {
-  const { accountId, amountCents, currency = 'usd', description, metadata, idempotencyKey } = params;
+  const { accountId, amountCents, currency = 'usd', description, metadata, idempotencyKey, sourceTransaction } = params;
 
   try {
     const transfer = await stripe.transfers.create(
@@ -156,6 +163,7 @@ export async function transferToCoach(params: {
         destination: accountId,
         description,
         metadata,
+        ...(sourceTransaction ? { source_transaction: sourceTransaction } : {}),
       },
       idempotencyKey ? { idempotencyKey } : undefined
     );
@@ -170,6 +178,23 @@ export async function transferToCoach(params: {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to transfer funds',
     };
+  }
+}
+
+/**
+ * Resolve the charge ID (ch_… / py_…) backing a PaymentIntent. Stored on the
+ * lesson so the eventual coach payout can be a charge-sourced transfer.
+ * Best-effort: returns null on any failure so it never blocks the payment flow.
+ */
+export async function getChargeIdForPaymentIntent(paymentIntentId: string): Promise<string | null> {
+  try {
+    const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
+    const latest = (pi as any).latest_charge;
+    if (!latest) return null;
+    return typeof latest === 'string' ? latest : latest.id;
+  } catch (error) {
+    console.error('[Stripe Connect] Failed to resolve charge for payment intent:', error);
+    return null;
   }
 }
 
