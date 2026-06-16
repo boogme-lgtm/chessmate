@@ -678,6 +678,44 @@ export async function getReviewsByCoach(coachId: number, limit: number = 20) {
 }
 
 /**
+ * Public reviews for a coach, with the reviewing student's name joined in
+ * (S-PROFILE-1). Same filter as getReviewsByCoach + a LEFT JOIN on users so a
+ * deleted student yields a null reviewerName rather than dropping the review.
+ */
+export async function getReviewsByCoachWithStudentName(coachId: number, limit: number = 20) {
+  const db = await getDb();
+  if (!db) return [];
+
+  return await db
+    .select({
+      id: reviews.id,
+      lessonId: reviews.lessonId,
+      studentId: reviews.studentId,
+      coachId: reviews.coachId,
+      reviewerType: reviews.reviewerType,
+      rating: reviews.rating,
+      comment: reviews.comment,
+      knowledgeRating: reviews.knowledgeRating,
+      communicationRating: reviews.communicationRating,
+      preparednessRating: reviews.preparednessRating,
+      isVisible: reviews.isVisible,
+      isPublic: reviews.isPublic,
+      createdAt: reviews.createdAt,
+      reviewerName: users.name,
+    })
+    .from(reviews)
+    .leftJoin(users, eq(reviews.studentId, users.id))
+    .where(and(
+      eq(reviews.coachId, coachId),
+      eq(reviews.reviewerType, 'student'),
+      eq(reviews.isPublic, true),
+      eq(reviews.isVisible, true)
+    ))
+    .orderBy(desc(reviews.createdAt))
+    .limit(limit);
+}
+
+/**
  * Look up the current user's review for a specific lesson (if any).
  */
 export async function getReviewByLessonAndReviewer(
