@@ -22,25 +22,46 @@ const TYPE_ICONS: Record<string, typeof Bell> = {
   new_review: Star,
 };
 
-/** Return the URL (path + optional #hash) to navigate to when a notification is clicked. */
+/**
+ * Return the URL to navigate to when a notification is clicked.
+ * Routing is based on the notification TYPE, not the user's current active role,
+ * because a "both" account should always land on the correct side of the marketplace.
+ *
+ * Coach-originated events (notifications sent TO the coach):
+ *   new_content_request, new_subscriber, new_review
+ * Ambiguous events (lesson events, messages) — use userType as tiebreaker.
+ */
 function getNotificationUrl(type: string, userType: string | undefined): string {
+  // These notification types are ALWAYS sent to the coach — route to coach dashboard
+  const coachOnlyTypes = ["new_content_request", "new_subscriber"];
+  // These are ALWAYS sent to the student — route to student dashboard
+  const studentOnlyTypes = ["content_delivered"];
+
+  if (coachOnlyTypes.includes(type)) {
+    switch (type) {
+      case "new_content_request": return "/coach/dashboard#content-requests";
+      case "new_subscriber":      return "/coach/dashboard#students";
+    }
+  }
+
+  if (studentOnlyTypes.includes(type)) {
+    switch (type) {
+      case "content_delivered": return "/dashboard#content-library";
+    }
+  }
+
+  // For ambiguous types, use userType as a hint (defaults to coach if "both")
   const isCoach = userType === "coach" || userType === "both";
   switch (type) {
-    case "new_content_request":
-      return isCoach ? "/coach/dashboard#content-requests" : "/dashboard#content-requests";
     case "new_message":
       return isCoach ? "/coach/dashboard#inbox" : "/dashboard#messages";
-    case "new_subscriber":
-      return "/coach/dashboard#students";
+    case "new_review":
+      return isCoach ? "/coach/dashboard#reviews" : "/dashboard";
     case "lesson_booked":
     case "lesson_confirmed":
     case "lesson_cancelled":
     case "lesson_completed":
       return isCoach ? "/coach/dashboard#schedule" : "/dashboard#lessons";
-    case "new_review":
-      return isCoach ? "/coach/dashboard#reviews" : "/dashboard";
-    case "content_delivered":
-      return "/dashboard#content-library";
     default:
       return isCoach ? "/coach/dashboard" : "/dashboard";
   }
