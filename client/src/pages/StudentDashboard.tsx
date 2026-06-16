@@ -1429,7 +1429,8 @@ function ContentRequestsModule({
             className="gap-1 bg-ember hover:bg-ember/90 text-white rounded-sm text-xs"
             onClick={() => {
               if (coaches.length === 0) {
-                toast.info("Book a lesson with a coach first to request content.");
+                // No lesson or subscription coaches yet — send them to browse
+                window.location.href = "/coaches";
                 return;
               }
               setDialogOpen(true);

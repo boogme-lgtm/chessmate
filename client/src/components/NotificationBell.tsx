@@ -8,6 +8,7 @@ import {
 import { Bell, MessageSquare, Star, UserPlus, BookOpen, Calendar, CheckCircle2, XCircle } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { useState } from "react";
+import { useLocation } from "wouter";
 
 const TYPE_ICONS: Record<string, typeof Bell> = {
   new_message: MessageSquare,
@@ -21,9 +22,34 @@ const TYPE_ICONS: Record<string, typeof Bell> = {
   new_review: Star,
 };
 
+/** Return the URL (path + optional #hash) to navigate to when a notification is clicked. */
+function getNotificationUrl(type: string, userType: string | undefined): string {
+  const isCoach = userType === "coach" || userType === "both";
+  switch (type) {
+    case "new_content_request":
+      return isCoach ? "/coach/dashboard#content-requests" : "/dashboard#content-requests";
+    case "new_message":
+      return isCoach ? "/coach/dashboard#inbox" : "/dashboard#messages";
+    case "new_subscriber":
+      return "/coach/dashboard#students";
+    case "lesson_booked":
+    case "lesson_confirmed":
+    case "lesson_cancelled":
+    case "lesson_completed":
+      return isCoach ? "/coach/dashboard#schedule" : "/dashboard#lessons";
+    case "new_review":
+      return isCoach ? "/coach/dashboard#reviews" : "/dashboard";
+    case "content_delivered":
+      return "/dashboard#content-library";
+    default:
+      return isCoach ? "/coach/dashboard" : "/dashboard";
+  }
+}
+
 export default function NotificationBell() {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
+  const [, navigate] = useLocation();
   const utils = trpc.useUtils();
 
   const { data: unreadCount } = trpc.notifications.unreadCount.useQuery(undefined, {
@@ -53,6 +79,21 @@ export default function NotificationBell() {
   if (!user) return null;
 
   const count = unreadCount ?? 0;
+  const userType = (user as any)?.userType as string | undefined;
+
+  const handleNotificationClick = (n: any) => {
+    if (!n.readAt) markRead.mutate({ notificationId: n.id });
+    setOpen(false);
+    const url = getNotificationUrl(n.type, userType);
+    const [path, hash] = url.split("#");
+    navigate(path);
+    if (hash) {
+      setTimeout(() => {
+        const el = document.getElementById(hash);
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 300);
+    }
+  };
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -94,11 +135,8 @@ export default function NotificationBell() {
               return (
                 <button
                   key={n.id}
-                  onClick={() => {
-                    if (isUnread) markRead.mutate({ notificationId: n.id });
-                    setOpen(false);
-                  }}
-                  className={`w-full text-left px-4 py-3 flex gap-3 hover:bg-ink-raised/50 transition-colors ${
+                  onClick={() => handleNotificationClick(n)}
+                  className={`w-full text-left px-4 py-3 flex gap-3 hover:bg-ink-raised/50 transition-colors cursor-pointer ${
                     isUnread ? "border-l-2 border-l-ember bg-ink-raised/30" : ""
                   }`}
                 >
