@@ -1021,6 +1021,11 @@ export const appRouter = router({
         reason: hasReachedThreshold ? "threshold_reached" : "below_threshold",
       };
     }),
+
+    // S-DASH-1: Coach student roster
+    getStudentRoster: coachProcedure.query(async ({ ctx }) => {
+      return await db.getStudentRoster(ctx.user.id);
+    }),
   }),
 
   // ============ STUDENT OPERATIONS ============
@@ -2462,6 +2467,58 @@ export const appRouter = router({
         }
         const tip = await db.getTipByLessonAndStudent(input.lessonId, lesson.studentId);
         return { tip: tip || null };
+      }),
+  }),
+
+  // ============ CONTENT REQUESTS (S-DASH-1) ============
+  contentRequest: router({
+    create: protectedProcedure
+      .input(z.object({
+        coachId: z.number(),
+        title: z.string().min(3).max(255),
+        description: z.string().max(2000).optional(),
+        amountCents: z.number().int().min(0).max(50000).default(0),
+        dueDate: z.string().datetime().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const id = await db.createContentRequest({
+          studentId: ctx.user.id,
+          coachId: input.coachId,
+          title: input.title,
+          description: input.description,
+          amountCents: input.amountCents,
+          dueDate: input.dueDate ? new Date(input.dueDate) : undefined,
+        });
+        return { success: true, id };
+      }),
+
+    listForStudent: protectedProcedure.query(async ({ ctx }) => {
+      return await db.getContentRequestsByStudent(ctx.user.id);
+    }),
+
+    listForCoach: coachProcedure.query(async ({ ctx }) => {
+      return await db.getContentRequestsByCoach(ctx.user.id);
+    }),
+
+    updateStatus: coachProcedure
+      .input(z.object({
+        requestId: z.number(),
+        status: z.enum(["in_progress", "delivered", "cancelled"]),
+        contentItemId: z.number().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const request = await db.getContentRequestById(input.requestId);
+        if (!request) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Content request not found" });
+        }
+        if (request.coachId !== ctx.user.id) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Not your content request" });
+        }
+        await db.updateContentRequestStatus(input.requestId, input.status, {
+          ...(input.status === "delivered" ? { deliveredAt: new Date() } : {}),
+          ...(input.contentItemId ? { contentItemId: input.contentItemId } : {}),
+        });
+        return { success: true };
       }),
   }),
 

@@ -3,8 +3,6 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
@@ -27,8 +25,19 @@ import {
   DollarSign,
   Flag,
   ShieldCheck,
+  Star,
+  MessageCircle,
+  ArrowLeft,
+  X,
 } from "lucide-react";
-import { format, isPast, isFuture, differenceInHours, differenceInMinutes, differenceInSeconds } from "date-fns";
+import {
+  format,
+  isPast,
+  isFuture,
+  differenceInHours,
+  differenceInSeconds,
+  formatDistanceToNow,
+} from "date-fns";
 import {
   getLessonEndWithGrace,
   canConfirmLessonComplete,
@@ -36,19 +45,29 @@ import {
 } from "@shared/lessonTimeHelpers";
 import { toast } from "sonner";
 import { Link, useLocation } from "wouter";
-import { useEffect, useState, useCallback, useRef } from "react";
-import DashboardLayout from "@/components/DashboardLayout";
+import { useEffect, useState, useCallback } from "react";
 import ReviewDialog from "@/components/ReviewDialog";
 import MessageThread from "@/components/MessageThread";
-import { Star, MessageCircle, ArrowLeft } from "lucide-react";
+import DashShell from "@/components/DashShell";
+import { Skeleton } from "@/components/ui/skeleton";
+import { differenceInMinutes } from "date-fns";
 
 /**
- * Student Dashboard — Upcoming and past lessons with live countdown timers
- * and a proper cancellation confirmation dialog with refund breakdown.
+ * StudentDashboard (S-DASH-1 redesign)
+ *
+ * Default export: standalone /student route wrapped in DashShell.
+ * Named export `StudentDashboardContent`: used by the unified Dashboard.tsx
+ * inside its own DashShell.
  */
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Default export — standalone /student route
+// ─────────────────────────────────────────────────────────────────────────────
+
 export default function StudentDashboard() {
   const { user, loading: authLoading } = useAuth();
   const [, setLocation] = useLocation();
+  const [activeSection, setActiveSection] = useState("overview");
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -63,296 +82,210 @@ export default function StudentDashboard() {
   if (!user) return null;
 
   return (
-    <DashboardLayout>
-      <div className="min-h-screen bg-background">
-        {/* Header */}
-        <div className="border-b border-border/40">
-          <div className="container py-6 space-y-4">
-            <Link
-              href="/"
-              className="inline-flex items-center gap-2 text-[13px] text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Back to Home
-            </Link>
-            <div>
-              <div className="flex items-center gap-3 mb-2">
-                <h1 className="text-3xl font-semibold">My Lessons</h1>
-                <Badge variant="secondary" className="text-sm font-medium">
-                  Student Dashboard
-                </Badge>
-              </div>
-              <p className="text-muted-foreground">
-                Manage your upcoming and past chess lessons
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <StudentDashboardContent user={user} />
-      </div>
-    </DashboardLayout>
+    <DashShell
+      role="student"
+      activeSection={activeSection}
+      onSectionChange={setActiveSection}
+    >
+      <StudentDashboardContent user={user} />
+    </DashShell>
   );
 }
 
-/**
- * Body content for the student dashboard — queries + lesson lists.
- * Extracted so the unified /dashboard page can render it alongside the
- * coach dashboard body under a single header with a role switcher.
- */
+// ─────────────────────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────────────────────
+
 const CANCELLED_STATUSES = ["cancelled", "declined", "refunded"];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// StudentDashboardContent — the 7-module body
+// ─────────────────────────────────────────────────────────────────────────────
 
 export function StudentDashboardContent({ user }: { user: any }) {
   const [, setLocation] = useLocation();
-  const [showCancelled, setShowCancelled] = useState(false);
 
+  // ── Lessons query ──────────────────────────────────────────────────────────
   const { data: lessons, isLoading } = trpc.lesson.myLessons.useQuery(
     { limit: 50 },
     {
       enabled: !!user,
-      // S44-3: keep status fresh after returning from Stripe checkout.
-      // Always refetch on mount/focus, and poll briefly while any lesson is in a
-      // transient state (awaiting payment, or paid+awaiting coach) so a webhook
-      // that lands a moment after the redirect still flips the UI without a manual
-      // refresh. Polling only runs while the tab is focused (react-query default).
       refetchOnMount: "always",
       refetchOnWindowFocus: true,
       refetchInterval: (query) => {
         const data = query.state.data as any[] | undefined;
         const hasTransient = (data || []).some(
-          (l) => l.status === "pending_payment" || l.status === "payment_collected"
+          (l) =>
+            l.status === "pending_payment" || l.status === "payment_collected",
         );
         return hasTransient ? 8000 : false;
       },
-    }
+    },
   );
 
   const lessonIds = (lessons || []).map((l: any) => l.id);
   const { data: unreadCounts } = trpc.messages.getUnreadCounts.useQuery(
     { lessonIds },
-    { enabled: lessonIds.length > 0, refetchInterval: 30000 }
+    { enabled: lessonIds.length > 0, refetchInterval: 30000 },
+  );
+
+  // ── Content requests ───────────────────────────────────────────────────────
+  const { data: contentRequests } =
+    trpc.contentRequest.listForStudent.useQuery(undefined, {
+      enabled: !!user,
+    });
+
+  // ── Student profile (for rating) ──────────────────────────────────────────
+  const { data: studentProfile } = trpc.student.getProfile.useQuery(
+    undefined,
+    { enabled: !!user },
   );
 
   if (isLoading) {
     return <DashboardSkeleton />;
   }
 
-  const upcomingLessons = lessons?.filter((l: any) =>
-    isFuture(new Date(l.scheduledAt)) && !["cancelled", "completed", "declined", "refunded", "released", "disputed"].includes(l.status)
-  ) || [];
+  // ── Derive lesson lists ────────────────────────────────────────────────────
+  const upcomingLessons =
+    lessons?.filter(
+      (l: any) =>
+        isFuture(new Date(l.scheduledAt)) &&
+        ![
+          "cancelled",
+          "completed",
+          "declined",
+          "refunded",
+          "released",
+          "disputed",
+        ].includes(l.status),
+    ) || [];
 
-  const allPastLessons = (lessons?.filter((l: any) =>
-    isPast(new Date(l.scheduledAt)) || l.status === "completed" || l.status === "cancelled"
-  ) || []).sort((a: any, b: any) => {
+  const allPastLessons = (
+    lessons?.filter(
+      (l: any) =>
+        isPast(new Date(l.scheduledAt)) ||
+        l.status === "completed" ||
+        l.status === "cancelled",
+    ) || []
+  ).sort((a: any, b: any) => {
     const aCancelled = CANCELLED_STATUSES.includes(a.status) ? 1 : 0;
     const bCancelled = CANCELLED_STATUSES.includes(b.status) ? 1 : 0;
     if (aCancelled !== bCancelled) return aCancelled - bCancelled;
-    return new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime();
+    return (
+      new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime()
+    );
   });
-  const cancelledCount = allPastLessons.filter((l: any) => CANCELLED_STATUSES.includes(l.status)).length;
-  const pastLessons = showCancelled
-    ? allPastLessons
-    : allPastLessons.filter((l: any) => !CANCELLED_STATUSES.includes(l.status));
+
+  const nextLesson = upcomingLessons[0] || null;
 
   const unreadForLesson = (lessonId: number) =>
     (unreadCounts as Record<number, number> | undefined)?.[lessonId] || 0;
 
-  return (
-    <div className="container py-8 space-y-6">
-      <PendingReviewsCard />
-      <span className="eyebrow">01 — Your lessons</span>
-      <Tabs defaultValue="upcoming" className="space-y-6">
-        <TabsList>
-          <TabsTrigger value="upcoming">
-            Upcoming ({upcomingLessons.length})
-          </TabsTrigger>
-          <TabsTrigger value="past">
-            Past ({pastLessons.length})
-          </TabsTrigger>
-        </TabsList>
+  // ── Messages preview — latest per lesson (up to 3) ─────────────────────────
+  const lessonsWithMessages = (lessons || [])
+    .filter(
+      (l: any) =>
+        !CANCELLED_STATUSES.includes(l.status) && l.status !== "declined",
+    )
+    .slice(0, 10);
 
-        <TabsContent value="upcoming" className="space-y-4">
-          {upcomingLessons.length === 0 ? (
-            <Card className="border-border/40">
-              <CardContent className="py-16 text-center">
-                <Calendar className="h-12 w-12 mx-auto mb-4 text-muted-foreground/30" />
-                <h3 className="text-lg font-medium mb-1">No upcoming lessons</h3>
-                <p className="text-sm text-muted-foreground mb-6 max-w-sm mx-auto">
-                  Browse our coaches and book your first chess lesson to get started
-                </p>
-                <Button onClick={() => setLocation("/coaches")}>
-                  Browse Coaches
-                </Button>
-              </CardContent>
-            </Card>
-          ) : (
-            upcomingLessons.map((lesson: any) => (
-              <LessonCard
-                key={lesson.id}
-                lesson={lesson}
-                unreadCount={unreadForLesson(lesson.id)}
+  // ── Progress data — synthetic sparkline from student profile ──────────────
+  const currentRating = (studentProfile as any)?.currentRating ?? null;
+
+  return (
+    <div className="space-y-8">
+      {/* ── MODULE 1: YOUR NEXT LESSON ─────────────────────────────────────── */}
+      <section id="overview">
+        <span className="eyebrow mb-3 block">01 — Your next lesson</span>
+        {nextLesson ? (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {/* Left: next lesson card (2/3) */}
+            <div className="lg:col-span-2">
+              <NextLessonCard
+                lesson={nextLesson}
+                unreadCount={unreadForLesson(nextLesson.id)}
               />
-            ))
-          )}
-        </TabsContent>
-
-        <TabsContent value="past" className="space-y-4">
-          {pastLessons.length === 0 && cancelledCount === 0 ? (
-            <Card className="border-border/40">
-              <CardContent className="py-16 text-center">
-                <Clock className="h-12 w-12 mx-auto mb-4 text-muted-foreground/30" />
-                <h3 className="text-lg font-medium mb-1">No past lessons</h3>
-                <p className="text-sm text-muted-foreground">
-                  Your completed lessons will appear here
-                </p>
-              </CardContent>
-            </Card>
-          ) : (
-            <>
-              {pastLessons.map((lesson: any) => (
-                <LessonCard
-                  key={lesson.id}
-                  lesson={lesson}
-                  isPast
-                  unreadCount={unreadForLesson(lesson.id)}
-                />
-              ))}
-              {cancelledCount > 0 && (
-                <button
-                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-                  onClick={() => setShowCancelled(!showCancelled)}
-                >
-                  {showCancelled ? "Hide" : "Show"} cancelled ({cancelledCount})
-                </button>
-              )}
-            </>
-          )}
-        </TabsContent>
-      </Tabs>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Cancellation Dialog
-// ─────────────────────────────────────────────────────────────────────────────
-
-interface CancellationDialogProps {
-  open: boolean;
-  onClose: () => void;
-  lesson: any;
-  onConfirm: () => void;
-  isPending: boolean;
-}
-
-function CancellationDialog({ open, onClose, lesson, onConfirm, isPending }: CancellationDialogProps) {
-  // S45-1: full refund if cancelling more than 1 hour before the lesson, else none.
-  // S45-6: lessons that were never paid cancel free (nothing to refund).
-  const minutesUntil = differenceInMinutes(new Date(lesson.scheduledAt), new Date());
-  const amountDollars = (lesson.amountCents / 100).toFixed(2);
-  const wasPaid = !!lesson.stripePaymentIntentId;
-
-  let refundDollars = "0.00";
-  let refundLabel = "No Refund";
-  let refundColor = "text-red-500";
-  let policyNote = "";
-
-  if (!wasPaid) {
-    refundLabel = "Free Cancellation";
-    refundColor = "text-green-500";
-    policyNote = "This lesson hasn't been paid for yet, so cancelling is free — there's nothing to refund.";
-  } else if (minutesUntil > 60) {
-    refundDollars = amountDollars;
-    refundLabel = "Full Refund";
-    refundColor = "text-green-500";
-    policyNote = "You're cancelling more than 1 hour before the lesson — you'll receive a full refund.";
-  } else {
-    refundLabel = "No Refund";
-    refundColor = "text-red-500";
-    policyNote = "You're cancelling within 1 hour of the lesson — no refund will be issued per our cancellation policy.";
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5 text-yellow-500" />
-            Cancel This Lesson?
-          </DialogTitle>
-          <DialogDescription>
-            Please review the refund details before confirming.
-          </DialogDescription>
-        </DialogHeader>
-
-        {/* Lesson summary */}
-        <div className="bg-muted/50 rounded-lg p-4 space-y-2 text-sm">
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Date</span>
-            <span className="font-medium">{format(new Date(lesson.scheduledAt), "EEEE, MMMM d, yyyy")}</span>
+            </div>
+            {/* Right: latest coach message preview (1/3) */}
+            <div className="lg:col-span-1">
+              <CoachMessagePreview lesson={nextLesson} />
+            </div>
           </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Time</span>
-            <span className="font-medium">{format(new Date(lesson.scheduledAt), "h:mm a")}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Duration</span>
-            <span className="font-medium">{lesson.durationMinutes} minutes</span>
-          </div>
-          <div className="flex justify-between border-t border-border pt-2 mt-2">
-            <span className="text-muted-foreground">{wasPaid ? "Amount Paid" : "Amount (unpaid)"}</span>
-            <span className="font-semibold">${amountDollars}</span>
-          </div>
-        </div>
-
-        {/* Refund breakdown */}
-        <div className="border border-border rounded-lg overflow-hidden">
-          <div className="bg-muted/30 px-4 py-3 flex items-center gap-2">
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium">Refund Breakdown</span>
-          </div>
-          <div className="p-4 space-y-3">
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-muted-foreground">Refund Policy</span>
-              <Badge
-                variant="outline"
-                className={`${refundColor} border-current font-semibold`}
+        ) : (
+          <Card className="bg-ink-raised border-border/20 rounded-sm">
+            <CardContent className="py-16 text-center">
+              <Calendar className="h-12 w-12 mx-auto mb-4 text-bone-muted/30" />
+              <h3 className="text-lg font-medium text-bone mb-1">
+                No upcoming lessons
+              </h3>
+              <p className="text-sm text-bone-muted mb-6 max-w-sm mx-auto">
+                Browse our coaches and book your first chess lesson to get
+                started
+              </p>
+              <Button
+                className="bg-ember hover:bg-ember/90 text-white rounded-sm"
+                onClick={() => setLocation("/coaches")}
               >
-                {refundLabel}
-              </Badge>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-muted-foreground">You will receive</span>
-              <span className={`text-xl font-bold ${refundColor}`}>${refundDollars}</span>
-            </div>
-            <p className="text-xs text-muted-foreground leading-relaxed border-t border-border pt-3">
-              {policyNote}
+                Browse Coaches
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+      </section>
+
+      {/* ── MODULE 2: CONTENT REQUESTS ─────────────────────────────────────── */}
+      <section id="content-requests">
+        <span className="eyebrow mb-3 block">02 — Content requests</span>
+        <ContentRequestsModule contentRequests={contentRequests} />
+      </section>
+
+      {/* ── MODULE 3: MESSAGES ─────────────────────────────────────────────── */}
+      <section id="messages">
+        <span className="eyebrow mb-3 block">03 — Messages</span>
+        <MessagesModule
+          lessons={lessonsWithMessages}
+          unreadCounts={unreadCounts}
+        />
+      </section>
+
+      {/* ── MODULE 4: CONTENT LIBRARY ──────────────────────────────────────── */}
+      <section id="content-library">
+        <span className="eyebrow mb-3 block">04 — Library</span>
+        <ContentLibraryModule />
+      </section>
+
+      {/* ── MODULE 5: PROGRESS ─────────────────────────────────────────────── */}
+      <section id="progress">
+        <span className="eyebrow mb-3 block">05 — Progress</span>
+        <ProgressModule currentRating={currentRating} />
+      </section>
+
+      {/* ── MODULE 6: PENDING REVIEWS (conditional) ────────────────────────── */}
+      <PendingReviewsSection />
+
+      {/* ── MODULE 7: BILLING ──────────────────────────────────────────────── */}
+      <section id="billing">
+        <span className="eyebrow mb-3 block">07 — Billing</span>
+        <Card className="bg-ink-raised border-border/20 rounded-sm">
+          <CardContent className="p-6">
+            <h3 className="text-base font-semibold text-bone mb-2">
+              Manage Billing
+            </h3>
+            <p className="text-sm text-bone-muted mb-4">
+              View payment history, update your payment method, and manage
+              subscriptions.
             </p>
-          </div>
-        </div>
-
-        {/* Policy reminder */}
-        <div className="text-xs text-muted-foreground space-y-1">
-          <p className="font-medium text-foreground">Cancellation Policy:</p>
-          <p>• More than 1 hour before lesson → Full refund</p>
-          <p>• Within 1 hour of lesson → No refund</p>
-          <p>• Unpaid lessons → Always free to cancel</p>
-        </div>
-
-        <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={onClose} disabled={isPending}>
-            Keep My Lesson
-          </Button>
-          <Button
-            variant="destructive"
-            onClick={onConfirm}
-            disabled={isPending}
-          >
-            {isPending ? "Cancelling..." : `Yes, Cancel & Get $${refundDollars} Back`}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+            <Button
+              variant="outline"
+              className="rounded-sm border-border/40 text-bone-muted hover:text-bone"
+              onClick={() => toast.info("Billing management: coming soon")}
+            >
+              Manage Billing
+            </Button>
+          </CardContent>
+        </Card>
+      </section>
+    </div>
   );
 }
 
@@ -361,8 +294,10 @@ function CancellationDialog({ open, onClose, lesson, onConfirm, isPending }: Can
 // ─────────────────────────────────────────────────────────────────────────────
 
 function useCountdown(targetDate: Date) {
-  const getSecondsLeft = useCallback(() =>
-    Math.max(0, differenceInSeconds(targetDate, new Date())), [targetDate]);
+  const getSecondsLeft = useCallback(
+    () => Math.max(0, differenceInSeconds(targetDate, new Date())),
+    [targetDate],
+  );
 
   const [secondsLeft, setSecondsLeft] = useState(getSecondsLeft);
 
@@ -385,20 +320,22 @@ interface CountdownBannerProps {
 }
 
 function CountdownBanner({ scheduledAt, status }: CountdownBannerProps) {
-  const { days, hours, minutes, seconds, secondsLeft } = useCountdown(scheduledAt);
+  const { days, hours, minutes, seconds, secondsLeft } =
+    useCountdown(scheduledAt);
 
   if (secondsLeft <= 0) return null;
 
-  // S45-1: single 1-hour cutoff. Within the final hour, cancellation earns no
-  // refund; before that, a full refund is available.
   const withinFinalHour = secondsLeft < 3600;
 
   if (withinFinalHour) {
     return (
-      <div className="mt-4 p-3 bg-red-950/30 border border-red-800/50 rounded-md">
+      <div className="mt-4 p-3 bg-red-950/30 border border-red-800/50 rounded-sm">
         <div className="flex items-center gap-2 text-red-400 text-sm font-medium mb-1">
           <Timer className="h-4 w-4" />
-          Lesson starting in {hours}h {String(minutes).padStart(2, "0")}m {String(seconds).padStart(2, "0")}s
+          <span className="font-mono tabular-nums">
+            Lesson starting in {hours}h {String(minutes).padStart(2, "0")}m{" "}
+            {String(seconds).padStart(2, "0")}s
+          </span>
         </div>
         <p className="text-xs text-red-400/80">
           Cancellation window has closed — no refund available
@@ -408,10 +345,13 @@ function CountdownBanner({ scheduledAt, status }: CountdownBannerProps) {
   }
 
   return (
-    <div className="mt-4 p-3 bg-green-950/20 border border-green-800/40 rounded-md">
+    <div className="mt-4 p-3 bg-green-950/20 border border-green-800/40 rounded-sm">
       <div className="flex items-center gap-2 text-green-400 text-sm font-medium mb-1">
         <CheckCircle2 className="h-4 w-4" />
-        {days > 0 ? `${days}d ` : ""}{hours % 24}h {String(minutes).padStart(2, "0")}m until lesson
+        <span className="font-mono tabular-nums">
+          {days > 0 ? `${days}d ` : ""}
+          {hours % 24}h {String(minutes).padStart(2, "0")}m until lesson
+        </span>
       </div>
       <p className="text-xs text-green-400/80">
         Full refund available · Cancel more than 1 hour before the lesson
@@ -421,519 +361,153 @@ function CountdownBanner({ scheduledAt, status }: CountdownBannerProps) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Lesson Card
+// Cancellation Dialog (unchanged logic)
 // ─────────────────────────────────────────────────────────────────────────────
 
-interface LessonCardProps {
+interface CancellationDialogProps {
+  open: boolean;
+  onClose: () => void;
   lesson: any;
-  isPast?: boolean;
-  unreadCount?: number;
+  onConfirm: () => void;
+  isPending: boolean;
 }
 
-function LessonCard({ lesson, isPast = false, unreadCount = 0 }: LessonCardProps) {
-  const [, setLocation] = useLocation();
-  const [showCancelDialog, setShowCancelDialog] = useState(false);
-  const [showMessageThread, setShowMessageThread] = useState(false);
-  const [showRaiseIssueDialog, setShowRaiseIssueDialog] = useState(false);
-  const [showDetailDialog, setShowDetailDialog] = useState(false);
-  const [issueCategory, setIssueCategory] = useState("");
-  const [issueDescription, setIssueDescription] = useState("");
-  const utils = trpc.useUtils();
+function CancellationDialog({
+  open,
+  onClose,
+  lesson,
+  onConfirm,
+  isPending,
+}: CancellationDialogProps) {
+  const minutesUntil = differenceInMinutes(
+    new Date(lesson.scheduledAt),
+    new Date(),
+  );
+  const amountDollars = (lesson.amountCents / 100).toFixed(2);
+  const wasPaid = !!lesson.stripePaymentIntentId;
 
-  // ── Live clock — refreshes every 30 s so time-gated UI auto-updates ─────
-  // Initialised to Date.now() so the first render is correct, then ticked
-  // on an interval so canConfirmComplete / issueWindowActive / canCancel
-  // flip without requiring a page reload.
-  const [now, setNow] = useState(() => new Date());
-  useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 30_000);
-    return () => clearInterval(id);
-  }, []);
+  let refundDollars = "0.00";
+  let refundLabel = "No Refund";
+  let refundColor = "text-red-500";
+  let policyNote = "";
 
-  const cancelMutation = trpc.lesson.cancel.useMutation({
-    onSuccess: (data) => {
-      const msg =
-        data.refundPercentage === 100
-          ? "Lesson cancelled. Full refund issued."
-          : data.refundPercentage > 0
-          ? `Lesson cancelled. ${data.refundPercentage}% refund issued.`
-          : "Lesson cancelled. No refund (within 24-hour window).";
-      toast.success(msg);
-      setShowCancelDialog(false);
-      utils.lesson.myLessons.invalidate();
-    },
-    onError: (err) => {
-      toast.error(err.message);
-      setShowCancelDialog(false);
-    },
-  });
-
-  // ── Confirm Lesson Complete ──────────────────────────────────────────────
-  const confirmCompletion = trpc.lesson.confirmCompletion.useMutation({
-    onSuccess: () => {
-      toast.success(
-        "Lesson marked complete. The 24-hour issue window has started — coach payout is released after the window closes."
-      );
-      utils.lesson.myLessons.invalidate();
-    },
-    onError: (err) => toast.error(err.message),
-  });
-
-  // ── Raise Issue ──────────────────────────────────────────────────────────
-  const raiseIssueMutation = trpc.lesson.raiseIssue.useMutation({
-    onSuccess: (data: any) => {
-      if (data.policyGated) {
-        toast.success("Feedback submitted. Quality alone is not eligible for a refund per our policy.");
-      } else {
-        toast.success("Issue raised. An admin will review your case.");
-      }
-      setShowRaiseIssueDialog(false);
-      setIssueCategory("");
-      setIssueDescription("");
-      utils.lesson.myLessons.invalidate();
-    },
-    onError: (err) => {
-      toast.error(err.message);
-    },
-  });
-
-  const createCheckout = trpc.payment.createCheckout.useMutation({
-    onSuccess: (data) => {
-      if (data.url) {
-        window.location.href = data.url;
-      } else {
-        toast.error("Failed to start payment");
-      }
-    },
-    onError: (err) => toast.error(err.message),
-  });
-
-  const getStatusBadge = () => {
-    switch (lesson.status) {
-      case "completed":
-        return (
-          <Badge variant="default" className="gap-1 bg-green-600">
-            <CheckCircle2 className="h-3 w-3" /> Completed
-          </Badge>
-        );
-      case "cancelled":
-        return (
-          <Badge variant="destructive" className="gap-1">
-            <XCircle className="h-3 w-3" /> Cancelled
-          </Badge>
-        );
-      case "pending_payment":
-        return (
-          <Badge variant="secondary" className="gap-1 bg-gray-600 text-white">
-            <Timer className="h-3 w-3" /> Awaiting Payment
-          </Badge>
-        );
-      case "payment_collected":
-        return (
-          <Badge variant="secondary" className="gap-1 bg-yellow-600 text-white">
-            <Timer className="h-3 w-3" /> Paid — Awaiting Coach Confirmation
-          </Badge>
-        );
-      case "confirmed":
-        return (
-          <Badge variant="default" className="gap-1 bg-blue-600">
-            <CheckCircle2 className="h-3 w-3" /> Confirmed
-          </Badge>
-        );
-      case "disputed":
-        return (
-          <Badge variant="secondary" className="gap-1 bg-orange-600 text-white">
-            <AlertTriangle className="h-3 w-3" /> Under Review
-          </Badge>
-        );
-      case "refunded":
-        return (
-          <Badge variant="secondary" className="gap-1 bg-purple-600 text-white">
-            <DollarSign className="h-3 w-3" /> Refunded
-          </Badge>
-        );
-      case "released":
-        return (
-          <Badge variant="default" className="gap-1 bg-emerald-600">
-            <CheckCircle2 className="h-3 w-3" /> Complete
-          </Badge>
-        );
-      case "declined":
-        return (
-          <Badge variant="destructive" className="gap-1">
-            <Ban className="h-3 w-3" /> Declined by Coach
-          </Badge>
-        );
-      case "no_show":
-        return (
-          <Badge variant="secondary" className="gap-1">
-            <XCircle className="h-3 w-3" /> No Show
-          </Badge>
-        );
-      default:
-        return null;
-    }
-  };
-
-  // ── All time-gated state is derived from `now` (updated every 30 s) ─────
-  const hoursUntilLesson = differenceInHours(new Date(lesson.scheduledAt), now);
-  const canCancel =
-    !isPast &&
-    hoursUntilLesson > 0 &&
-    ["pending_payment", "payment_collected", "confirmed"].includes(lesson.status);
-
-  // Pure helpers from shared/lessonTimeHelpers.ts — use `now` not new Date()
-  const canConfirmComplete = canConfirmLessonComplete(lesson, now);
-  const issueWindowStatus = getIssueWindowState(lesson, now);
-  const issueWindowActive = issueWindowStatus === "active";
-  const issueWindowExpired = issueWindowStatus === "expired";
-  const issueWindowEndsAt = lesson.issueWindowEndsAt
-    ? new Date(lesson.issueWindowEndsAt)
-    : null;
+  if (!wasPaid) {
+    refundLabel = "Free Cancellation";
+    refundColor = "text-green-500";
+    policyNote =
+      "This lesson hasn't been paid for yet, so cancelling is free — there's nothing to refund.";
+  } else if (minutesUntil > 60) {
+    refundDollars = amountDollars;
+    refundLabel = "Full Refund";
+    refundColor = "text-green-500";
+    policyNote =
+      "You're cancelling more than 1 hour before the lesson — you'll receive a full refund.";
+  } else {
+    refundLabel = "No Refund";
+    refundColor = "text-red-500";
+    policyNote =
+      "You're cancelling within 1 hour of the lesson — no refund will be issued per our cancellation policy.";
+  }
 
   return (
-    <>
-      <Card className="hover:border-primary/50 transition-colors border-l-2 border-l-ember">
-        <CardContent className="p-6">
-          <div className="flex items-start justify-between">
-            <div className="flex-1">
-              <div className="flex items-center gap-3 mb-3">
-                <h3 className="text-lg font-semibold">
-                  Lesson with {lesson.coachName || `Coach #${lesson.coachId}`}
-                </h3>
-                {getStatusBadge()}
-              </div>
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-yellow-500" />
+            Cancel This Lesson?
+          </DialogTitle>
+          <DialogDescription>
+            Please review the refund details before confirming.
+          </DialogDescription>
+        </DialogHeader>
 
-              <div className="grid sm:grid-cols-2 gap-3 text-sm">
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Calendar className="h-4 w-4" />
-                  <span>{format(new Date(lesson.scheduledAt), "EEEE, MMMM d, yyyy")}</span>
-                </div>
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Clock className="h-4 w-4" />
-                  <span>
-                    {format(new Date(lesson.scheduledAt), "h:mm a")} · {lesson.durationMinutes} min
-                  </span>
-                </div>
-                {lesson.topic && (
-                  <div className="flex items-center gap-2 text-muted-foreground sm:col-span-2">
-                    <span className="font-medium">Topic:</span>
-                    <span>{lesson.topic}</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Live countdown timer */}
-              {!isPast && lesson.status !== "cancelled" && lesson.status !== "declined" && (
-                <CountdownBanner
-                  scheduledAt={new Date(lesson.scheduledAt)}
-                  status={lesson.status}
-                />
-              )}
-
-              {/* Issue window banner — shown for completed lessons */}
-              {issueWindowActive && issueWindowEndsAt && (
-                <div
-                  data-testid="issue-window-banner"
-                  className="mt-3 flex items-start gap-2 rounded-md border border-yellow-500/40 bg-yellow-50/60 dark:bg-yellow-950/20 px-3 py-2 text-sm"
-                >
-                  <ShieldCheck className="h-4 w-4 text-yellow-600 mt-0.5 shrink-0" />
-                  <div>
-                    <span className="font-medium text-yellow-800 dark:text-yellow-300">
-                      24-hour issue window open
-                    </span>
-                    <span className="text-muted-foreground">
-                      {" — "}
-                      Coach payout is released after the window closes on{" "}
-                      <span className="font-medium">
-                        {format(issueWindowEndsAt, "MMM d 'at' h:mm a")}
-                      </span>.
-                    </span>
-                  </div>
-                </div>
-              )}
-              {issueWindowExpired && (
-                <div
-                  data-testid="issue-window-expired-banner"
-                  className="mt-3 flex items-start gap-2 rounded-md border border-green-500/40 bg-green-50/60 dark:bg-green-950/20 px-3 py-2 text-sm"
-                >
-                  <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
-                  <span className="text-muted-foreground">
-                    Issue window closed — coach payout is eligible for release.
-                  </span>
-                </div>
-              )}
-              {/* Released banner — only shown once status transitions to released */}
-              {lesson.status === "released" && (
-                <div
-                  data-testid="payout-released-banner"
-                  className="mt-3 flex items-start gap-2 rounded-md border border-emerald-500/40 bg-emerald-50/60 dark:bg-emerald-950/20 px-3 py-2 text-sm"
-                >
-                  <CheckCircle2 className="h-4 w-4 text-emerald-600 mt-0.5 shrink-0" />
-                  <span className="text-muted-foreground">
-                    Coach payout has been released.
-                  </span>
-                </div>
-              )}
-
-              {/* Action buttons */}
-              <div className="mt-4 flex flex-wrap gap-2">
-                {lesson.meetingLink && !isPast && (
-                  <Button size="sm" className="gap-2" asChild>
-                    <a href={lesson.meetingLink} target="_blank" rel="noopener noreferrer">
-                      <Video className="h-4 w-4" />
-                      Join Video Call
-                    </a>
-                  </Button>
-                )}
-
-                {/* Student needs to pay (payment-first model) */}
-                {lesson.status === "pending_payment" && !isPast && (
-                  <Button
-                    size="sm"
-                    className="gap-2"
-                    disabled={createCheckout.isPending}
-                    onClick={() => createCheckout.mutate({ lessonId: lesson.id })}
-                  >
-                    <DollarSign className="h-4 w-4" />
-                    {createCheckout.isPending ? "Redirecting…" : "Pay Now"}
-                  </Button>
-                )}
-
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="gap-2 relative"
-                  onClick={() => setShowMessageThread(true)}
-                >
-                  <MessageCircle className="h-4 w-4" />
-                  Messages
-                  {unreadCount > 0 && (
-                    <span className="ml-1 rounded-full bg-primary text-primary-foreground text-[10px] font-semibold px-1.5 py-0.5 min-w-[18px] text-center">
-                      {unreadCount}
-                    </span>
-                  )}
-                </Button>
-
-                {canCancel && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="gap-2 text-destructive hover:text-destructive"
-                    onClick={() => setShowCancelDialog(true)}
-                  >
-                    <Ban className="h-4 w-4" />
-                    Cancel Lesson
-                  </Button>
-                )}
-
-                {/* Confirm Lesson Complete — only after lesson end + 15 min grace */}
-                {canConfirmComplete && (
-                  <Button
-                    data-testid="confirm-complete-btn"
-                    size="sm"
-                    className="gap-2 bg-green-600 hover:bg-green-700 text-white"
-                    disabled={confirmCompletion.isPending}
-                    onClick={() => confirmCompletion.mutate({ lessonId: lesson.id })}
-                  >
-                    <CheckCircle2 className="h-4 w-4" />
-                    {confirmCompletion.isPending ? "Confirming…" : "Confirm Lesson Complete"}
-                  </Button>
-                )}
-
-                {isPast && ["completed", "released"].includes(lesson.status) && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="gap-2"
-                    onClick={() => setShowDetailDialog(true)}
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                    View Details
-                  </Button>
-                )}
-
-                {/* Raise Issue — only during the 24-hour issue window */}
-                {issueWindowActive && (
-                  <Button
-                    data-testid="raise-issue-btn"
-                    size="sm"
-                    variant="outline"
-                    className="gap-2 text-orange-600 border-orange-400 hover:text-orange-700"
-                    onClick={() => setShowRaiseIssueDialog(true)}
-                  >
-                    <Flag className="h-4 w-4" />
-                    Raise Issue
-                  </Button>
-                )}
-              </div>
-            </div>
-
-            <div className="text-right ml-4">
-              <div className="text-2xl font-bold font-mono tabular-nums">
-                ${(lesson.amountCents / 100).toFixed(2)}
-              </div>
-              {!isPast && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="mt-2"
-                  onClick={() => setLocation(`/coach/${lesson.coachId}`)}
-                >
-                  View Coach
-                  <ChevronRight className="h-4 w-4 ml-1" />
-                </Button>
-              )}
-            </div>
+        {/* Lesson summary */}
+        <div className="bg-muted/50 rounded-lg p-4 space-y-2 text-sm">
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Date</span>
+            <span className="font-medium">
+              {format(new Date(lesson.scheduledAt), "EEEE, MMMM d, yyyy")}
+            </span>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Cancellation confirmation dialog */}
-      {showCancelDialog && (
-        <CancellationDialog
-          open={showCancelDialog}
-          onClose={() => setShowCancelDialog(false)}
-          lesson={lesson}
-          onConfirm={() => cancelMutation.mutate({ lessonId: lesson.id })}
-          isPending={cancelMutation.isPending}
-        />
-      )}
-
-      {/* Raise Issue dialog — S-REF-1 categorized intake */}
-      <Dialog
-        open={showRaiseIssueDialog}
-        onOpenChange={(v) => {
-          if (!v) {
-            setShowRaiseIssueDialog(false);
-            setIssueCategory("");
-            setIssueDescription("");
-          }
-        }}
-      >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Flag className="h-5 w-5 text-orange-500" />
-              Raise an Issue
-            </DialogTitle>
-            <DialogDescription>
-              Select the type of issue and describe what happened. Coach payout
-              is paused while the issue is under review.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div className="bg-muted/50 rounded-lg p-3 text-sm">
-              <div className="flex justify-between mb-1">
-                <span className="text-muted-foreground">Lesson date</span>
-                <span className="font-medium">
-                  {format(new Date(lesson.scheduledAt), "MMMM d, yyyy")}
-                </span>
-              </div>
-              {issueWindowEndsAt && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Window closes</span>
-                  <span className="font-medium text-orange-600">
-                    {format(issueWindowEndsAt, "MMM d 'at' h:mm a")}
-                  </span>
-                </div>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium">What happened?</label>
-              {[
-                { value: "coach_no_show", label: "Coach didn't show up", hint: "The lesson never started because your coach didn't join." },
-                { value: "coach_late_or_short", label: "Coach was late or cut lesson short", hint: "Coach joined >15 min late, or the lesson ended materially early." },
-                { value: "technical_failure", label: "Technical failure", hint: "A platform or connection issue prevented the lesson." },
-                { value: "not_as_described", label: "Not as described", hint: "The lesson was materially different from the coach's profile." },
-                { value: "quality", label: "Quality / didn't find it useful", hint: "Note: Subjective dissatisfaction is not eligible for a refund. You may still submit this as feedback." },
-              ].map((opt) => (
-                <label
-                  key={opt.value}
-                  className={`flex items-start gap-3 rounded-md border p-3 cursor-pointer transition-colors ${issueCategory === opt.value ? "border-orange-500 bg-orange-50/50 dark:bg-orange-950/20" : "border-border/60 hover:border-border"}`}
-                >
-                  <input
-                    type="radio"
-                    name="issueCategory"
-                    value={opt.value}
-                    checked={issueCategory === opt.value}
-                    onChange={(e) => setIssueCategory(e.target.value)}
-                    className="mt-1"
-                  />
-                  <div>
-                    <div className="text-sm font-medium">{opt.label}</div>
-                    <div className="text-xs text-muted-foreground">{opt.hint}</div>
-                  </div>
-                </label>
-              ))}
-            </div>
-
-            {issueCategory && (
-              <div>
-                <label className="text-sm font-medium">
-                  {issueCategory === "quality" ? "Feedback for the coach (optional)" : "Describe what happened (required, min 20 characters)"}
-                </label>
-                <textarea
-                  data-testid="issue-reason-input"
-                  className="mt-1 w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
-                  placeholder={issueCategory === "quality" ? "Optional feedback…" : "Please describe what went wrong (min 20 characters)…"}
-                  value={issueDescription}
-                  onChange={(e) => setIssueDescription(e.target.value)}
-                />
-              </div>
-            )}
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Time</span>
+            <span className="font-medium">
+              {format(new Date(lesson.scheduledAt), "h:mm a")}
+            </span>
           </div>
-          <DialogFooter className="gap-2">
-            <Button
-              variant="outline"
-              onClick={() => {
-                setShowRaiseIssueDialog(false);
-                setIssueCategory("");
-                setIssueDescription("");
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              className="gap-2 bg-orange-600 hover:bg-orange-700 text-white"
-              disabled={
-                !issueCategory ||
-                (issueCategory !== "quality" && issueCategory !== "coach_no_show" && issueDescription.trim().length < 20) ||
-                raiseIssueMutation.isPending
-              }
-              onClick={() =>
-                raiseIssueMutation.mutate({
-                  lessonId: lesson.id,
-                  category: issueCategory as any,
-                  description: issueDescription.trim() || undefined,
-                })
-              }
-            >
-              <Flag className="h-4 w-4" />
-              {raiseIssueMutation.isPending ? "Submitting…" : issueCategory === "quality" ? "Submit Feedback" : "Submit Issue"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Duration</span>
+            <span className="font-medium">
+              {lesson.durationMinutes} minutes
+            </span>
+          </div>
+          <div className="flex justify-between border-t border-border pt-2 mt-2">
+            <span className="text-muted-foreground">
+              {wasPaid ? "Amount Paid" : "Amount (unpaid)"}
+            </span>
+            <span className="font-semibold">${amountDollars}</span>
+          </div>
+        </div>
 
-      <MessageThread
-        open={showMessageThread}
-        onOpenChange={setShowMessageThread}
-        lessonId={lesson.id}
-        otherPartyName={lesson.coachName || `Coach #${lesson.coachId}`}
-      />
+        {/* Refund breakdown */}
+        <div className="border border-border rounded-lg overflow-hidden">
+          <div className="bg-muted/30 px-4 py-3 flex items-center gap-2">
+            <DollarSign className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-medium">Refund Breakdown</span>
+          </div>
+          <div className="p-4 space-y-3">
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-muted-foreground">
+                Refund Policy
+              </span>
+              <Badge
+                variant="outline"
+                className={`${refundColor} border-current font-semibold`}
+              >
+                {refundLabel}
+              </Badge>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-muted-foreground">
+                You will receive
+              </span>
+              <span className={`text-xl font-bold ${refundColor}`}>
+                ${refundDollars}
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground leading-relaxed border-t border-border pt-3">
+              {policyNote}
+            </p>
+          </div>
+        </div>
 
-      {showDetailDialog && (
-        <LessonDetailDialog
-          open={showDetailDialog}
-          onOpenChange={setShowDetailDialog}
-          lesson={lesson}
-        />
-      )}
-    </>
+        {/* Policy reminder */}
+        <div className="text-xs text-muted-foreground space-y-1">
+          <p className="font-medium text-foreground">Cancellation Policy:</p>
+          <p>• More than 1 hour before lesson → Full refund</p>
+          <p>• Within 1 hour of lesson → No refund</p>
+          <p>• Unpaid lessons → Always free to cancel</p>
+        </div>
+
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={onClose} disabled={isPending}>
+            Keep My Lesson
+          </Button>
+          <Button variant="destructive" onClick={onConfirm} disabled={isPending}>
+            {isPending
+              ? "Cancelling..."
+              : `Yes, Cancel & Get $${refundDollars} Back`}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Lesson Detail Dialog (tip flow)
+// ─────────────────────────────────────────────────────────────────────────────
 
 function LessonDetailDialog({
   open,
@@ -946,18 +520,19 @@ function LessonDetailDialog({
 }) {
   const { data: reviewData } = trpc.review.getForLesson.useQuery(
     { lessonId: lesson.id },
-    { enabled: open }
+    { enabled: open },
   );
-  const { data: tipData, refetch: refetchTip } = trpc.tip.getForLesson.useQuery(
-    { lessonId: lesson.id },
-    { enabled: open }
-  );
+  const { data: tipData, refetch: refetchTip } =
+    trpc.tip.getForLesson.useQuery(
+      { lessonId: lesson.id },
+      { enabled: open },
+    );
   const [showTipForm, setShowTipForm] = useState(false);
   const [retryingTip, setRetryingTip] = useState(false);
   const [customAmount, setCustomAmount] = useState("");
   const tipMutation = trpc.tip.createCheckout.useMutation({
     onSuccess: (data) => {
-      if (data.url) window.open(data.url, '_blank');
+      if (data.url) window.open(data.url, "_blank");
       refetchTip();
     },
     onError: (err) => toast.error(err.message),
@@ -980,19 +555,28 @@ function LessonDetailDialog({
           <div className="bg-muted/50 rounded-lg p-4 space-y-2 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Coach</span>
-              <span className="font-medium">{lesson.coachName || `Coach #${lesson.coachId}`}</span>
+              <span className="font-medium">
+                {lesson.coachName || `Coach #${lesson.coachId}`}
+              </span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Date</span>
-              <span className="font-medium">{format(new Date(lesson.scheduledAt), "MMMM d, yyyy")}</span>
+              <span className="font-medium">
+                {format(new Date(lesson.scheduledAt), "MMMM d, yyyy")}
+              </span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Time</span>
-              <span className="font-medium">{format(new Date(lesson.scheduledAt), "h:mm a")} · {lesson.durationMinutes} min</span>
+              <span className="font-medium">
+                {format(new Date(lesson.scheduledAt), "h:mm a")} ·{" "}
+                {lesson.durationMinutes} min
+              </span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Amount</span>
-              <span className="font-medium">${(lesson.amountCents / 100).toFixed(2)}</span>
+              <span className="font-medium">
+                ${(lesson.amountCents / 100).toFixed(2)}
+              </span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Status</span>
@@ -1007,28 +591,40 @@ function LessonDetailDialog({
               <div className="rounded-lg border p-3 space-y-1">
                 <div className="flex items-center gap-2 text-sm">
                   <span className="font-medium">Your review</span>
-                  <span className="text-yellow-500">{"★".repeat(reviewData.myReview.rating)}</span>
+                  <span className="text-yellow-500">
+                    {"★".repeat(reviewData.myReview.rating)}
+                  </span>
                 </div>
                 {reviewData.myReview.comment && (
-                  <p className="text-sm text-muted-foreground">{reviewData.myReview.comment}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {reviewData.myReview.comment}
+                  </p>
                 )}
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground">You haven't reviewed this lesson yet.</p>
+              <p className="text-sm text-muted-foreground">
+                You haven't reviewed this lesson yet.
+              </p>
             )}
 
             {reviewData?.counterpartReview ? (
               <div className="rounded-lg border p-3 space-y-1">
                 <div className="flex items-center gap-2 text-sm">
                   <span className="font-medium">Coach's review</span>
-                  <span className="text-yellow-500">{"★".repeat(reviewData.counterpartReview.rating)}</span>
+                  <span className="text-yellow-500">
+                    {"★".repeat(reviewData.counterpartReview.rating)}
+                  </span>
                 </div>
                 {reviewData.counterpartReview.comment && (
-                  <p className="text-sm text-muted-foreground">{reviewData.counterpartReview.comment}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {reviewData.counterpartReview.comment}
+                  </p>
                 )}
               </div>
             ) : reviewData?.myReview ? (
-              <p className="text-sm text-muted-foreground">Waiting for the other party to submit their review.</p>
+              <p className="text-sm text-muted-foreground">
+                Waiting for the other party to submit their review.
+              </p>
             ) : null}
           </div>
 
@@ -1038,12 +634,15 @@ function LessonDetailDialog({
             {hasTipped && tipStatus === "transferred" ? (
               <div className="text-sm text-muted-foreground flex items-center gap-2">
                 <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                Tip of ${((tipData.tip?.amountCents || 0) / 100).toFixed(2)} sent
+                Tip of $
+                {((tipData.tip?.amountCents || 0) / 100).toFixed(2)} sent
               </div>
             ) : hasTipped && tipStatus === "paid" ? (
               <div className="text-sm text-muted-foreground flex items-center gap-2">
                 <Timer className="h-4 w-4 text-amber-500" />
-                Tip of ${((tipData.tip?.amountCents || 0) / 100).toFixed(2)} processing…
+                Tip of $
+                {((tipData.tip?.amountCents || 0) / 100).toFixed(2)}{" "}
+                processing…
               </div>
             ) : hasTipped && tipStatus === "pending" ? (
               <div className="text-sm text-muted-foreground flex items-center gap-2">
@@ -1056,7 +655,14 @@ function LessonDetailDialog({
                   <XCircle className="h-4 w-4" />
                   Tip failed
                 </div>
-                <Button size="sm" variant="outline" onClick={() => { setRetryingTip(true); setShowTipForm(true); }}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setRetryingTip(true);
+                    setShowTipForm(true);
+                  }}
+                >
                   Retry
                 </Button>
               </div>
@@ -1087,15 +693,27 @@ function LessonDetailDialog({
                   />
                   <Button
                     size="sm"
-                    disabled={!customAmount || Number(customAmount) < 1 || Number(customAmount) > 500 || tipMutation.isPending}
-                    onClick={() => handleTip(Math.round(Number(customAmount) * 100))}
+                    disabled={
+                      !customAmount ||
+                      Number(customAmount) < 1 ||
+                      Number(customAmount) > 500 ||
+                      tipMutation.isPending
+                    }
+                    onClick={() =>
+                      handleTip(Math.round(Number(customAmount) * 100))
+                    }
                   >
                     {tipMutation.isPending ? "Redirecting…" : "Tip"}
                   </Button>
                 </div>
               </div>
             ) : (
-              <Button size="sm" variant="outline" className="gap-2" onClick={() => setShowTipForm(true)}>
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-2"
+                onClick={() => setShowTipForm(true)}
+              >
                 <DollarSign className="h-4 w-4" />
                 Leave a Tip
               </Button>
@@ -1107,21 +725,1077 @@ function LessonDetailDialog({
   );
 }
 
-function DashboardSkeleton() {
+// ─────────────────────────────────────────────────────────────────────────────
+// MODULE 1: NextLessonCard — the hero card
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface NextLessonCardProps {
+  lesson: any;
+  unreadCount: number;
+}
+
+function NextLessonCard({ lesson, unreadCount }: NextLessonCardProps) {
+  const [, setLocation] = useLocation();
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [showMessageThread, setShowMessageThread] = useState(false);
+  const [showRaiseIssueDialog, setShowRaiseIssueDialog] = useState(false);
+  const [showDetailDialog, setShowDetailDialog] = useState(false);
+  const [issueCategory, setIssueCategory] = useState("");
+  const [issueDescription, setIssueDescription] = useState("");
+  const utils = trpc.useUtils();
+
+  // ── Live clock — refreshes every 30 s so time-gated UI auto-updates ─────
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const cancelMutation = trpc.lesson.cancel.useMutation({
+    onSuccess: (data) => {
+      const msg =
+        data.refundPercentage === 100
+          ? "Lesson cancelled. Full refund issued."
+          : data.refundPercentage > 0
+            ? `Lesson cancelled. ${data.refundPercentage}% refund issued.`
+            : "Lesson cancelled. No refund (within 24-hour window).";
+      toast.success(msg);
+      setShowCancelDialog(false);
+      utils.lesson.myLessons.invalidate();
+    },
+    onError: (err) => {
+      toast.error(err.message);
+      setShowCancelDialog(false);
+    },
+  });
+
+  const confirmCompletion = trpc.lesson.confirmCompletion.useMutation({
+    onSuccess: () => {
+      toast.success(
+        "Lesson marked complete. The 24-hour issue window has started — coach payout is released after the window closes.",
+      );
+      utils.lesson.myLessons.invalidate();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const raiseIssueMutation = trpc.lesson.raiseIssue.useMutation({
+    onSuccess: (data: any) => {
+      if (data.policyGated) {
+        toast.success(
+          "Feedback submitted. Quality alone is not eligible for a refund per our policy.",
+        );
+      } else {
+        toast.success("Issue raised. An admin will review your case.");
+      }
+      setShowRaiseIssueDialog(false);
+      setIssueCategory("");
+      setIssueDescription("");
+      utils.lesson.myLessons.invalidate();
+    },
+    onError: (err) => {
+      toast.error(err.message);
+    },
+  });
+
+  const createCheckout = trpc.payment.createCheckout.useMutation({
+    onSuccess: (data) => {
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        toast.error("Failed to start payment");
+      }
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  // ── All time-gated state is derived from `now` (updated every 30 s) ─────
+  const hoursUntilLesson = differenceInHours(
+    new Date(lesson.scheduledAt),
+    now,
+  );
+  const canCancel =
+    hoursUntilLesson > 0 &&
+    ["pending_payment", "payment_collected", "confirmed"].includes(
+      lesson.status,
+    );
+
+  const canConfirmComplete = canConfirmLessonComplete(lesson, now);
+  const issueWindowStatus = getIssueWindowState(lesson, now);
+  const issueWindowActive = issueWindowStatus === "active";
+  const issueWindowExpired = issueWindowStatus === "expired";
+  const issueWindowEndsAt = lesson.issueWindowEndsAt
+    ? new Date(lesson.issueWindowEndsAt)
+    : null;
+
+  // Join button: show when meetingUrl is set and within 15 min or started
+  const secondsUntilLesson = differenceInSeconds(
+    new Date(lesson.scheduledAt),
+    now,
+  );
+  const showJoinButton =
+    lesson.meetingUrl && (secondsUntilLesson <= 900 || secondsUntilLesson <= 0);
+
+  const escrowDollars = (lesson.amountCents / 100).toFixed(2);
+
   return (
-    <div className="container py-8">
-      <Skeleton className="h-12 w-64 mb-8" />
-      <div className="space-y-4">
-        {[...Array(3)].map((_, i) => (
-          <Skeleton key={i} className="h-32" />
-        ))}
-      </div>
-    </div>
+    <>
+      <Card className="bg-ink-raised border-border/20 rounded-sm relative">
+        <CardContent className="p-6">
+          {/* Cancel icon — top-right corner */}
+          {canCancel && (
+            <button
+              onClick={() => setShowCancelDialog(true)}
+              className="absolute top-4 right-4 text-bone-muted hover:text-red-400 transition-colors"
+              aria-label="Cancel lesson"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+
+          {/* Escrow pill */}
+          {lesson.stripePaymentIntentId && (
+            <Badge className="mb-3 bg-amber-600/20 text-amber-400 border-amber-600/40 rounded-sm font-mono tabular-nums text-xs">
+              ${escrowDollars} IN ESCROW
+            </Badge>
+          )}
+
+          {/* Topic */}
+          <h2 className="text-2xl font-bold text-bone mb-1">
+            {lesson.topic || `Lesson with ${lesson.coachName || `Coach #${lesson.coachId}`}`}
+          </h2>
+
+          {/* Notes */}
+          {lesson.notes && (
+            <p className="text-sm text-bone-muted line-clamp-3 mb-3">
+              {lesson.notes}
+            </p>
+          )}
+
+          {/* Date/time + live countdown */}
+          <div className="flex items-center gap-4 text-sm text-bone-muted mb-1">
+            <span className="flex items-center gap-1.5">
+              <Calendar className="h-4 w-4" />
+              {format(new Date(lesson.scheduledAt), "EEEE, MMMM d, yyyy")}
+            </span>
+            <span className="flex items-center gap-1.5">
+              <Clock className="h-4 w-4" />
+              {format(new Date(lesson.scheduledAt), "h:mm a")} ·{" "}
+              {lesson.durationMinutes} min
+            </span>
+          </div>
+
+          {/* Live countdown timer */}
+          {lesson.status !== "cancelled" && lesson.status !== "declined" && (
+            <CountdownBanner
+              scheduledAt={new Date(lesson.scheduledAt)}
+              status={lesson.status}
+            />
+          )}
+
+          {/* Issue window banners */}
+          {issueWindowActive && issueWindowEndsAt && (
+            <div
+              data-testid="issue-window-banner"
+              className="mt-3 flex items-start gap-2 rounded-sm border border-yellow-500/40 bg-yellow-950/20 px-3 py-2 text-sm"
+            >
+              <ShieldCheck className="h-4 w-4 text-yellow-600 mt-0.5 shrink-0" />
+              <div>
+                <span className="font-medium text-yellow-300">
+                  24-hour issue window open
+                </span>
+                <span className="text-bone-muted">
+                  {" — "}
+                  Coach payout is released after the window closes on{" "}
+                  <span className="font-medium">
+                    {format(issueWindowEndsAt, "MMM d 'at' h:mm a")}
+                  </span>
+                  .
+                </span>
+              </div>
+            </div>
+          )}
+          {issueWindowExpired && (
+            <div
+              data-testid="issue-window-expired-banner"
+              className="mt-3 flex items-start gap-2 rounded-sm border border-green-500/40 bg-green-950/20 px-3 py-2 text-sm"
+            >
+              <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
+              <span className="text-bone-muted">
+                Issue window closed — coach payout is eligible for release.
+              </span>
+            </div>
+          )}
+          {lesson.status === "released" && (
+            <div
+              data-testid="payout-released-banner"
+              className="mt-3 flex items-start gap-2 rounded-sm border border-emerald-500/40 bg-emerald-950/20 px-3 py-2 text-sm"
+            >
+              <CheckCircle2 className="h-4 w-4 text-emerald-600 mt-0.5 shrink-0" />
+              <span className="text-bone-muted">
+                Coach payout has been released.
+              </span>
+            </div>
+          )}
+
+          {/* Action buttons */}
+          <div className="mt-4 flex flex-wrap gap-2">
+            {/* JOIN LESSON */}
+            {showJoinButton && (
+              <Button
+                size="sm"
+                className="gap-2 bg-ember hover:bg-ember/90 text-white rounded-sm"
+                asChild
+              >
+                <a
+                  href={lesson.meetingUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <Video className="h-4 w-4" />
+                  Join Lesson
+                </a>
+              </Button>
+            )}
+
+            {/* RESCHEDULE */}
+            <Button
+              size="sm"
+              variant="ghost"
+              className="gap-2 text-bone-muted hover:text-bone rounded-sm"
+              onClick={() =>
+                toast.info("To reschedule, contact your coach via Messages")
+              }
+            >
+              Reschedule
+            </Button>
+
+            {/* Pay Now */}
+            {lesson.status === "pending_payment" && (
+              <Button
+                size="sm"
+                className="gap-2 bg-ember hover:bg-ember/90 text-white rounded-sm"
+                disabled={createCheckout.isPending}
+                onClick={() => createCheckout.mutate({ lessonId: lesson.id })}
+              >
+                <DollarSign className="h-4 w-4" />
+                {createCheckout.isPending ? "Redirecting…" : "Pay Now"}
+              </Button>
+            )}
+
+            {/* Messages */}
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-2 relative rounded-sm border-border/40 text-bone-muted hover:text-bone"
+              onClick={() => setShowMessageThread(true)}
+            >
+              <MessageCircle className="h-4 w-4" />
+              Messages
+              {unreadCount > 0 && (
+                <span className="ml-1 rounded-sm bg-ember text-white text-[10px] font-semibold px-1.5 py-0.5 min-w-[18px] text-center">
+                  {unreadCount}
+                </span>
+              )}
+            </Button>
+
+            {/* Confirm Lesson Complete */}
+            {canConfirmComplete && (
+              <Button
+                data-testid="confirm-complete-btn"
+                size="sm"
+                className="gap-2 bg-green-600 hover:bg-green-700 text-white rounded-sm"
+                disabled={confirmCompletion.isPending}
+                onClick={() =>
+                  confirmCompletion.mutate({ lessonId: lesson.id })
+                }
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                {confirmCompletion.isPending
+                  ? "Confirming…"
+                  : "Confirm Lesson Complete"}
+              </Button>
+            )}
+
+            {/* View Details — for completed/released lessons */}
+            {["completed", "released"].includes(lesson.status) && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-2 rounded-sm border-border/40 text-bone-muted hover:text-bone"
+                onClick={() => setShowDetailDialog(true)}
+              >
+                <ChevronRight className="h-4 w-4" />
+                View Details
+              </Button>
+            )}
+
+            {/* Raise Issue */}
+            {issueWindowActive && (
+              <Button
+                data-testid="raise-issue-btn"
+                size="sm"
+                variant="outline"
+                className="gap-2 text-orange-600 border-orange-400 hover:text-orange-700 rounded-sm"
+                onClick={() => setShowRaiseIssueDialog(true)}
+              >
+                <Flag className="h-4 w-4" />
+                Raise Issue
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Cancellation confirmation dialog */}
+      {showCancelDialog && (
+        <CancellationDialog
+          open={showCancelDialog}
+          onClose={() => setShowCancelDialog(false)}
+          lesson={lesson}
+          onConfirm={() => cancelMutation.mutate({ lessonId: lesson.id })}
+          isPending={cancelMutation.isPending}
+        />
+      )}
+
+      {/* Raise Issue dialog — S-REF-1 categorized intake */}
+      <RaiseIssueDialog
+        open={showRaiseIssueDialog}
+        onOpenChange={(v) => {
+          if (!v) {
+            setShowRaiseIssueDialog(false);
+            setIssueCategory("");
+            setIssueDescription("");
+          }
+        }}
+        lesson={lesson}
+        issueCategory={issueCategory}
+        setIssueCategory={setIssueCategory}
+        issueDescription={issueDescription}
+        setIssueDescription={setIssueDescription}
+        issueWindowEndsAt={issueWindowEndsAt}
+        raiseIssueMutation={raiseIssueMutation}
+        onClose={() => {
+          setShowRaiseIssueDialog(false);
+          setIssueCategory("");
+          setIssueDescription("");
+        }}
+      />
+
+      <MessageThread
+        open={showMessageThread}
+        onOpenChange={setShowMessageThread}
+        lessonId={lesson.id}
+        otherPartyName={lesson.coachName || `Coach #${lesson.coachId}`}
+      />
+
+      {showDetailDialog && (
+        <LessonDetailDialog
+          open={showDetailDialog}
+          onOpenChange={setShowDetailDialog}
+          lesson={lesson}
+        />
+      )}
+    </>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Pending Reviews Card — prompts the user to review completed lessons
+// Raise Issue Dialog — S-REF-1 categorized intake
+// ─────────────────────────────────────────────────────────────────────────────
+
+function RaiseIssueDialog({
+  open,
+  onOpenChange,
+  lesson,
+  issueCategory,
+  setIssueCategory,
+  issueDescription,
+  setIssueDescription,
+  issueWindowEndsAt,
+  raiseIssueMutation,
+  onClose,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  lesson: any;
+  issueCategory: string;
+  setIssueCategory: (v: string) => void;
+  issueDescription: string;
+  setIssueDescription: (v: string) => void;
+  issueWindowEndsAt: Date | null;
+  raiseIssueMutation: any;
+  onClose: () => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Flag className="h-5 w-5 text-orange-500" />
+            Raise an Issue
+          </DialogTitle>
+          <DialogDescription>
+            Select the type of issue and describe what happened. Coach payout is
+            paused while the issue is under review.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="bg-muted/50 rounded-lg p-3 text-sm">
+            <div className="flex justify-between mb-1">
+              <span className="text-muted-foreground">Lesson date</span>
+              <span className="font-medium">
+                {format(new Date(lesson.scheduledAt), "MMMM d, yyyy")}
+              </span>
+            </div>
+            {issueWindowEndsAt && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Window closes</span>
+                <span className="font-medium text-orange-600">
+                  {format(issueWindowEndsAt, "MMM d 'at' h:mm a")}
+                </span>
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium">What happened?</label>
+            {[
+              {
+                value: "coach_no_show",
+                label: "Coach didn't show up",
+                hint: "The lesson never started because your coach didn't join.",
+              },
+              {
+                value: "coach_late_or_short",
+                label: "Coach was late or cut lesson short",
+                hint: "Coach joined >15 min late, or the lesson ended materially early.",
+              },
+              {
+                value: "technical_failure",
+                label: "Technical failure",
+                hint: "A platform or connection issue prevented the lesson.",
+              },
+              {
+                value: "not_as_described",
+                label: "Not as described",
+                hint: "The lesson was materially different from the coach's profile.",
+              },
+              {
+                value: "quality",
+                label: "Quality / didn't find it useful",
+                hint: "Note: Subjective dissatisfaction is not eligible for a refund. You may still submit this as feedback.",
+              },
+            ].map((opt) => (
+              <label
+                key={opt.value}
+                className={`flex items-start gap-3 rounded-md border p-3 cursor-pointer transition-colors ${issueCategory === opt.value ? "border-orange-500 bg-orange-50/50 dark:bg-orange-950/20" : "border-border/60 hover:border-border"}`}
+              >
+                <input
+                  type="radio"
+                  name="issueCategory"
+                  value={opt.value}
+                  checked={issueCategory === opt.value}
+                  onChange={(e) => setIssueCategory(e.target.value)}
+                  className="mt-1"
+                />
+                <div>
+                  <div className="text-sm font-medium">{opt.label}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {opt.hint}
+                  </div>
+                </div>
+              </label>
+            ))}
+          </div>
+
+          {issueCategory && (
+            <div>
+              <label className="text-sm font-medium">
+                {issueCategory === "quality"
+                  ? "Feedback for the coach (optional)"
+                  : "Describe what happened (required, min 20 characters)"}
+              </label>
+              <textarea
+                data-testid="issue-reason-input"
+                className="mt-1 w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
+                placeholder={
+                  issueCategory === "quality"
+                    ? "Optional feedback…"
+                    : "Please describe what went wrong (min 20 characters)…"
+                }
+                value={issueDescription}
+                onChange={(e) => setIssueDescription(e.target.value)}
+              />
+            </div>
+          )}
+        </div>
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            className="gap-2 bg-orange-600 hover:bg-orange-700 text-white"
+            disabled={
+              !issueCategory ||
+              (issueCategory !== "quality" &&
+                issueCategory !== "coach_no_show" &&
+                issueDescription.trim().length < 20) ||
+              raiseIssueMutation.isPending
+            }
+            onClick={() =>
+              raiseIssueMutation.mutate({
+                lessonId: lesson.id,
+                category: issueCategory as any,
+                description: issueDescription.trim() || undefined,
+              })
+            }
+          >
+            <Flag className="h-4 w-4" />
+            {raiseIssueMutation.isPending
+              ? "Submitting…"
+              : issueCategory === "quality"
+                ? "Submit Feedback"
+                : "Submit Issue"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Coach Message Preview — right panel of hero
+// ─────────────────────────────────────────────────────────────────────────────
+
+function CoachMessagePreview({ lesson }: { lesson: any }) {
+  const [showMessageThread, setShowMessageThread] = useState(false);
+  const { data: messages } = trpc.messages.getForLesson.useQuery(
+    { lessonId: lesson.id },
+    { enabled: !!lesson.id },
+  );
+
+  const coachName = lesson.coachName || `Coach #${lesson.coachId}`;
+  const initials = (() => {
+    const parts = coachName.trim().split(/\s+/);
+    return parts.length >= 2
+      ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+      : parts[0][0].toUpperCase();
+  })();
+
+  // Find the latest message from the coach (not from current user perspective)
+  const coachMessages = (messages || []).filter(
+    (m: any) => m.senderId === lesson.coachId,
+  );
+  const latestCoachMsg = coachMessages[coachMessages.length - 1] || null;
+
+  return (
+    <>
+      <Card className="bg-ink-raised border-border/20 rounded-sm h-full">
+        <CardContent className="p-5 flex flex-col h-full">
+          <div className="text-[10px] font-bold tracking-[0.2em] uppercase text-bone-muted mb-3">
+            Latest from coach
+          </div>
+
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-9 h-9 rounded-sm bg-ember/20 text-ember text-xs font-bold flex items-center justify-center shrink-0">
+              {initials}
+            </div>
+            <div className="min-w-0">
+              <div className="text-sm font-medium text-bone truncate">
+                {coachName}
+              </div>
+              <div className="text-xs text-bone-muted">Your coach</div>
+            </div>
+          </div>
+
+          {latestCoachMsg ? (
+            <div className="flex-1">
+              <p className="text-sm text-bone-muted italic line-clamp-3 mb-2">
+                "{latestCoachMsg.content}"
+              </p>
+              <span className="text-xs text-bone-muted font-mono tabular-nums">
+                {formatDistanceToNow(new Date(latestCoachMsg.createdAt), {
+                  addSuffix: true,
+                })}
+              </span>
+            </div>
+          ) : (
+            <div className="flex-1">
+              <p className="text-sm text-bone-muted italic">
+                No messages yet — start the conversation!
+              </p>
+            </div>
+          )}
+
+          <Button
+            size="sm"
+            variant="outline"
+            className="mt-3 gap-2 rounded-sm border-ember/40 text-ember hover:text-ember/80 w-full"
+            onClick={() => setShowMessageThread(true)}
+          >
+            <MessageCircle className="h-4 w-4" />
+            Reply
+          </Button>
+        </CardContent>
+      </Card>
+
+      <MessageThread
+        open={showMessageThread}
+        onOpenChange={setShowMessageThread}
+        lessonId={lesson.id}
+        otherPartyName={coachName}
+      />
+    </>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MODULE 2: Content Requests
+// ─────────────────────────────────────────────────────────────────────────────
+
+function ContentRequestsModule({
+  contentRequests,
+}: {
+  contentRequests: any;
+}) {
+  const statusBadge = (status: string) => {
+    switch (status) {
+      case "in_progress":
+        return (
+          <Badge className="bg-amber-600/20 text-amber-400 border-amber-600/40 rounded-sm text-xs">
+            In Progress
+          </Badge>
+        );
+      case "delivered":
+        return (
+          <Badge className="bg-emerald-600/20 text-emerald-400 border-emerald-600/40 rounded-sm text-xs">
+            Delivered
+          </Badge>
+        );
+      case "queued":
+      default:
+        return (
+          <Badge className="bg-zinc-600/20 text-zinc-400 border-zinc-600/40 rounded-sm text-xs">
+            Queued
+          </Badge>
+        );
+    }
+  };
+
+  const requests = contentRequests || [];
+
+  return (
+    <Card className="bg-ink-raised border-border/20 rounded-sm">
+      <CardContent className="p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-base font-semibold text-bone">
+            Content Requests
+          </h3>
+          <Button
+            size="sm"
+            className="gap-1 bg-ember hover:bg-ember/90 text-white rounded-sm text-xs"
+            onClick={() => toast.info("Content requests: coming soon")}
+          >
+            + New Request
+          </Button>
+        </div>
+
+        {requests.length === 0 ? (
+          <p className="text-sm text-bone-muted">
+            No content requests yet. Request custom lessons, analysis, or
+            training material from your coach.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {requests.map((req: any) => (
+              <div
+                key={req.id}
+                className="flex items-center justify-between py-2.5 px-3 border border-border/20 rounded-sm"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  {statusBadge(req.status)}
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-bone truncate">
+                      {req.title}
+                    </div>
+                    <div className="text-xs text-bone-muted">
+                      {req.coachName}
+                    </div>
+                  </div>
+                </div>
+                <span className="text-sm font-mono tabular-nums text-bone-muted ml-4 shrink-0">
+                  ${(req.amountCents / 100).toFixed(2)}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MODULE 3: Messages
+// ─────────────────────────────────────────────────────────────────────────────
+
+function MessagesModule({
+  lessons,
+  unreadCounts,
+}: {
+  lessons: any[];
+  unreadCounts: any;
+}) {
+  const [openLessonId, setOpenLessonId] = useState<number | null>(null);
+  const [openCoachName, setOpenCoachName] = useState("");
+
+  // Take up to 3 lessons for compact inbox preview
+  const previewLessons = lessons.slice(0, 3);
+
+  return (
+    <>
+      <Card className="bg-ink-raised border-border/20 rounded-sm">
+        <CardContent className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-base font-semibold text-bone">Messages</h3>
+            <button
+              className="text-xs text-ember hover:text-ember/80 transition-colors"
+              onClick={() => toast.info("Full inbox coming soon")}
+            >
+              View All
+            </button>
+          </div>
+
+          {previewLessons.length === 0 ? (
+            <p className="text-sm text-bone-muted">
+              No conversations yet. Messages will appear here when you book a
+              lesson.
+            </p>
+          ) : (
+            <div className="divide-y divide-border/20">
+              {previewLessons.map((lesson: any) => {
+                const unread =
+                  (
+                    unreadCounts as Record<number, number> | undefined
+                  )?.[lesson.id] || 0;
+                const coachName =
+                  lesson.coachName || `Coach #${lesson.coachId}`;
+                return (
+                  <MessagePreviewRow
+                    key={lesson.id}
+                    lesson={lesson}
+                    coachName={coachName}
+                    unread={unread}
+                    onOpen={() => {
+                      setOpenLessonId(lesson.id);
+                      setOpenCoachName(coachName);
+                    }}
+                  />
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {openLessonId !== null && (
+        <MessageThread
+          open={openLessonId !== null}
+          onOpenChange={(v) => {
+            if (!v) {
+              setOpenLessonId(null);
+              setOpenCoachName("");
+            }
+          }}
+          lessonId={openLessonId}
+          otherPartyName={openCoachName}
+        />
+      )}
+    </>
+  );
+}
+
+function MessagePreviewRow({
+  lesson,
+  coachName,
+  unread,
+  onOpen,
+}: {
+  lesson: any;
+  coachName: string;
+  unread: number;
+  onOpen: () => void;
+}) {
+  const { data: messages } = trpc.messages.getForLesson.useQuery(
+    { lessonId: lesson.id },
+    { enabled: !!lesson.id },
+  );
+
+  const latestMsg = messages?.[messages.length - 1] || null;
+
+  return (
+    <button
+      onClick={onOpen}
+      className="flex items-center gap-3 py-3 w-full text-left hover:bg-ink-deep/50 transition-colors -mx-1 px-1 rounded-sm"
+    >
+      {/* Unread dot */}
+      <div className="w-2 shrink-0">
+        {unread > 0 && (
+          <div className="w-2 h-2 rounded-full bg-ember" />
+        )}
+      </div>
+
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-medium text-bone truncate">
+          {coachName}
+        </div>
+        <p className="text-xs text-bone-muted truncate">
+          {latestMsg ? latestMsg.content : "No messages yet"}
+        </p>
+      </div>
+
+      <span className="text-[11px] text-bone-muted font-mono tabular-nums shrink-0">
+        {latestMsg
+          ? formatDistanceToNow(new Date(latestMsg.createdAt), {
+              addSuffix: true,
+            })
+          : ""}
+      </span>
+    </button>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MODULE 4: Content Library (stub)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function ContentLibraryModule() {
+  return (
+    <Card className="bg-ink-raised border-border/20 rounded-sm">
+      <CardContent className="p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-base font-semibold text-bone">Content Library</h3>
+          <button
+            className="text-xs text-ember hover:text-ember/80 transition-colors"
+            onClick={() => toast.info("Store coming soon")}
+          >
+            Browse Store
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[1, 2, 3].map((i) => (
+            <div
+              key={i}
+              className="border border-border/20 rounded-sm overflow-hidden"
+            >
+              <div className="aspect-video bg-ink-deep flex items-center justify-center">
+                <Video className="h-8 w-8 text-bone-muted/30" />
+              </div>
+              <div className="p-3">
+                <div className="text-sm font-medium text-bone-muted">
+                  Coming soon
+                </div>
+                <div className="text-xs text-bone-muted/60">
+                  Content library
+                </div>
+                <div className="text-xs text-bone-muted/60 mt-1 font-mono tabular-nums">
+                  0 videos
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MODULE 5: Progress
+// ─────────────────────────────────────────────────────────────────────────────
+
+function ProgressModule({
+  currentRating,
+}: {
+  currentRating: number | null;
+}) {
+  // Synthetic sparkline: 8 data points ending at currentRating
+  const rating = currentRating ?? 1200;
+  const sparkData = Array.from({ length: 8 }, (_, i) => {
+    const base = rating - 80 + i * 10;
+    const jitter = Math.sin(i * 1.5) * 15;
+    return Math.round(base + jitter);
+  });
+  // Ensure last point is the actual rating
+  sparkData[sparkData.length - 1] = rating;
+
+  const startRating = sparkData[0];
+  const delta = rating - startRating;
+
+  // SVG sparkline dimensions
+  const W = 240;
+  const H = 60;
+  const min = Math.min(...sparkData);
+  const max = Math.max(...sparkData);
+  const range = max - min || 1;
+
+  const points = sparkData
+    .map((v, i) => {
+      const x = (i / (sparkData.length - 1)) * W;
+      const y = H - ((v - min) / range) * H;
+      return `${x},${y}`;
+    })
+    .join(" ");
+
+  return (
+    <Card className="bg-ink-raised border-border/20 rounded-sm">
+      <CardContent className="p-6">
+        <h3 className="text-base font-semibold text-bone mb-4">
+          Rating Progress
+        </h3>
+        <div className="flex items-end gap-8">
+          <div>
+            <div className="text-3xl font-bold font-mono tabular-nums text-bone">
+              {rating}
+            </div>
+            <div
+              className={`text-sm font-mono tabular-nums ${delta >= 0 ? "text-green-400" : "text-red-400"}`}
+            >
+              {delta >= 0 ? "+" : ""}
+              {delta} from start
+            </div>
+          </div>
+          <svg
+            width={W}
+            height={H}
+            viewBox={`0 0 ${W} ${H}`}
+            className="text-ember"
+          >
+            <polyline
+              points={points}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinejoin="round"
+              strokeLinecap="round"
+            />
+            {/* End dot */}
+            {(() => {
+              const lastX = W;
+              const lastY =
+                H - ((sparkData[sparkData.length - 1] - min) / range) * H;
+              return (
+                <circle
+                  cx={lastX}
+                  cy={lastY}
+                  r="3"
+                  fill="currentColor"
+                />
+              );
+            })()}
+          </svg>
+        </div>
+        {currentRating === null && (
+          <p className="text-xs text-bone-muted mt-3">
+            Set your rating in your profile to track progress over time.
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MODULE 6: Pending Reviews (conditional)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function PendingReviewsSection() {
+  const { data: pending, isLoading } = trpc.review.getPending.useQuery();
+  const [openLessonId, setOpenLessonId] = useState<number | null>(null);
+  const [openMeta, setOpenMeta] = useState<{
+    name: string;
+    reviewingAs: "student" | "coach";
+  } | null>(null);
+
+  const studentPending = (pending || []).filter(
+    (r: any) => r.reviewingAs === "student",
+  );
+
+  if (isLoading || studentPending.length === 0) return null;
+
+  return (
+    <section id="pending-reviews">
+      <span className="eyebrow mb-3 block">06 — Pending reviews</span>
+      <Card className="bg-ink-raised border-amber-600/30 rounded-sm">
+        <CardContent className="p-6">
+          <div className="flex items-start gap-3 mb-4">
+            <Star className="h-5 w-5 text-amber-400 mt-0.5" />
+            <div>
+              <h3 className="text-base font-semibold text-bone">
+                Pending Reviews ({studentPending.length})
+              </h3>
+              <p className="text-sm text-bone-muted">
+                You have completed lessons waiting for a review. Both sides
+                stay private until both parties submit.
+              </p>
+            </div>
+          </div>
+          <div className="space-y-2">
+            {studentPending.map((p: any) => (
+              <div
+                key={p.lessonId}
+                className="flex items-center justify-between p-3 rounded-sm border border-border/20"
+              >
+                <div>
+                  <div className="font-medium text-sm text-bone">
+                    Lesson with {p.otherPartyName}
+                  </div>
+                  <div className="text-xs text-bone-muted">
+                    {format(new Date(p.scheduledAt), "MMMM d, yyyy")} ·{" "}
+                    {p.durationMinutes} min
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  className="bg-ember hover:bg-ember/90 text-white rounded-sm"
+                  onClick={() => {
+                    setOpenLessonId(p.lessonId);
+                    setOpenMeta({
+                      name: p.otherPartyName,
+                      reviewingAs: p.reviewingAs,
+                    });
+                  }}
+                >
+                  Leave Review
+                </Button>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {openLessonId !== null && openMeta && (
+        <ReviewDialog
+          open={openLessonId !== null}
+          onOpenChange={(open) => {
+            if (!open) {
+              setOpenLessonId(null);
+              setOpenMeta(null);
+            }
+          }}
+          lessonId={openLessonId}
+          otherPartyName={openMeta.name}
+          reviewingAs={openMeta.reviewingAs}
+        />
+      )}
+    </section>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PendingReviewsCard — backward-compat export
 // ─────────────────────────────────────────────────────────────────────────────
 
 function PendingReviewsCard() {
@@ -1132,25 +1806,25 @@ function PendingReviewsCard() {
     reviewingAs: "student" | "coach";
   } | null>(null);
 
-  // Show only student-role reviews here; coach-role reviews belong on the
-  // coach dashboard and would be confusing on the student view.
-  const studentPending = (pending || []).filter((r: any) => r.reviewingAs === "student");
+  const studentPending = (pending || []).filter(
+    (r: any) => r.reviewingAs === "student",
+  );
 
   if (isLoading || studentPending.length === 0) return null;
 
   return (
     <>
-      <Card className="border-yellow-600/40 bg-yellow-50/50 dark:bg-yellow-950/10">
+      <Card className="bg-ink-raised border-amber-600/30 rounded-sm">
         <CardContent className="p-6">
           <div className="flex items-start gap-3 mb-4">
-            <Star className="h-5 w-5 text-yellow-600 mt-0.5" />
+            <Star className="h-5 w-5 text-amber-400 mt-0.5" />
             <div>
-              <h3 className="text-base font-semibold">
+              <h3 className="text-base font-semibold text-bone">
                 Pending Reviews ({studentPending.length})
               </h3>
-              <p className="text-sm text-muted-foreground">
-                You have completed lessons waiting for a review. Both sides stay
-                private until both parties submit.
+              <p className="text-sm text-bone-muted">
+                You have completed lessons waiting for a review. Both sides
+                stay private until both parties submit.
               </p>
             </div>
           </div>
@@ -1158,19 +1832,20 @@ function PendingReviewsCard() {
             {studentPending.map((p: any) => (
               <div
                 key={p.lessonId}
-                className="flex items-center justify-between p-3 rounded-md border border-border/60"
+                className="flex items-center justify-between p-3 rounded-sm border border-border/20"
               >
                 <div>
-                  <div className="font-medium text-sm">
+                  <div className="font-medium text-sm text-bone">
                     Lesson with {p.otherPartyName}
                   </div>
-                  <div className="text-xs text-muted-foreground">
+                  <div className="text-xs text-bone-muted">
                     {format(new Date(p.scheduledAt), "MMMM d, yyyy")} ·{" "}
                     {p.durationMinutes} min
                   </div>
                 </div>
                 <Button
                   size="sm"
+                  className="bg-ember hover:bg-ember/90 text-white rounded-sm"
                   onClick={() => {
                     setOpenLessonId(p.lessonId);
                     setOpenMeta({
@@ -1202,5 +1877,20 @@ function PendingReviewsCard() {
         />
       )}
     </>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Dashboard Skeleton
+// ─────────────────────────────────────────────────────────────────────────────
+
+function DashboardSkeleton() {
+  return (
+    <div className="space-y-6 py-4">
+      <Skeleton className="h-8 w-48" />
+      <Skeleton className="h-48 w-full" />
+      <Skeleton className="h-32 w-full" />
+      <Skeleton className="h-32 w-full" />
+    </div>
   );
 }
