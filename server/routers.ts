@@ -614,7 +614,7 @@ export const appRouter = router({
         limit: z.number().min(1).max(50).default(20),
       }))
       .query(async ({ input }) => {
-        return await db.getReviewsByCoach(input.coachId, input.limit);
+        return await db.getReviewsByCoachWithStudentName(input.coachId, input.limit);
       }),
 
     // Get coach profile by ID (public) - for booking flow

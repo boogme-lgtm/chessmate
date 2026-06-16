@@ -4,37 +4,99 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { 
-  Star, 
-  Clock, 
-  Globe, 
-  Award, 
-  BookOpen, 
+import {
+  Star,
+  Clock,
+  Globe,
+  Award,
+  BookOpen,
   Shield,
   ChevronLeft,
-  Calendar
+  Calendar,
+  ExternalLink,
+  Video,
 } from "lucide-react";
 import { useState } from "react";
-import { toast } from "sonner";
 import BookingModal from "@/components/BookingModal";
 import Footer from "@/components/Footer";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+const DAYS: { key: string; label: string }[] = [
+  { key: "monday", label: "Mon" },
+  { key: "tuesday", label: "Tue" },
+  { key: "wednesday", label: "Wed" },
+  { key: "thursday", label: "Thu" },
+  { key: "friday", label: "Fri" },
+  { key: "saturday", label: "Sat" },
+  { key: "sunday", label: "Sun" },
+];
+
+const TEACHING_STYLE_DESCRIPTIONS: Record<string, string> = {
+  visual: "Uses diagrams, board annotations, and visual patterns",
+  interactive: "Hands-on, puzzle-solving, and live game analysis",
+  analytical: "Deep positional analysis and opening preparation",
+  competitive: "Tournament preparation and competitive mindset",
+};
+
+function parseJsonArray(value: unknown): any[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value as string);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function getInitials(name: string | null | undefined): string {
+  if (!name) return "?";
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
+  return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+}
+
+function formatReviewerName(name: string | null | undefined): string {
+  if (!name) return "Anonymous";
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0];
+  return `${parts[0]} ${parts[1].charAt(0)}.`;
+}
+
+/** Derive the price for a given duration from the hourly rate. */
+function durationPrice(hourlyRateCents: number, durationMinutes: number): string {
+  return `$${Math.round((hourlyRateCents / 60) * durationMinutes / 100)}`;
+}
+
+/** Turn a YouTube/Vimeo URL into an embeddable URL, or null if unrecognised. */
+function getVideoEmbedUrl(url: string): string | null {
+  if (!url) return null;
+  // YouTube: youtu.be/ID, youtube.com/watch?v=ID, youtube.com/embed/ID
+  const yt = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([\w-]{11})/);
+  if (yt) return `https://www.youtube.com/embed/${yt[1]}`;
+  // Vimeo: vimeo.com/ID
+  const vimeo = url.match(/vimeo\.com\/(?:video\/)?(\d+)/);
+  if (vimeo) return `https://player.vimeo.com/video/${vimeo[1]}`;
+  return null;
+}
+
+// ── Page ─────────────────────────────────────────────────────────────────────
+
 /**
- * Coach Detail Page - Shows coach profile and booking CTA
- * Simple, clean layout focusing on trust and credentials
+ * Coach Detail Page — full, conversion-optimised public coach profile.
  */
 export default function CoachDetail() {
   const params = useParams();
   const [, setLocation] = useLocation();
   const coachId = parseInt(params.id || "0");
   const [bookingModalOpen, setBookingModalOpen] = useState(false);
+  const [bioExpanded, setBioExpanded] = useState(false);
   const { user } = useAuth();
 
   const handleBookLesson = () => {
     if (!user) {
-      // Redirect to sign-in page with return URL (user can navigate to register from there)
       setLocation(`/sign-in?redirect=/coach/${coachId}`);
       return;
     }
@@ -44,11 +106,19 @@ export default function CoachDetail() {
   const { data: coach, isLoading } = trpc.coach.getById.useQuery({ id: coachId });
   const { data: reviews } = trpc.coach.getReviews.useQuery({ coachId, limit: 5 });
 
-  // Fetch Lichess stats if coach has a lichessUsername
   const lichessUsername = coach?.profile?.lichessUsername;
   const { data: lichessProfile } = trpc.lichess.getProfile.useQuery(
     { username: lichessUsername! },
     { enabled: !!lichessUsername }
+  );
+
+  const { data: availability, isLoading: availabilityLoading } = trpc.coach.getAvailability.useQuery(
+    {
+      coachId,
+      startDate: new Date().toISOString(),
+      endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+    { enabled: coachId > 0 }
   );
 
   useDocumentTitle(coach?.name ? `${coach.name} · Chess Coach · BooGMe` : "Chess Coach · BooGMe");
@@ -61,33 +131,42 @@ export default function CoachDetail() {
     return (
       <div className="container py-16 text-center">
         <h1 className="text-2xl font-semibold mb-4">Coach Not Found</h1>
-        <Button onClick={() => setLocation("/coaches")}>
-          Browse All Coaches
-        </Button>
+        <Button onClick={() => setLocation("/coaches")}>Browse All Coaches</Button>
       </div>
     );
   }
 
   const profile = coach.profile;
-  const hourlyRate = profile?.hourlyRateCents 
-    ? (profile.hourlyRateCents / 100).toFixed(0) 
-    : "50";
-  
+  const hourlyRateCents = profile?.hourlyRateCents ?? 5000;
+  const hourlyRate = (hourlyRateCents / 100).toFixed(0);
+
   const rating = profile?.averageRating
     ? parseFloat(profile.averageRating as string).toFixed(1)
     : null;
+
+  const photoUrl = profile?.profilePhotoUrl ?? coach.avatarUrl ?? null;
+  const specialties = parseJsonArray(profile?.specialties);
+  const languages = parseJsonArray(profile?.languages);
+  const lessonDurations: number[] = (() => {
+    const parsed = parseJsonArray(profile?.lessonDurations).filter((n) => typeof n === "number");
+    return parsed.length > 0 ? parsed : [60];
+  })();
+  const schedule: Record<string, { enabled?: boolean }> = (availability?.schedule as any) || {};
+  const minAdvanceHours = availability?.minAdvanceHours ?? 24;
+  const coachTimezone = (coach as any).timezone ?? (profile as any)?.timezone ?? null;
+  const isAvailable = profile?.isAvailable !== false;
+  const videoEmbed = profile?.videoIntroUrl ? getVideoEmbedUrl(profile.videoIntroUrl as string) : null;
+
+  const bio = coach.bio as string | null;
+  const bioIsLong = !!bio && bio.length > 300;
+  const bioDisplay = bio && bioIsLong && !bioExpanded ? bio.slice(0, 300).trimEnd() + "…" : bio;
 
   return (
     <div className="min-h-screen bg-background">
       {/* Back Navigation */}
       <div className="border-b border-border/40">
         <div className="container py-4">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setLocation("/coaches")}
-            className="gap-2"
-          >
+          <Button variant="ghost" size="sm" onClick={() => setLocation("/coaches")} className="gap-2">
             <ChevronLeft className="h-4 w-4" />
             Back to Coaches
           </Button>
@@ -98,44 +177,70 @@ export default function CoachDetail() {
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Main Content - Left 2/3 */}
           <div className="lg:col-span-2 space-y-8">
-            {/* Coach Header */}
+            {/* Coach Hero Header */}
             <div>
-              <div className="flex items-start justify-between mb-6">
-                <div>
-                  <h1 className="text-4xl font-semibold mb-2">{coach.name}</h1>
-                  <div className="flex items-center gap-4 text-muted-foreground">
-                    {profile?.title && profile.title !== "none" && (
-                      <Badge variant="secondary" className="text-sm">
-                        {profile.title}
-                      </Badge>
-                    )}
-                    {profile?.fideRating && (
-                      <span className="flex items-center gap-1">
-                        <Award className="h-4 w-4" />
-                        {profile.fideRating} FIDE
-                      </span>
-                    )}
+              <div className="flex items-start gap-6 mb-6">
+                {photoUrl ? (
+                  <img
+                    src={photoUrl}
+                    alt={coach.name}
+                    className="h-24 w-24 rounded-full object-cover border border-border/60 shrink-0"
+                  />
+                ) : (
+                  <div className="h-24 w-24 rounded-full bg-muted flex items-center justify-center text-2xl font-semibold text-muted-foreground shrink-0">
+                    {getInitials(coach.name)}
                   </div>
-                </div>
-                <div className="text-right">
-                  {rating ? (
-                    <>
-                      <div className="flex items-center gap-1 text-yellow-500 mb-1">
-                        <Star className="h-5 w-5 fill-current" />
-                        <span className="text-2xl font-semibold text-foreground">{rating}</span>
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <h1 className="text-3xl font-semibold mb-2">{coach.name}</h1>
+                      <div className="flex items-center gap-3 text-muted-foreground flex-wrap">
+                        {profile?.title && profile.title !== "none" && (
+                          <Badge variant="secondary" className="text-sm">{profile.title}</Badge>
+                        )}
+                        {profile?.fideRating && (
+                          <span className="flex items-center gap-1 text-sm">
+                            <Award className="h-4 w-4" />
+                            {profile.fideRating} FIDE
+                          </span>
+                        )}
                       </div>
-                      <p className="text-sm text-muted-foreground">
-                        {profile?.totalReviews || 0} reviews
-                      </p>
-                    </>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">New coach</p>
-                  )}
+                    </div>
+                    <div className="text-right shrink-0">
+                      {rating ? (
+                        <>
+                          <div className="flex items-center gap-1 text-yellow-500 mb-0.5 justify-end">
+                            <Star className="h-5 w-5 fill-current" />
+                            <span className="text-2xl font-semibold text-foreground">{rating}</span>
+                          </div>
+                          <p className="text-sm text-muted-foreground">{profile?.totalReviews || 0} reviews</p>
+                        </>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">New coach</p>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
 
+              {/* Bio */}
+              {bioDisplay && (
+                <div className="mb-6">
+                  <p className="text-muted-foreground leading-relaxed whitespace-pre-wrap">{bioDisplay}</p>
+                  {bioIsLong && (
+                    <button
+                      onClick={() => setBioExpanded((v) => !v)}
+                      className="mt-1 text-sm text-foreground/80 hover:text-foreground underline"
+                    >
+                      {bioExpanded ? "Read less" : "Read more"}
+                    </button>
+                  )}
+                </div>
+              )}
+
               {/* Quick Stats */}
-              <div className="grid grid-cols-3 gap-4">
+              <div className={`grid gap-4 ${profile?.fideRating ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"}`}>
                 <Card>
                   <CardContent className="pt-6">
                     <div className="text-center">
@@ -163,88 +268,221 @@ export default function CoachDetail() {
                     </div>
                   </CardContent>
                 </Card>
+                {profile?.fideRating && (
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="text-center">
+                        <Award className="h-6 w-6 mx-auto mb-2 text-muted-foreground" />
+                        <div className="text-2xl font-semibold">{profile.fideRating}</div>
+                        <div className="text-sm text-muted-foreground">FIDE Rating</div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
               </div>
             </div>
 
-            {/* Specialties */}
-            {profile?.specialties && (
+            {/* Specializations + Languages */}
+            {(specialties.length > 0 || languages.length > 0) && (
               <Card>
                 <CardHeader>
                   <CardTitle>Specializations</CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <div className="flex flex-wrap gap-2">
-                    {(() => { try { return JSON.parse(profile.specialties as string); } catch { return []; } })().map((specialty: string) => (
-                      <Badge key={specialty} variant="secondary">
-                        {specialty}
-                      </Badge>
-                    ))}
-                  </div>
+                <CardContent className="space-y-4">
+                  {specialties.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {specialties.map((specialty: string) => (
+                        <Badge key={specialty} variant="secondary">{specialty}</Badge>
+                      ))}
+                    </div>
+                  )}
+                  {languages.length > 0 && (
+                    <div>
+                      <div className="text-sm text-muted-foreground mb-2">Languages</div>
+                      <div className="flex flex-wrap gap-2">
+                        {languages.map((lang: string) => (
+                          <Badge key={lang} variant="outline">{lang}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )}
 
-            {/* Teaching Style */}
+            {/* Teaching Approach */}
             {profile?.teachingStyle && (
               <Card>
                 <CardHeader>
                   <CardTitle>Teaching Approach</CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <Badge variant="outline" className="text-sm">
-                    {profile.teachingStyle.charAt(0).toUpperCase() + profile.teachingStyle.slice(1)} Learning
-                  </Badge>
+                <CardContent className="space-y-4">
+                  <div>
+                    <Badge variant="outline" className="text-sm mb-2">
+                      {profile.teachingStyle.charAt(0).toUpperCase() + profile.teachingStyle.slice(1)} Learning
+                    </Badge>
+                    {TEACHING_STYLE_DESCRIPTIONS[profile.teachingStyle] && (
+                      <p className="text-sm text-muted-foreground">
+                        {TEACHING_STYLE_DESCRIPTIONS[profile.teachingStyle]}
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground mb-2">Lesson durations</div>
+                    <div className="flex flex-wrap gap-2">
+                      {lessonDurations.map((d) => (
+                        <Badge key={d} variant="secondary" className="text-sm">
+                          {d} min · {durationPrice(hourlyRateCents, d)}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
             )}
 
-            {/* Lichess Verified Stats */}
-            {lichessProfile && (
+            {/* Availability Preview */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Calendar className="h-5 w-5" />
+                  Weekly Availability
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {availabilityLoading ? (
+                  <Skeleton className="h-12 w-full" />
+                ) : (
+                  <>
+                    <div className="grid grid-cols-7 gap-2 text-center">
+                      {DAYS.map((day) => {
+                        const enabled = !!schedule[day.key]?.enabled;
+                        return (
+                          <div key={day.key}>
+                            <div className="text-xs text-muted-foreground mb-2">{day.label}</div>
+                            <div
+                              className={`mx-auto h-3 w-3 rounded-full ${
+                                enabled ? "bg-green-500" : "bg-muted-foreground/20"
+                              }`}
+                              title={enabled ? "Available" : "Not available"}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-4">
+                      {coachTimezone ? `Schedules in ${coachTimezone}. ` : ""}
+                      Book at least {minAdvanceHours}h in advance.
+                    </p>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Online Presence */}
+            {(lichessProfile || profile?.chesscomUsername) && (
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Globe className="h-5 w-5" />
-                    Lichess Profile
-                    <Badge variant="outline" className="text-xs ml-auto">Verified</Badge>
+                    Online Presence
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {lichessProfile && (
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-sm font-medium">Lichess</span>
+                        <Badge variant="outline" className="text-xs">Verified</Badge>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                        {lichessProfile.ratings.rapid && (
+                          <div className="text-center">
+                            <div className="text-2xl font-semibold">{lichessProfile.ratings.rapid}</div>
+                            <div className="text-xs text-muted-foreground">Rapid</div>
+                          </div>
+                        )}
+                        {lichessProfile.ratings.blitz && (
+                          <div className="text-center">
+                            <div className="text-2xl font-semibold">{lichessProfile.ratings.blitz}</div>
+                            <div className="text-xs text-muted-foreground">Blitz</div>
+                          </div>
+                        )}
+                        {lichessProfile.ratings.classical && (
+                          <div className="text-center">
+                            <div className="text-2xl font-semibold">{lichessProfile.ratings.classical}</div>
+                            <div className="text-xs text-muted-foreground">Classical</div>
+                          </div>
+                        )}
+                        {lichessProfile.ratings.totalGames && (
+                          <div className="text-center">
+                            <div className="text-2xl font-semibold">{lichessProfile.ratings.totalGames.toLocaleString()}</div>
+                            <div className="text-xs text-muted-foreground">Games</div>
+                          </div>
+                        )}
+                      </div>
+                      <div className="mt-3">
+                        <a
+                          href={`https://lichess.org/@/${lichessProfile.username}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors underline"
+                        >
+                          View on Lichess <ExternalLink className="h-3 w-3" />
+                        </a>
+                      </div>
+                    </div>
+                  )}
+                  {profile?.chesscomUsername && (
+                    <div className="flex items-center justify-between border-t border-border/40 pt-4">
+                      <span className="text-sm">
+                        <span className="text-muted-foreground">Chess.com: </span>
+                        <span className="font-medium">@{profile.chesscomUsername}</span>
+                      </span>
+                      <a
+                        href={`https://www.chess.com/member/${profile.chesscomUsername}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors underline"
+                      >
+                        View profile <ExternalLink className="h-3 w-3" />
+                      </a>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Video Introduction */}
+            {profile?.videoIntroUrl && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Video className="h-5 w-5" />
+                    Video Introduction
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                    {lichessProfile.ratings.rapid && (
-                      <div className="text-center">
-                        <div className="text-2xl font-semibold">{lichessProfile.ratings.rapid}</div>
-                        <div className="text-xs text-muted-foreground">Rapid</div>
-                      </div>
-                    )}
-                    {lichessProfile.ratings.blitz && (
-                      <div className="text-center">
-                        <div className="text-2xl font-semibold">{lichessProfile.ratings.blitz}</div>
-                        <div className="text-xs text-muted-foreground">Blitz</div>
-                      </div>
-                    )}
-                    {lichessProfile.ratings.classical && (
-                      <div className="text-center">
-                        <div className="text-2xl font-semibold">{lichessProfile.ratings.classical}</div>
-                        <div className="text-xs text-muted-foreground">Classical</div>
-                      </div>
-                    )}
-                    {lichessProfile.ratings.totalGames && (
-                      <div className="text-center">
-                        <div className="text-2xl font-semibold">{lichessProfile.ratings.totalGames.toLocaleString()}</div>
-                        <div className="text-xs text-muted-foreground">Games</div>
-                      </div>
-                    )}
-                  </div>
-                  <div className="mt-3 text-center">
+                  {videoEmbed ? (
+                    <div className="relative w-full" style={{ paddingBottom: "56.25%" }}>
+                      <iframe
+                        src={videoEmbed}
+                        title={`${coach.name} introduction`}
+                        className="absolute inset-0 h-full w-full rounded-lg"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                      />
+                    </div>
+                  ) : (
                     <a
-                      href={`https://lichess.org/@/${lichessProfile.username}`}
+                      href={profile.videoIntroUrl as string}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-sm text-muted-foreground hover:text-foreground transition-colors underline"
+                      className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground underline"
                     >
-                      View on Lichess
+                      Watch introduction <ExternalLink className="h-3 w-3" />
                     </a>
-                  </div>
+                  )}
                 </CardContent>
               </Card>
             )}
@@ -256,27 +494,53 @@ export default function CoachDetail() {
                   <CardTitle>Recent Reviews</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {reviews.map((review) => (
+                  {reviews.map((review: any) => (
                     <div key={review.id} className="border-b border-border/40 last:border-0 pb-4 last:pb-0">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="flex items-center gap-1">
-                          {[...Array(5)].map((_, i) => (
-                            <Star
-                              key={i}
-                              className={`h-4 w-4 ${
-                                i < review.rating
-                                  ? "fill-yellow-500 text-yellow-500"
-                                  : "text-muted-foreground/30"
-                              }`}
-                            />
-                          ))}
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1">
+                            {[...Array(5)].map((_, i) => (
+                              <Star
+                                key={i}
+                                className={`h-4 w-4 ${
+                                  i < review.rating ? "fill-yellow-500 text-yellow-500" : "text-muted-foreground/30"
+                                }`}
+                              />
+                            ))}
+                          </div>
+                          <span className="text-sm font-medium">{formatReviewerName(review.reviewerName)}</span>
                         </div>
                         <span className="text-sm text-muted-foreground">
                           {new Date(review.createdAt).toLocaleDateString()}
                         </span>
                       </div>
                       {review.comment && (
-                        <p className="text-sm text-muted-foreground">{review.comment}</p>
+                        <p className="text-sm text-muted-foreground mb-2">{review.comment}</p>
+                      )}
+                      {(review.knowledgeRating || review.communicationRating || review.preparednessRating) && (
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                          {review.knowledgeRating && (
+                            <span className="flex items-center gap-1">
+                              Knowledge
+                              <Star className="h-3 w-3 fill-yellow-500 text-yellow-500" />
+                              {review.knowledgeRating}
+                            </span>
+                          )}
+                          {review.communicationRating && (
+                            <span className="flex items-center gap-1">
+                              Communication
+                              <Star className="h-3 w-3 fill-yellow-500 text-yellow-500" />
+                              {review.communicationRating}
+                            </span>
+                          )}
+                          {review.preparednessRating && (
+                            <span className="flex items-center gap-1">
+                              Preparedness
+                              <Star className="h-3 w-3 fill-yellow-500 text-yellow-500" />
+                              {review.preparednessRating}
+                            </span>
+                          )}
+                        </div>
                       )}
                     </div>
                   ))}
@@ -300,10 +564,22 @@ export default function CoachDetail() {
                     size="lg"
                     className="w-full gap-2"
                     onClick={handleBookLesson}
+                    disabled={!isAvailable}
                   >
                     <Calendar className="h-5 w-5" />
-                    Book a Lesson
+                    {isAvailable ? "Book a Lesson" : "Currently unavailable"}
                   </Button>
+
+                  {/* Available durations + derived prices */}
+                  <div className="space-y-1.5 text-sm pt-2">
+                    <div className="text-muted-foreground font-medium">Available durations</div>
+                    {lessonDurations.map((d) => (
+                      <div key={d} className="flex items-center justify-between">
+                        <span>{d} min</span>
+                        <span className="font-medium">{durationPrice(hourlyRateCents, d)}</span>
+                      </div>
+                    ))}
+                  </div>
 
                   {/* Payment Protection Badge */}
                   <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-lg">
@@ -318,15 +594,11 @@ export default function CoachDetail() {
                   <div className="space-y-2 text-sm text-muted-foreground pt-4 border-t">
                     <div className="flex items-center gap-2">
                       <Clock className="h-4 w-4" />
-                      <span>60-minute sessions</span>
+                      <span>Book at least {minAdvanceHours}h in advance</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <Globe className="h-4 w-4" />
                       <span>Online via video call</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Calendar className="h-4 w-4" />
-                      <span>Flexible scheduling</span>
                     </div>
                   </div>
                 </CardContent>
@@ -337,11 +609,7 @@ export default function CoachDetail() {
       </div>
 
       {/* Booking Modal */}
-      <BookingModal
-        open={bookingModalOpen}
-        onOpenChange={setBookingModalOpen}
-        coach={coach}
-      />
+      <BookingModal open={bookingModalOpen} onOpenChange={setBookingModalOpen} coach={coach} />
 
       <Footer />
     </div>
@@ -354,8 +622,13 @@ function CoachDetailSkeleton() {
       <div className="grid lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-8">
           <div>
-            <Skeleton className="h-12 w-64 mb-4" />
-            <Skeleton className="h-6 w-48 mb-6" />
+            <div className="flex items-start gap-6 mb-6">
+              <Skeleton className="h-24 w-24 rounded-full" />
+              <div className="flex-1">
+                <Skeleton className="h-10 w-64 mb-3" />
+                <Skeleton className="h-6 w-40" />
+              </div>
+            </div>
             <div className="grid grid-cols-3 gap-4">
               {[...Array(3)].map((_, i) => (
                 <Skeleton key={i} className="h-32" />
