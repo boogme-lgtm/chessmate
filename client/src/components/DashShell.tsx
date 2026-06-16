@@ -8,6 +8,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import NotificationBell from "./NotificationBell";
 import { useLocation } from "wouter";
 import { format } from "date-fns";
 import { Home } from "lucide-react";
@@ -219,6 +220,7 @@ export default function DashShell({
               </h1>
             </div>
             <div className="flex items-center gap-2">
+              <NotificationBell />
               {role === "student" ? (
                 <>
                   <button

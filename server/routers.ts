@@ -2672,28 +2672,31 @@ export const appRouter = router({
         }
         // TODO: Stripe recurring billing integration for paid subscriptions
         const id = await db.subscribeToCoach(ctx.user.id, input.coachId, settings.monthlyPriceCents);
-        // Notify coach of new subscriber
-        const subscriber = await db.getUserById(ctx.user.id);
-        const coach = await db.getUserById(input.coachId);
-        if (coach?.email && subscriber) {
-          await sendEmail({
-            to: coach.email,
-            subject: `New subscriber on BooGMe — ${subscriber.name || "A user"} subscribed`,
-            html: getNewSubscriberEmail({
-              coachName: coach.name || "Coach",
-              subscriberName: subscriber.name || "A user",
-              monthlyPriceCents: settings.monthlyPriceCents,
-            }),
+        // Fire-and-forget: notify coach (email + in-app)
+        try {
+          const subscriber = await db.getUserById(ctx.user.id);
+          const coach = await db.getUserById(input.coachId);
+          if (coach?.email && subscriber) {
+            await sendEmail({
+              to: coach.email,
+              subject: `New subscriber on BooGMe — ${subscriber.name || "A user"} subscribed`,
+              html: getNewSubscriberEmail({
+                coachName: coach.name || "Coach",
+                subscriberName: subscriber.name || "A user",
+                monthlyPriceCents: settings.monthlyPriceCents,
+              }),
+            });
+          }
+          await db.createNotification({
+            userId: input.coachId,
+            type: "new_subscriber",
+            title: "New subscriber",
+            body: `${subscriber?.name || "Someone"} subscribed to your channel${settings.monthlyPriceCents > 0 ? ` ($${(settings.monthlyPriceCents / 100).toFixed(2)}/mo)` : " (free)"}`,
+            relatedUserId: ctx.user.id,
           });
+        } catch (e) {
+          console.error("[subscribe] Post-subscribe side-effect failed:", e);
         }
-        // In-app notification
-        await db.createNotification({
-          userId: input.coachId,
-          type: "new_subscriber",
-          title: "New subscriber",
-          body: `${subscriber?.name || "Someone"} subscribed to your channel${settings.monthlyPriceCents > 0 ? ` ($${(settings.monthlyPriceCents / 100).toFixed(2)}/mo)` : " (free)"}`,
-          relatedUserId: ctx.user.id,
-        });
         return { success: true, id };
       }),
 

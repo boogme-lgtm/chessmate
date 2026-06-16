@@ -5,7 +5,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Bell, MessageSquare, Star, UserPlus, BookOpen, Calendar, CheckCircle2 } from "lucide-react";
+import { Bell, MessageSquare, Star, UserPlus, BookOpen, Calendar, CheckCircle2, XCircle } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { useState } from "react";
 
@@ -16,6 +16,7 @@ const TYPE_ICONS: Record<string, typeof Bell> = {
   lesson_booked: Calendar,
   lesson_confirmed: CheckCircle2,
   lesson_completed: CheckCircle2,
+  lesson_cancelled: XCircle,
   content_delivered: BookOpen,
   new_review: Star,
 };

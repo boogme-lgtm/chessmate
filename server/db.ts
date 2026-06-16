@@ -2483,13 +2483,32 @@ export async function subscribeToCoach(subscriberId: number, coachId: number, mo
       .where(eq(coachSubscriptions.id, existing[0].id));
     return existing[0].id;
   }
-  const result: any = await db.insert(coachSubscriptions).values({
-    subscriberId,
-    coachId,
-    monthlyPriceCents,
-    status: "active",
-  });
-  return result[0]?.insertId ?? 0;
+  try {
+    const result: any = await db.insert(coachSubscriptions).values({
+      subscriberId,
+      coachId,
+      monthlyPriceCents,
+      status: "active",
+    });
+    return result[0]?.insertId ?? 0;
+  } catch (err: any) {
+    // Handle race condition: concurrent subscribe → duplicate key
+    if (err?.errno === 1062 || err?.code === "ER_DUP_ENTRY") {
+      const refetched = await db.select().from(coachSubscriptions)
+        .where(and(
+          eq(coachSubscriptions.subscriberId, subscriberId),
+          eq(coachSubscriptions.coachId, coachId)
+        ))
+        .limit(1);
+      if (refetched.length > 0) {
+        await db.update(coachSubscriptions)
+          .set({ status: "active", monthlyPriceCents })
+          .where(eq(coachSubscriptions.id, refetched[0].id));
+        return refetched[0].id;
+      }
+    }
+    throw err;
+  }
 }
 
 export async function cancelCoachSubscription(subscriberId: number, coachId: number): Promise<void> {

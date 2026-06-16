@@ -127,13 +127,9 @@ export default function CoachDetail() {
     { coachId },
     { enabled: coachId > 0 }
   );
-  const { data: isSubscribed, refetch: refetchSub } = trpc.coachSubscription.isSubscribed.useQuery(
+  const { data: isSubscribed, refetch: refetchSub, isLoading: subLoading } = trpc.coachSubscription.isSubscribed.useQuery(
     { coachId },
     { enabled: !!user && coachId > 0 }
-  );
-  const { data: subscriberCount } = trpc.coachSubscription.getSettings.useQuery(
-    { coachId },
-    { enabled: coachId > 0, select: () => null } // we'll use a separate query
   );
   const subscribeMutation = trpc.coachSubscription.subscribe.useMutation({
     onSuccess: () => { toast.success("Subscribed!"); refetchSub(); },
@@ -594,13 +590,16 @@ export default function CoachDetail() {
                   </Button>
 
                   {/* Subscribe/Follow button */}
-                  {subSettings?.enabled && (
+                  {subSettings?.enabled && !subLoading && (
                     <div>
                       {isSubscribed ? (
                         <div className="flex items-center justify-between">
                           <span className="text-sm text-ember font-medium">Following ✓</span>
                           <button
-                            onClick={() => unsubscribeMutation.mutate({ coachId })}
+                            onClick={() => {
+                              if (!confirm("Unsubscribe from this coach?")) return;
+                              unsubscribeMutation.mutate({ coachId });
+                            }}
                             disabled={unsubscribeMutation.isPending}
                             className="text-xs text-muted-foreground hover:text-foreground transition-colors"
                           >
