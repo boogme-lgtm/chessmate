@@ -34,6 +34,9 @@ import {
   type DisputeCategory,
   contentRequests,
   InsertContentRequest,
+  coachSubscriptionSettings,
+  coachSubscriptions,
+  notifications,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { computeCancellationRefund } from "@shared/cancellationPolicy";
@@ -2418,4 +2421,217 @@ export async function getStudentRoster(coachId: number) {
     LIMIT 20
   `);
   return rows[0] || [];
+}
+
+// ============ COACH SUBSCRIPTION OPERATIONS (S-DASH-3) ============
+
+export async function getCoachSubscriptionSettings(coachId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(coachSubscriptionSettings).where(eq(coachSubscriptionSettings.coachId, coachId)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function upsertCoachSubscriptionSettings(coachId: number, data: {
+  enabled: boolean;
+  monthlyPriceCents: number;
+  description?: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const existing = await getCoachSubscriptionSettings(coachId);
+  if (existing) {
+    await db.update(coachSubscriptionSettings)
+      .set({ enabled: data.enabled, monthlyPriceCents: data.monthlyPriceCents, description: data.description ?? null })
+      .where(eq(coachSubscriptionSettings.coachId, coachId));
+  } else {
+    await db.insert(coachSubscriptionSettings).values({
+      coachId,
+      enabled: data.enabled,
+      monthlyPriceCents: data.monthlyPriceCents,
+      description: data.description ?? null,
+    });
+  }
+}
+
+export async function isUserSubscribedToCoach(subscriberId: number, coachId: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  const rows = await db.select().from(coachSubscriptions)
+    .where(and(
+      eq(coachSubscriptions.subscriberId, subscriberId),
+      eq(coachSubscriptions.coachId, coachId),
+      eq(coachSubscriptions.status, "active")
+    ))
+    .limit(1);
+  return rows.length > 0;
+}
+
+export async function subscribeToCoach(subscriberId: number, coachId: number, monthlyPriceCents: number): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  // Check for existing (possibly cancelled) subscription to reactivate
+  const existing = await db.select().from(coachSubscriptions)
+    .where(and(
+      eq(coachSubscriptions.subscriberId, subscriberId),
+      eq(coachSubscriptions.coachId, coachId)
+    ))
+    .limit(1);
+  if (existing.length > 0) {
+    await db.update(coachSubscriptions)
+      .set({ status: "active", monthlyPriceCents })
+      .where(eq(coachSubscriptions.id, existing[0].id));
+    return existing[0].id;
+  }
+  const result: any = await db.insert(coachSubscriptions).values({
+    subscriberId,
+    coachId,
+    monthlyPriceCents,
+    status: "active",
+  });
+  return result[0]?.insertId ?? 0;
+}
+
+export async function cancelCoachSubscription(subscriberId: number, coachId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(coachSubscriptions)
+    .set({ status: "cancelled" })
+    .where(and(
+      eq(coachSubscriptions.subscriberId, subscriberId),
+      eq(coachSubscriptions.coachId, coachId),
+      eq(coachSubscriptions.status, "active")
+    ));
+}
+
+export async function getActiveSubscriptionsForUser(subscriberId: number): Promise<Array<{
+  coachId: number;
+  coachName: string;
+  coachTitle: string | null;
+  monthlyPriceCents: number;
+  status: string;
+}>> {
+  const db = await getDb();
+  if (!db) return [];
+  const rows: any = await db.execute(sql`
+    SELECT cs.coachId, cs.monthlyPriceCents, cs.status,
+           u.name AS coachName,
+           cp.title AS coachTitle
+    FROM coach_subscriptions cs
+    LEFT JOIN users u ON u.id = cs.coachId
+    LEFT JOIN coach_profiles cp ON cp.userId = cs.coachId
+    WHERE cs.subscriberId = ${subscriberId} AND cs.status = 'active'
+    ORDER BY cs.createdAt DESC
+  `);
+  return (rows[0] || []).map((r: any) => ({
+    coachId: r.coachId,
+    coachName: r.coachName || `Coach #${r.coachId}`,
+    coachTitle: r.coachTitle || null,
+    monthlyPriceCents: r.monthlyPriceCents,
+    status: r.status,
+  }));
+}
+
+export async function getCoachSubscriberCount(coachId: number): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  const rows = await db.select({ count: sql<number>`COUNT(*)` })
+    .from(coachSubscriptions)
+    .where(and(
+      eq(coachSubscriptions.coachId, coachId),
+      eq(coachSubscriptions.status, "active")
+    ));
+  return rows[0]?.count ?? 0;
+}
+
+// ============ NOTIFICATION OPERATIONS (S-DASH-3) ============
+
+export async function createNotification(data: {
+  userId: number;
+  type: string;
+  title: string;
+  body: string;
+  relatedUserId?: number;
+  relatedLessonId?: number;
+  relatedContentRequestId?: number;
+}): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result: any = await db.insert(notifications).values({
+    userId: data.userId,
+    type: data.type as any,
+    title: data.title,
+    body: data.body,
+    relatedUserId: data.relatedUserId ?? null,
+    relatedLessonId: data.relatedLessonId ?? null,
+    relatedContentRequestId: data.relatedContentRequestId ?? null,
+  });
+  return result[0]?.insertId ?? 0;
+}
+
+export async function getNotificationsForUser(userId: number, limit: number = 20) {
+  const db = await getDb();
+  if (!db) return [];
+  return await db.select().from(notifications)
+    .where(eq(notifications.userId, userId))
+    .orderBy(desc(notifications.createdAt))
+    .limit(limit);
+}
+
+export async function getUnreadNotificationCount(userId: number): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  const rows = await db.select({ count: sql<number>`COUNT(*)` })
+    .from(notifications)
+    .where(and(
+      eq(notifications.userId, userId),
+      isNull(notifications.readAt)
+    ));
+  return rows[0]?.count ?? 0;
+}
+
+export async function markNotificationRead(notificationId: number, userId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(notifications)
+    .set({ readAt: new Date() })
+    .where(and(
+      eq(notifications.id, notificationId),
+      eq(notifications.userId, userId)
+    ));
+}
+
+export async function markAllNotificationsRead(userId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(notifications)
+    .set({ readAt: new Date() })
+    .where(and(
+      eq(notifications.userId, userId),
+      isNull(notifications.readAt)
+    ));
+}
+
+// ============ SUBSCRIPTION DM OPERATIONS (S-DASH-3) ============
+
+export async function getSubscriptionDmLesson(studentId: number, coachId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const result: any = await db.execute(sql`
+    SELECT * FROM lessons
+    WHERE studentId = ${studentId} AND coachId = ${coachId} AND status = 'subscription_dm'
+    LIMIT 1
+  `);
+  const rows = result[0];
+  return rows && rows.length > 0 ? rows[0] : null;
+}
+
+export async function createSubscriptionDmLesson(studentId: number, coachId: number): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result: any = await db.execute(sql`
+    INSERT INTO lessons (studentId, coachId, scheduledAt, durationMinutes, status, amountCents, commissionCents, coachPayoutCents, topic)
+    VALUES (${studentId}, ${coachId}, NOW(), 0, 'subscription_dm', 0, 0, 0, 'Direct Message Channel')
+  `);
+  return result[0]?.insertId ?? null;
 }

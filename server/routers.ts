@@ -24,6 +24,9 @@ import {
   getCoachDisputeFiledEmail,
   getStudentDisputeResolvedEmail,
   getCoachDisputeResolvedEmail,
+  getNewContentRequestEmail,
+  getNewMessageEmail,
+  getNewSubscriberEmail,
 } from "./emailService";
 import { sendNurtureEmails, sendNurtureEmailsManual } from "./nurtureEmailScheduler";
 import { resendWelcomeEmails } from "./resendWelcomeEmails";
@@ -1843,7 +1846,7 @@ export const appRouter = router({
     send: protectedProcedure
       .input(z.object({
         lessonId: z.number(),
-        content: z.string().min(1).max(500_000), // 500KB — covers the largest PGN files
+        content: z.string().min(1).max(500_000),
         contentType: z.enum(["text", "pgn"]).default("text"),
       }))
       .mutation(async ({ ctx, input }) => {
@@ -1851,15 +1854,64 @@ export const appRouter = router({
         if (!lesson) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
         }
-        if (lesson.studentId !== ctx.user.id && lesson.coachId !== ctx.user.id) {
-          throw new TRPCError({ code: "FORBIDDEN", message: "Not your lesson" });
+        // S-DASH-3: subscription_dm lessons allow subscribed users
+        if (lesson.status === 'subscription_dm') {
+          const isSubscribed = await db.isUserSubscribedToCoach(ctx.user.id, lesson.coachId);
+          if (lesson.studentId !== ctx.user.id && lesson.coachId !== ctx.user.id && !isSubscribed) {
+            throw new TRPCError({ code: "FORBIDDEN", message: "Not your lesson" });
+          }
+        } else {
+          if (lesson.studentId !== ctx.user.id && lesson.coachId !== ctx.user.id) {
+            throw new TRPCError({ code: "FORBIDDEN", message: "Not your lesson" });
+          }
         }
-        return await db.createMessage({
+        const msg = await db.createMessage({
           lessonId: input.lessonId,
           senderId: ctx.user.id,
           content: input.content,
           contentType: input.contentType,
         });
+
+        // S-DASH-3: Notification + email for the recipient
+        const recipientId = lesson.studentId === ctx.user.id ? lesson.coachId : lesson.studentId;
+        const sender = await db.getUserById(ctx.user.id);
+        const recipient = await db.getUserById(recipientId);
+
+        await db.createNotification({
+          userId: recipientId,
+          type: "new_message",
+          title: "New message",
+          body: `${sender?.name || "Someone"} sent you a message`,
+          relatedUserId: ctx.user.id,
+          relatedLessonId: input.lessonId,
+        });
+
+        // Email with 30-min cooldown
+        if (recipient?.email && sender) {
+          const { sql } = await import("drizzle-orm");
+          const database = await db.getDb();
+          if (database) {
+            const recentUnread: any = await database.execute(sql`
+              SELECT COUNT(*) as cnt FROM messages
+              WHERE lessonId = ${input.lessonId} AND senderId = ${ctx.user.id}
+              AND readAt IS NULL AND createdAt > DATE_SUB(NOW(), INTERVAL 30 MINUTE)
+            `);
+            const shouldSendEmail = (recentUnread[0]?.[0]?.cnt ?? 0) <= 1;
+            if (shouldSendEmail) {
+              await sendEmail({
+                to: recipient.email,
+                subject: `New message from ${sender.name || "your coach"} — BooGMe`,
+                html: getNewMessageEmail({
+                  recipientName: recipient.name || "there",
+                  senderName: sender.name || "Your coach",
+                  messagePreview: input.content.slice(0, 200),
+                }),
+              });
+            }
+          }
+        }
+
+        return msg;
       }),
 
     /**
@@ -1912,6 +1964,19 @@ export const appRouter = router({
         const result: Record<number, number> = {};
         counts.forEach((v, k) => { result[k] = v; });
         return result;
+      }),
+
+    getOrCreateSubscriptionThread: protectedProcedure
+      .input(z.object({ coachId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const isSubscribed = await db.isUserSubscribedToCoach(ctx.user.id, input.coachId);
+        if (!isSubscribed) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "You must be subscribed to message this coach" });
+        }
+        const existing = await db.getSubscriptionDmLesson(ctx.user.id, input.coachId);
+        if (existing) return { lessonId: existing.id };
+        const lessonId = await db.createSubscriptionDmLesson(ctx.user.id, input.coachId);
+        return { lessonId };
       }),
   }),
 
@@ -2516,6 +2581,33 @@ export const appRouter = router({
           amountCents: input.amountCents,
           dueDate: input.dueDate ? new Date(input.dueDate) : undefined,
         });
+
+        // S-DASH-3: Notification + email for coach
+        const coach = await db.getUserById(input.coachId);
+        const student = await db.getUserById(ctx.user.id);
+
+        await db.createNotification({
+          userId: input.coachId,
+          type: "new_content_request",
+          title: "New content request",
+          body: `${student?.name || "A student"} requested: "${input.title}"`,
+          relatedUserId: ctx.user.id,
+          relatedContentRequestId: id,
+        });
+
+        if (coach?.email && student) {
+          await sendEmail({
+            to: coach.email,
+            subject: `New content request from ${student.name || "a student"} — BooGMe`,
+            html: getNewContentRequestEmail({
+              coachName: coach.name || "Coach",
+              studentName: student.name || "A student",
+              requestTitle: input.title,
+              requestDescription: input.description,
+            }),
+          });
+        }
+
         return { success: true, id };
       }),
 
@@ -2547,6 +2639,105 @@ export const appRouter = router({
         });
         return { success: true };
       }),
+  }),
+
+  // ============ COACH SUBSCRIPTIONS (S-DASH-3) ============
+  coachSubscription: router({
+    getSettings: publicProcedure
+      .input(z.object({ coachId: z.number() }))
+      .query(async ({ input }) => {
+        return await db.getCoachSubscriptionSettings(input.coachId);
+      }),
+
+    updateSettings: coachProcedure
+      .input(z.object({
+        enabled: z.boolean(),
+        monthlyPriceCents: z.number().int().min(0).max(10000),
+        description: z.string().max(500).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        await db.upsertCoachSubscriptionSettings(ctx.user.id, input);
+        return { success: true };
+      }),
+
+    subscribe: protectedProcedure
+      .input(z.object({ coachId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.user.id === input.coachId) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "You cannot subscribe to yourself" });
+        }
+        const settings = await db.getCoachSubscriptionSettings(input.coachId);
+        if (!settings?.enabled) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "This coach does not have subscriptions enabled" });
+        }
+        // TODO: Stripe recurring billing integration for paid subscriptions
+        const id = await db.subscribeToCoach(ctx.user.id, input.coachId, settings.monthlyPriceCents);
+        // Notify coach of new subscriber
+        const subscriber = await db.getUserById(ctx.user.id);
+        const coach = await db.getUserById(input.coachId);
+        if (coach?.email && subscriber) {
+          await sendEmail({
+            to: coach.email,
+            subject: `New subscriber on BooGMe — ${subscriber.name || "A user"} subscribed`,
+            html: getNewSubscriberEmail({
+              coachName: coach.name || "Coach",
+              subscriberName: subscriber.name || "A user",
+              monthlyPriceCents: settings.monthlyPriceCents,
+            }),
+          });
+        }
+        // In-app notification
+        await db.createNotification({
+          userId: input.coachId,
+          type: "new_subscriber",
+          title: "New subscriber",
+          body: `${subscriber?.name || "Someone"} subscribed to your channel${settings.monthlyPriceCents > 0 ? ` ($${(settings.monthlyPriceCents / 100).toFixed(2)}/mo)` : " (free)"}`,
+          relatedUserId: ctx.user.id,
+        });
+        return { success: true, id };
+      }),
+
+    cancel: protectedProcedure
+      .input(z.object({ coachId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        await db.cancelCoachSubscription(ctx.user.id, input.coachId);
+        return { success: true };
+      }),
+
+    isSubscribed: protectedProcedure
+      .input(z.object({ coachId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        return await db.isUserSubscribedToCoach(ctx.user.id, input.coachId);
+      }),
+
+    mySubscriptions: protectedProcedure.query(async ({ ctx }) => {
+      return await db.getActiveSubscriptionsForUser(ctx.user.id);
+    }),
+  }),
+
+  // ============ NOTIFICATIONS (S-DASH-3) ============
+  notifications: router({
+    list: protectedProcedure
+      .input(z.object({ limit: z.number().min(1).max(50).default(20) }).optional())
+      .query(async ({ ctx, input }) => {
+        return await db.getNotificationsForUser(ctx.user.id, input?.limit ?? 20);
+      }),
+
+    unreadCount: protectedProcedure.query(async ({ ctx }) => {
+      return await db.getUnreadNotificationCount(ctx.user.id);
+    }),
+
+    markRead: protectedProcedure
+      .input(z.object({ notificationId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        await db.markNotificationRead(input.notificationId, ctx.user.id);
+        return { success: true };
+      }),
+
+    markAllRead: protectedProcedure.mutation(async ({ ctx }) => {
+      await db.markAllNotificationsRead(ctx.user.id);
+      return { success: true };
+    }),
   }),
 
   // ============ ADMIN OPERATIONS ============

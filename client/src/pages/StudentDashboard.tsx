@@ -136,6 +136,12 @@ export function StudentDashboardContent({ user }: { user: any }) {
       enabled: !!user,
     });
 
+  // ── Subscription coaches (for expanded content request access) ─────────────
+  const { data: subscriptionCoaches } =
+    trpc.coachSubscription.mySubscriptions.useQuery(undefined, {
+      enabled: !!user,
+    });
+
   // ── Student profile (for rating) ──────────────────────────────────────────
   const { data: studentProfile } = trpc.student.getProfile.useQuery(
     undefined,
@@ -190,15 +196,21 @@ export function StudentDashboardContent({ user }: { user: any }) {
     )
     .slice(0, 10);
 
-  // ── Distinct coaches the student has worked with (for content requests) ───
-  const studentCoaches: { id: number; name: string }[] = Array.from(
-    new Map<number, { id: number; name: string }>(
-      (lessons || []).map((l: any) => [
-        l.coachId as number,
-        { id: l.coachId as number, name: l.coachName || `Coach #${l.coachId}` },
-      ]),
-    ).values(),
-  );
+  // ── Eligible coaches: from lessons + active subscriptions ───────────────────
+  const studentCoaches: { id: number; name: string }[] = (() => {
+    const map = new Map<number, { id: number; name: string }>();
+    (lessons || []).forEach((l: any) => {
+      if (!map.has(l.coachId)) {
+        map.set(l.coachId, { id: l.coachId, name: l.coachName || `Coach #${l.coachId}` });
+      }
+    });
+    (subscriptionCoaches || []).forEach((s: any) => {
+      if (!map.has(s.coachId)) {
+        map.set(s.coachId, { id: s.coachId, name: s.coachName || `Coach #${s.coachId}` });
+      }
+    });
+    return Array.from(map.values());
+  })();
 
   // ── Progress data — synthetic sparkline from student profile ──────────────
   const currentRating = (studentProfile as any)?.currentRating ?? null;

@@ -463,6 +463,7 @@ export function CoachDashboardContent({ user }: { user: any }) {
       <section id="profile">
         <span className="eyebrow mb-3 block">Profile</span>
         <CoachProfileSection userId={user.id} />
+        <SubscriptionSettingsCard userId={user.id} />
       </section>
     </div>
   );
@@ -1808,6 +1809,97 @@ function CoachProfileSection({ userId }: { userId: number }) {
             onClick={handleSave}
           >
             {updateMutation.isPending ? "Saving…" : "Save changes"}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function SubscriptionSettingsCard({ userId }: { userId: number }) {
+  const utils = trpc.useUtils();
+  const { data: settings, isLoading } = trpc.coachSubscription.getSettings.useQuery({ coachId: userId });
+
+  const [enabled, setEnabled] = useState(false);
+  const [price, setPrice] = useState("0");
+  const [description, setDescription] = useState("");
+  const [init, setInit] = useState(false);
+
+  useEffect(() => {
+    if (settings && !init) {
+      setEnabled(settings.enabled ?? false);
+      setPrice(String((settings.monthlyPriceCents ?? 0) / 100));
+      setDescription(settings.description || "");
+      setInit(true);
+    }
+  }, [settings, init]);
+
+  const updateMutation = trpc.coachSubscription.updateSettings.useMutation({
+    onSuccess: () => {
+      toast.success("Subscription settings saved.");
+      utils.coachSubscription.getSettings.invalidate();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const field = "w-full px-3 py-2 text-sm bg-background border border-border/40 rounded-sm text-bone placeholder:text-bone-muted/50";
+
+  return (
+    <Card className="bg-ink-raised border-border/20 rounded-sm mt-4">
+      <CardContent className="p-6 space-y-4">
+        <h3 className="text-base font-semibold text-bone">Subscription Channel</h3>
+
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={enabled}
+            onChange={(e) => setEnabled(e.target.checked)}
+            className="accent-[hsl(24,100%,45%)]"
+          />
+          <span className="text-sm text-bone">Enable subscription channel</span>
+        </label>
+
+        {enabled && (
+          <>
+            <div>
+              <label className="text-xs text-bone-muted mb-1 block">Monthly price (USD, 0 = free)</label>
+              <input
+                className={field}
+                type="number"
+                min={0}
+                max={100}
+                step={1}
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+                placeholder="0"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-bone-muted mb-1 block">Description — what subscribers get</label>
+              <textarea
+                className={`${field} min-h-[60px] resize-none`}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                maxLength={500}
+                placeholder="Exclusive content, early access, direct messaging, etc."
+              />
+            </div>
+          </>
+        )}
+
+        <div className="flex justify-end">
+          <Button
+            className="bg-ember hover:bg-ember/90 text-white rounded-sm"
+            disabled={updateMutation.isPending}
+            onClick={() =>
+              updateMutation.mutate({
+                enabled,
+                monthlyPriceCents: Math.round(Number(price) * 100) || 0,
+                description: description.trim() || undefined,
+              })
+            }
+          >
+            {updateMutation.isPending ? "Saving…" : "Save subscription settings"}
           </Button>
         </div>
       </CardContent>

@@ -76,8 +76,8 @@ export function UserMenu() {
           <LayoutDashboard className="mr-2 h-4 w-4" />
           <span>Dashboard</span>
         </DropdownMenuItem>
-        <DropdownMenuItem 
-          onClick={() => toast.info("Settings coming soon")}
+        <DropdownMenuItem
+          onClick={() => setLocation("/settings")}
           className="cursor-pointer"
         >
           <Settings className="mr-2 h-4 w-4" />

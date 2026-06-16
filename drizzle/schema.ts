@@ -1,4 +1,4 @@
-import { int, mysqlEnum, mysqlTable, text, mediumtext, timestamp, varchar, decimal, boolean } from "drizzle-orm/mysql-core";
+import { int, mysqlEnum, mysqlTable, text, mediumtext, timestamp, varchar, decimal, boolean, unique } from "drizzle-orm/mysql-core";
 
 /**
  * Core user table backing auth flow.
@@ -198,7 +198,8 @@ export const lessons = mysqlTable("lessons", {
     "cancelled",            // Cancelled before completion, refund per policy
     "no_show",              // Student or coach didn't show up
     "disputed",             // Student raised issue during window, payout paused
-    "refunded"              // Student refunded
+    "refunded",             // Student refunded
+    "subscription_dm"       // S-DASH-3: subscription direct message channel
   ]).default("pending_payment"),
   
   // Pricing snapshot (at time of booking)
@@ -938,3 +939,65 @@ export const contentRequests = mysqlTable("content_requests", {
 
 export type ContentRequest = typeof contentRequests.$inferSelect;
 export type InsertContentRequest = typeof contentRequests.$inferInsert;
+
+/**
+ * Coach Subscription Settings — one row per coach, controls whether subscriptions are enabled
+ */
+export const coachSubscriptionSettings = mysqlTable("coach_subscription_settings", {
+  id: int("id").autoincrement().primaryKey(),
+  coachId: int("coachId").notNull().unique(),
+  enabled: boolean("enabled").notNull().default(false),
+  monthlyPriceCents: int("monthlyPriceCents").notNull().default(0),
+  description: varchar("description", { length: 500 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type CoachSubscriptionSettings = typeof coachSubscriptionSettings.$inferSelect;
+
+/**
+ * Coach Subscriptions — one row per subscriber per coach
+ */
+export const coachSubscriptions = mysqlTable("coach_subscriptions", {
+  id: int("id").autoincrement().primaryKey(),
+  subscriberId: int("subscriberId").notNull(),
+  coachId: int("coachId").notNull(),
+  status: mysqlEnum("status", ["active", "cancelled", "expired"]).notNull().default("active"),
+  monthlyPriceCents: int("monthlyPriceCents").notNull().default(0),
+  stripeSubscriptionId: varchar("stripeSubscriptionId", { length: 255 }),
+  currentPeriodEnd: timestamp("currentPeriodEnd"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (t) => ({
+  uqSubscriberCoach: unique().on(t.subscriberId, t.coachId),
+}));
+
+export type CoachSubscription = typeof coachSubscriptions.$inferSelect;
+
+/**
+ * Notifications — in-app notification records for users
+ */
+export const notifications = mysqlTable("notifications", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  type: mysqlEnum("type", [
+    "new_subscriber",
+    "new_content_request",
+    "new_message",
+    "lesson_booked",
+    "lesson_confirmed",
+    "lesson_cancelled",
+    "lesson_completed",
+    "new_review",
+    "content_delivered",
+  ]).notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  body: text("body").notNull(),
+  relatedUserId: int("relatedUserId"),
+  relatedLessonId: int("relatedLessonId"),
+  relatedContentRequestId: int("relatedContentRequestId"),
+  readAt: timestamp("readAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type Notification = typeof notifications.$inferSelect;

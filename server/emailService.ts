@@ -1867,3 +1867,64 @@ export function getCoachDisputeResolvedEmail(params: {
     : `<p style="margin:0 0 20px;font-size:16px;line-height:1.6;color:#e0e0e0;">A refund has been issued to the student for this lesson.</p>`}`;
   return disputeEmailShell(title, body, `${frontendUrl}/dashboard`, "View Coach Dashboard");
 }
+
+// ─── S-DASH-3: Subscription & Notification Emails ──────────────────────────
+
+export function getNewContentRequestEmail(params: {
+  coachName: string;
+  studentName: string;
+  requestTitle: string;
+  requestDescription?: string;
+}): string {
+  const { coachName, studentName, requestTitle, requestDescription } = params;
+  const frontendUrl = process.env.VITE_FRONTEND_URL || 'http://localhost:3000';
+  const descBlock = requestDescription
+    ? `<p style="margin:10px 0 0;font-size:14px;line-height:1.6;color:#a0a0a0;">${requestDescription.length > 300 ? requestDescription.slice(0, 300) + '...' : requestDescription}</p>`
+    : '';
+  const body = `
+  <p style="margin:0 0 20px;font-size:16px;line-height:1.6;color:#e0e0e0;">Hi ${coachName},</p>
+  <p style="margin:0 0 20px;font-size:16px;line-height:1.6;color:#e0e0e0;"><strong>${studentName}</strong> has submitted a new content request for you.</p>
+  <div style="background-color:#2a2a2a;padding:25px;margin:30px 0;border-radius:8px;border-left:4px solid #8b4513;">
+    <h3 style="margin:0 0 10px;font-size:18px;color:#fff;">${requestTitle}</h3>
+    ${descBlock}
+  </div>
+  <p style="margin:0 0 20px;font-size:16px;line-height:1.6;color:#e0e0e0;">Head to your dashboard to review and respond to this request.</p>`;
+  return disputeEmailShell('New Content Request', body, `${frontendUrl}/dashboard`, 'View Request');
+}
+
+export function getNewMessageEmail(params: {
+  recipientName: string;
+  senderName: string;
+  messagePreview: string;
+}): string {
+  const { recipientName, senderName, messagePreview } = params;
+  const frontendUrl = process.env.VITE_FRONTEND_URL || 'http://localhost:3000';
+  const preview = messagePreview.length > 200 ? messagePreview.slice(0, 200) + '...' : messagePreview;
+  const body = `
+  <p style="margin:0 0 20px;font-size:16px;line-height:1.6;color:#e0e0e0;">Hi ${recipientName},</p>
+  <p style="margin:0 0 20px;font-size:16px;line-height:1.6;color:#e0e0e0;"><strong>${senderName}</strong> sent you a message.</p>
+  <div style="background-color:#2a2a2a;padding:20px;margin:30px 0;border-radius:8px;border-left:4px solid #8b4513;">
+    <p style="margin:0;font-size:15px;line-height:1.6;color:#e0e0e0;font-style:italic;">"${preview}"</p>
+  </div>`;
+  return disputeEmailShell('New Message', body, `${frontendUrl}/dashboard`, 'Read Message');
+}
+
+export function getNewSubscriberEmail(params: {
+  coachName: string;
+  subscriberName: string;
+  monthlyPriceCents: number;
+}): string {
+  const { coachName, subscriberName, monthlyPriceCents } = params;
+  const frontendUrl = process.env.VITE_FRONTEND_URL || 'http://localhost:3000';
+  const tierLine = monthlyPriceCents > 0
+    ? `<p style="margin:10px 0 0;font-size:15px;color:#10b981;font-weight:600;">Subscription tier: $${(monthlyPriceCents / 100).toFixed(2)}/mo</p>`
+    : `<p style="margin:10px 0 0;font-size:15px;color:#10b981;font-weight:600;">Subscription tier: Free</p>`;
+  const body = `
+  <p style="margin:0 0 20px;font-size:16px;line-height:1.6;color:#e0e0e0;">Hi ${coachName},</p>
+  <p style="margin:0 0 20px;font-size:16px;line-height:1.6;color:#e0e0e0;"><strong>${subscriberName}</strong> just subscribed to your channel!</p>
+  <div style="background-color:#2a2a2a;padding:25px;margin:30px 0;border-radius:8px;border-left:4px solid #8b4513;">
+    <p style="margin:0;font-size:16px;color:#fff;">New subscriber: <strong>${subscriberName}</strong></p>
+    ${tierLine}
+  </div>`;
+  return disputeEmailShell('New Subscriber', body, `${frontendUrl}/dashboard`, 'View Your Channel');
+}

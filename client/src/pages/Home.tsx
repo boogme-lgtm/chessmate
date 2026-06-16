@@ -28,6 +28,7 @@ import { trpc } from "@/lib/trpc";
 import { CoachMatchingAssessment } from "@/components/CoachMatchingAssessment";
 import { WelcomePopup } from "@/components/WelcomePopup";
 import { UserMenu } from "@/components/UserMenu";
+import NotificationBell from "@/components/NotificationBell";
 import Logo from "@/components/Logo";
 import QuizResultMockup from "@/components/hero/QuizResultMockup";
 import { BgMark } from "@/components/BgMark";
@@ -114,7 +115,10 @@ function Navigation({ onOpenAssessment }: { onOpenAssessment: () => void }) {
             For coaches
           </a>
           {loading ? null : user ? (
-            <UserMenu />
+            <div className="flex items-center gap-2">
+              <NotificationBell />
+              <UserMenu />
+            </div>
           ) : (
             <>
               <a

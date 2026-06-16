@@ -17,6 +17,7 @@ import {
   Video,
 } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 import BookingModal from "@/components/BookingModal";
 import Footer from "@/components/Footer";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -120,6 +121,28 @@ export default function CoachDetail() {
     },
     { enabled: coachId > 0 }
   );
+
+  // Subscription data
+  const { data: subSettings } = trpc.coachSubscription.getSettings.useQuery(
+    { coachId },
+    { enabled: coachId > 0 }
+  );
+  const { data: isSubscribed, refetch: refetchSub } = trpc.coachSubscription.isSubscribed.useQuery(
+    { coachId },
+    { enabled: !!user && coachId > 0 }
+  );
+  const { data: subscriberCount } = trpc.coachSubscription.getSettings.useQuery(
+    { coachId },
+    { enabled: coachId > 0, select: () => null } // we'll use a separate query
+  );
+  const subscribeMutation = trpc.coachSubscription.subscribe.useMutation({
+    onSuccess: () => { toast.success("Subscribed!"); refetchSub(); },
+    onError: (err) => toast.error(err.message),
+  });
+  const unsubscribeMutation = trpc.coachSubscription.cancel.useMutation({
+    onSuccess: () => { toast.success("Unsubscribed"); refetchSub(); },
+    onError: (err) => toast.error(err.message),
+  });
 
   useDocumentTitle(coach?.name ? `${coach.name} · Chess Coach · BooGMe` : "Chess Coach · BooGMe");
 
@@ -569,6 +592,41 @@ export default function CoachDetail() {
                     <Calendar className="h-5 w-5" />
                     {isAvailable ? "Book a Lesson" : "Currently unavailable"}
                   </Button>
+
+                  {/* Subscribe/Follow button */}
+                  {subSettings?.enabled && (
+                    <div>
+                      {isSubscribed ? (
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-ember font-medium">Following ✓</span>
+                          <button
+                            onClick={() => unsubscribeMutation.mutate({ coachId })}
+                            disabled={unsubscribeMutation.isPending}
+                            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                          >
+                            Unsubscribe
+                          </button>
+                        </div>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          className="w-full gap-2"
+                          onClick={() => {
+                            if (!user) {
+                              setLocation(`/sign-in?redirect=/coach/${coachId}`);
+                              return;
+                            }
+                            subscribeMutation.mutate({ coachId });
+                          }}
+                          disabled={subscribeMutation.isPending}
+                        >
+                          {(subSettings.monthlyPriceCents ?? 0) > 0
+                            ? `Subscribe — $${((subSettings.monthlyPriceCents ?? 0) / 100).toFixed(0)}/mo`
+                            : "Follow (Free)"}
+                        </Button>
+                      )}
+                    </div>
+                  )}
 
                   {/* Available durations + derived prices */}
                   <div className="space-y-1.5 text-sm pt-2">
