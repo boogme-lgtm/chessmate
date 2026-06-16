@@ -1756,3 +1756,114 @@ export function getStudentCoachConfirmedEmail(params: {
 </html>
   `;
 }
+
+// ─── Dispute Emails (S-REF-3) ───────────────────────────────────────────────
+
+function disputeEmailShell(title: string, body: string, ctaUrl: string, ctaLabel: string): string {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${title}</title></head>
+<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;background-color:#0a0a0a;color:#fff;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#0a0a0a;"><tr><td align="center" style="padding:40px 20px;">
+<table width="600" cellpadding="0" cellspacing="0" style="background-color:#1a1a1a;border-radius:8px;overflow:hidden;">
+<tr><td style="padding:40px 40px 20px;text-align:center;">
+  <img src="https://files.manuscdn.com/user_upload_by_module/session_file/310519663188415081/xRYfqyUGHSJUlDcu.png" alt="BooGMe" style="height:48px;width:auto;margin-bottom:20px;" />
+  <h1 style="margin:0;font-size:28px;font-weight:300;color:#fff;letter-spacing:-0.5px;">${title}</h1>
+</td></tr>
+<tr><td style="padding:0 40px 40px;">${body}
+  <div style="text-align:center;margin:30px 0;">
+    <a href="${ctaUrl}" style="display:inline-block;padding:14px 32px;background-color:#8b4513;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;font-size:16px;">${ctaLabel}</a>
+  </div>
+  <p style="margin:20px 0 0;font-size:13px;color:#666;text-align:center;">This is an automated message from BooGMe. Please do not reply directly to this email.</p>
+</td></tr></table></td></tr></table></body></html>`;
+}
+
+function detailRow(label: string, value: string): string {
+  return `<tr><td style="font-size:15px;color:#a0a0a0;padding:8px 0;">${label}</td><td style="font-size:15px;color:#fff;font-weight:600;padding:8px 0;text-align:right;">${value}</td></tr>`;
+}
+
+export function getStudentDisputeReceivedEmail(params: {
+  studentName: string; coachName: string; lessonId: number;
+  category: string; description: string | null; frontendUrl: string;
+}): string {
+  const { studentName, coachName, lessonId, category, description, frontendUrl } = params;
+  const desc = description ? (description.length > 200 ? description.slice(0, 200) + "…" : description) : null;
+  const body = `
+  <p style="margin:0 0 20px;font-size:16px;line-height:1.6;color:#e0e0e0;">Hi ${studentName},</p>
+  <p style="margin:0 0 20px;font-size:16px;line-height:1.6;color:#e0e0e0;">We've received your dispute for your lesson with <strong>${coachName}</strong>.</p>
+  <div style="background-color:#2a2a2a;padding:25px;margin:30px 0;border-radius:8px;border-left:4px solid #8b4513;">
+    <table width="100%" cellpadding="8" cellspacing="0">
+      ${detailRow("Lesson", `#${lessonId}`)}
+      ${detailRow("Category", category)}
+      ${desc ? detailRow("Your description", desc) : ""}
+    </table>
+  </div>
+  <p style="margin:0 0 20px;font-size:16px;line-height:1.6;color:#e0e0e0;">We'll review your case within 24–48 hours. The coach's payout is held while the dispute is under review.</p>`;
+  return disputeEmailShell("Dispute Received", body, `${frontendUrl}/dashboard`, "View Your Dashboard");
+}
+
+export function getCoachDisputeFiledEmail(params: {
+  coachName: string; studentName: string; lessonId: number;
+  category: string; description: string | null; frontendUrl: string;
+}): string {
+  const { coachName, studentName, lessonId, category, description, frontendUrl } = params;
+  const desc = description ? (description.length > 200 ? description.slice(0, 200) + "…" : description) : null;
+  const body = `
+  <p style="margin:0 0 20px;font-size:16px;line-height:1.6;color:#e0e0e0;">Hi ${coachName},</p>
+  <p style="margin:0 0 20px;font-size:16px;line-height:1.6;color:#e0e0e0;"><strong>${studentName}</strong> has filed a dispute on Lesson #${lessonId}.</p>
+  <div style="background-color:#2a2a2a;padding:25px;margin:30px 0;border-radius:8px;border-left:4px solid #8b4513;">
+    <table width="100%" cellpadding="8" cellspacing="0">
+      ${detailRow("Category", category)}
+      ${desc ? detailRow("Description", desc) : ""}
+    </table>
+  </div>
+  <p style="margin:0 0 20px;font-size:16px;line-height:1.6;color:#e0e0e0;">You have 24 hours to respond via your Coach Dashboard. If no response is received, the dispute will be reviewed by admin.</p>
+  <p style="margin:0 0 20px;font-size:16px;line-height:1.6;color:#e0e0e0;">Your payout is held while the dispute is under review.</p>`;
+  return disputeEmailShell("Dispute Filed on Your Lesson", body, `${frontendUrl}/dashboard`, "View Coach Dashboard");
+}
+
+export function getStudentDisputeResolvedEmail(params: {
+  studentName: string; coachName: string; lessonId: number; disputeId: number;
+  resolution: "refund_full" | "refund_partial" | "denied";
+  refundAmountCents: number | null; adminNote: string | null; frontendUrl: string;
+}): string {
+  const { studentName, coachName, lessonId, disputeId, resolution, refundAmountCents, adminNote, frontendUrl } = params;
+  const resLabel = resolution === "denied" ? "No Refund Issued" : resolution === "refund_full" ? "Full Refund Issued" : "Partial Refund Issued";
+  const body = `
+  <p style="margin:0 0 20px;font-size:16px;line-height:1.6;color:#e0e0e0;">Hi ${studentName},</p>
+  <p style="margin:0 0 20px;font-size:16px;line-height:1.6;color:#e0e0e0;">Your dispute (#${disputeId}) for your lesson with <strong>${coachName}</strong> has been reviewed.</p>
+  <div style="background-color:#2a2a2a;padding:25px;margin:30px 0;border-radius:8px;border-left:4px solid #8b4513;">
+    <table width="100%" cellpadding="8" cellspacing="0">
+      ${detailRow("Lesson", `#${lessonId}`)}
+      ${detailRow("Outcome", resLabel)}
+      ${refundAmountCents ? detailRow("Refund", `$${(refundAmountCents / 100).toFixed(2)}`) : ""}
+      ${adminNote ? detailRow("Note", adminNote) : ""}
+    </table>
+  </div>
+  ${resolution === "denied"
+    ? `<p style="margin:0 0 20px;font-size:16px;line-height:1.6;color:#e0e0e0;">After reviewing the details, we were unable to issue a refund for this lesson. The coach has been paid.</p>`
+    : `<p style="margin:0 0 20px;font-size:16px;line-height:1.6;color:#e0e0e0;">Your refund has been processed. Please allow 5–10 business days for it to appear on your statement.</p>`}`;
+  return disputeEmailShell(`Dispute #${disputeId} — ${resLabel}`, body, `${frontendUrl}/dashboard`, "View Your Dashboard");
+}
+
+export function getCoachDisputeResolvedEmail(params: {
+  coachName: string; studentName: string; lessonId: number; disputeId: number;
+  resolution: "refund_full" | "refund_partial" | "denied";
+  refundAmountCents: number | null; lessonAmountCents: number;
+  adminNote: string | null; frontendUrl: string;
+}): string {
+  const { coachName, studentName, lessonId, disputeId, resolution, refundAmountCents, lessonAmountCents, adminNote, frontendUrl } = params;
+  const title = resolution === "denied" ? "Dispute Resolved in Your Favor" : "Dispute Resolved — Refund Issued";
+  const body = `
+  <p style="margin:0 0 20px;font-size:16px;line-height:1.6;color:#e0e0e0;">Hi ${coachName},</p>
+  <p style="margin:0 0 20px;font-size:16px;line-height:1.6;color:#e0e0e0;">Dispute #${disputeId} filed by <strong>${studentName}</strong> on Lesson #${lessonId} has been resolved.</p>
+  <div style="background-color:#2a2a2a;padding:25px;margin:30px 0;border-radius:8px;border-left:4px solid #8b4513;">
+    <table width="100%" cellpadding="8" cellspacing="0">
+      ${detailRow("Lesson", `#${lessonId} ($${(lessonAmountCents / 100).toFixed(2)})`)}
+      ${detailRow("Outcome", resolution === "denied" ? "No refund — payout released to you" : refundAmountCents ? `Refund of $${(refundAmountCents / 100).toFixed(2)} issued to student` : "Refund issued to student")}
+      ${adminNote ? detailRow("Note", adminNote) : ""}
+    </table>
+  </div>
+  ${resolution === "denied"
+    ? `<p style="margin:0 0 20px;font-size:16px;line-height:1.6;color:#e0e0e0;">Your payout has been released. No action is needed on your part.</p>`
+    : `<p style="margin:0 0 20px;font-size:16px;line-height:1.6;color:#e0e0e0;">A refund has been issued to the student for this lesson.</p>`}`;
+  return disputeEmailShell(title, body, `${frontendUrl}/dashboard`, "View Coach Dashboard");
+}

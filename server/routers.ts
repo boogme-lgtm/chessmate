@@ -20,6 +20,10 @@ import {
   getCoachNewBookingRequestEmail,
   getStudentCoachConfirmedEmail,
   getStudentBookingReservedEmail,
+  getStudentDisputeReceivedEmail,
+  getCoachDisputeFiledEmail,
+  getStudentDisputeResolvedEmail,
+  getCoachDisputeResolvedEmail,
 } from "./emailService";
 import { sendNurtureEmails, sendNurtureEmailsManual } from "./nurtureEmailScheduler";
 import { resendWelcomeEmails } from "./resendWelcomeEmails";
@@ -1575,6 +1579,53 @@ export const appRouter = router({
           });
         } catch (err) {
           console.error(`[raiseIssue] Failed to notify owner for lesson ${input.lessonId}:`, err);
+        }
+
+        // S-REF-3: fire-and-forget dispute emails to student + coach
+        try {
+          const [studentUser, coachUser] = await Promise.all([
+            db.getUserById(ctx.user.id),
+            db.getUserById(lesson.coachId),
+          ]);
+          const categoryLabel: Record<string, string> = {
+            coach_no_show: "Coach No-Show",
+            coach_late_or_short: "Late / Short",
+            technical_failure: "Technical Failure",
+            not_as_described: "Not As Described",
+          };
+          const baseUrl = process.env.VITE_FRONTEND_URL || "http://localhost:3000";
+          const catLabel = categoryLabel[input.category] ?? input.category;
+
+          if (studentUser?.email) {
+            await sendEmail({
+              to: studentUser.email,
+              subject: `Your dispute has been received — Lesson #${input.lessonId}`,
+              html: getStudentDisputeReceivedEmail({
+                studentName: studentUser.name || "Student",
+                coachName: coachUser?.name || "your coach",
+                lessonId: input.lessonId,
+                category: catLabel,
+                description: input.description?.trim() || null,
+                frontendUrl: baseUrl,
+              }),
+            });
+          }
+          if (coachUser?.email) {
+            await sendEmail({
+              to: coachUser.email,
+              subject: `A dispute has been filed on Lesson #${input.lessonId}`,
+              html: getCoachDisputeFiledEmail({
+                coachName: coachUser.name || "Coach",
+                studentName: studentUser?.name || "a student",
+                lessonId: input.lessonId,
+                category: catLabel,
+                description: input.description?.trim() || null,
+                frontendUrl: baseUrl,
+              }),
+            });
+          }
+        } catch (emailErr) {
+          console.error(`[raiseIssue] Email send failed for lesson ${input.lessonId}:`, emailErr);
         }
 
         return { success: true, policyGated: false };
@@ -3247,6 +3298,59 @@ export const appRouter = router({
             });
           } catch (err) {
             console.error(`[resolveLessonDispute] notifyOwner failed for dispute ${input.disputeId}:`, err);
+          }
+
+          // S-REF-3: fire-and-forget resolution emails to student + coach
+          try {
+            const [studentUser, coachUser] = await Promise.all([
+              db.getUserById(lesson.studentId),
+              db.getUserById(lesson.coachId),
+            ]);
+            const baseUrl = process.env.VITE_FRONTEND_URL || "http://localhost:3000";
+            const studentSubject = input.resolution === "denied"
+              ? `Dispute #${input.disputeId} reviewed — no refund issued`
+              : input.resolution === "refund_full"
+              ? `Dispute #${input.disputeId} resolved — full refund issued`
+              : `Dispute #${input.disputeId} resolved — partial refund issued`;
+            const coachSubject = input.resolution === "denied"
+              ? `Dispute #${input.disputeId} resolved in your favor — Lesson #${dispute.lessonId}`
+              : `Dispute #${input.disputeId} — refund issued to student`;
+
+            if (studentUser?.email) {
+              await sendEmail({
+                to: studentUser.email,
+                subject: studentSubject,
+                html: getStudentDisputeResolvedEmail({
+                  studentName: studentUser.name || "Student",
+                  coachName: coachUser?.name || "your coach",
+                  lessonId: dispute.lessonId,
+                  disputeId: input.disputeId,
+                  resolution: input.resolution,
+                  refundAmountCents: resolvedRefundCents,
+                  adminNote: input.adminNote || null,
+                  frontendUrl: baseUrl,
+                }),
+              });
+            }
+            if (coachUser?.email) {
+              await sendEmail({
+                to: coachUser.email,
+                subject: coachSubject,
+                html: getCoachDisputeResolvedEmail({
+                  coachName: coachUser.name || "Coach",
+                  studentName: studentUser?.name || "the student",
+                  lessonId: dispute.lessonId,
+                  disputeId: input.disputeId,
+                  resolution: input.resolution,
+                  refundAmountCents: resolvedRefundCents,
+                  lessonAmountCents: lesson.amountCents,
+                  adminNote: input.adminNote || null,
+                  frontendUrl: baseUrl,
+                }),
+              });
+            }
+          } catch (emailErr) {
+            console.error(`[resolveLessonDispute] Email send failed for dispute ${input.disputeId}:`, emailErr);
           }
 
           return { success: true, resolution: input.resolution, refundAmountCents: resolvedRefundCents };
