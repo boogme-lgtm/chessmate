@@ -30,6 +30,8 @@ import {
   InsertReferral,
   tips,
   InsertTip,
+  lessonDisputes,
+  type DisputeCategory,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { computeCancellationRefund } from "@shared/cancellationPolicy";
@@ -2136,4 +2138,66 @@ export async function deleteTip(tipId: number) {
   const db = await getDb();
   if (!db) return;
   await db.delete(tips).where(eq(tips.id, tipId));
+}
+
+// ============ LESSON DISPUTES (S-REF-1) ============
+
+export async function createLessonDispute(data: {
+  lessonId: number;
+  raisedBy: number;
+  category: DisputeCategory;
+  description: string | null;
+  evidenceUrls?: string[] | null;
+  status?: string;
+  resolution?: string;
+  abuseFlag?: boolean;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result: any = await db.insert(lessonDisputes).values({
+    lessonId: data.lessonId,
+    raisedBy: data.raisedBy,
+    category: data.category,
+    description: data.description,
+    evidenceUrls: data.evidenceUrls ? JSON.stringify(data.evidenceUrls) : null,
+    ...(data.status ? { status: data.status as any } : {}),
+    ...(data.resolution ? { resolution: data.resolution as any, resolvedAt: new Date(), resolvedBy: "system" as const } : {}),
+    ...(data.abuseFlag !== undefined ? { abuseFlag: data.abuseFlag } : {}),
+  });
+  return result[0]?.insertId ?? null;
+}
+
+export async function getDisputeByLessonId(lessonId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(lessonDisputes)
+    .where(eq(lessonDisputes.lessonId, lessonId))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getDisputeById(id: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(lessonDisputes)
+    .where(eq(lessonDisputes.id, id))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function countNonNoShowDisputesByStudent(studentId: number): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  const rows = await db
+    .select({ count: sql<number>`COUNT(*)` })
+    .from(lessonDisputes)
+    .where(and(
+      eq(lessonDisputes.raisedBy, studentId),
+      sql`${lessonDisputes.category} != 'coach_no_show'`
+    ));
+  return rows[0]?.count ?? 0;
 }

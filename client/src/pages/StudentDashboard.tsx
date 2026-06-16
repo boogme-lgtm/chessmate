@@ -436,7 +436,8 @@ function LessonCard({ lesson, isPast = false, unreadCount = 0 }: LessonCardProps
   const [showMessageThread, setShowMessageThread] = useState(false);
   const [showRaiseIssueDialog, setShowRaiseIssueDialog] = useState(false);
   const [showDetailDialog, setShowDetailDialog] = useState(false);
-  const [issueReason, setIssueReason] = useState("");
+  const [issueCategory, setIssueCategory] = useState("");
+  const [issueDescription, setIssueDescription] = useState("");
   const utils = trpc.useUtils();
 
   // ── Live clock — refreshes every 30 s so time-gated UI auto-updates ─────
@@ -480,10 +481,15 @@ function LessonCard({ lesson, isPast = false, unreadCount = 0 }: LessonCardProps
 
   // ── Raise Issue ──────────────────────────────────────────────────────────
   const raiseIssueMutation = trpc.lesson.raiseIssue.useMutation({
-    onSuccess: () => {
-      toast.success("Issue raised. An admin will review your case.");
+    onSuccess: (data: any) => {
+      if (data.policyGated) {
+        toast.success("Feedback submitted. Quality alone is not eligible for a refund per our policy.");
+      } else {
+        toast.success("Issue raised. An admin will review your case.");
+      }
       setShowRaiseIssueDialog(false);
-      setIssueReason("");
+      setIssueCategory("");
+      setIssueDescription("");
       utils.lesson.myLessons.invalidate();
     },
     onError: (err) => {
@@ -794,13 +800,14 @@ function LessonCard({ lesson, isPast = false, unreadCount = 0 }: LessonCardProps
         />
       )}
 
-      {/* Raise Issue dialog */}
+      {/* Raise Issue dialog — S-REF-1 categorized intake */}
       <Dialog
         open={showRaiseIssueDialog}
         onOpenChange={(v) => {
           if (!v) {
             setShowRaiseIssueDialog(false);
-            setIssueReason("");
+            setIssueCategory("");
+            setIssueDescription("");
           }
         }}
       >
@@ -811,9 +818,8 @@ function LessonCard({ lesson, isPast = false, unreadCount = 0 }: LessonCardProps
               Raise an Issue
             </DialogTitle>
             <DialogDescription>
-              Describe the problem with this lesson. An admin will review your
-              case and contact both parties. Coach payout will be paused until
-              the issue is resolved.
+              Select the type of issue and describe what happened. Coach payout
+              is paused while the issue is under review.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
@@ -833,36 +839,79 @@ function LessonCard({ lesson, isPast = false, unreadCount = 0 }: LessonCardProps
                 </div>
               )}
             </div>
-            <textarea
-              data-testid="issue-reason-input"
-              className="w-full min-h-[100px] rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
-              placeholder="Please describe what went wrong with this lesson…"
-              value={issueReason}
-              onChange={(e) => setIssueReason(e.target.value)}
-            />
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">What happened?</label>
+              {[
+                { value: "coach_no_show", label: "Coach didn't show up", hint: "The lesson never started because your coach didn't join." },
+                { value: "coach_late_or_short", label: "Coach was late or cut lesson short", hint: "Coach joined >15 min late, or the lesson ended materially early." },
+                { value: "technical_failure", label: "Technical failure", hint: "A platform or connection issue prevented the lesson." },
+                { value: "not_as_described", label: "Not as described", hint: "The lesson was materially different from the coach's profile." },
+                { value: "quality", label: "Quality / didn't find it useful", hint: "Note: Subjective dissatisfaction is not eligible for a refund. You may still submit this as feedback." },
+              ].map((opt) => (
+                <label
+                  key={opt.value}
+                  className={`flex items-start gap-3 rounded-md border p-3 cursor-pointer transition-colors ${issueCategory === opt.value ? "border-orange-500 bg-orange-50/50 dark:bg-orange-950/20" : "border-border/60 hover:border-border"}`}
+                >
+                  <input
+                    type="radio"
+                    name="issueCategory"
+                    value={opt.value}
+                    checked={issueCategory === opt.value}
+                    onChange={(e) => setIssueCategory(e.target.value)}
+                    className="mt-1"
+                  />
+                  <div>
+                    <div className="text-sm font-medium">{opt.label}</div>
+                    <div className="text-xs text-muted-foreground">{opt.hint}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
+
+            {issueCategory && (
+              <div>
+                <label className="text-sm font-medium">
+                  {issueCategory === "quality" ? "Feedback for the coach (optional)" : "Describe what happened (required, min 20 characters)"}
+                </label>
+                <textarea
+                  data-testid="issue-reason-input"
+                  className="mt-1 w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
+                  placeholder={issueCategory === "quality" ? "Optional feedback…" : "Please describe what went wrong (min 20 characters)…"}
+                  value={issueDescription}
+                  onChange={(e) => setIssueDescription(e.target.value)}
+                />
+              </div>
+            )}
           </div>
           <DialogFooter className="gap-2">
             <Button
               variant="outline"
               onClick={() => {
                 setShowRaiseIssueDialog(false);
-                setIssueReason("");
+                setIssueCategory("");
+                setIssueDescription("");
               }}
             >
               Cancel
             </Button>
             <Button
               className="gap-2 bg-orange-600 hover:bg-orange-700 text-white"
-              disabled={!issueReason.trim() || raiseIssueMutation.isPending}
+              disabled={
+                !issueCategory ||
+                (issueCategory !== "quality" && issueCategory !== "coach_no_show" && issueDescription.trim().length < 20) ||
+                raiseIssueMutation.isPending
+              }
               onClick={() =>
                 raiseIssueMutation.mutate({
                   lessonId: lesson.id,
-                  reason: issueReason.trim(),
+                  category: issueCategory as any,
+                  description: issueDescription.trim() || undefined,
                 })
               }
             >
               <Flag className="h-4 w-4" />
-              {raiseIssueMutation.isPending ? "Submitting…" : "Submit Issue"}
+              {raiseIssueMutation.isPending ? "Submitting…" : issueCategory === "quality" ? "Submit Feedback" : "Submit Issue"}
             </Button>
           </DialogFooter>
         </DialogContent>

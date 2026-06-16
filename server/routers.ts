@@ -1490,12 +1490,13 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    // Raise issue (student) — within 24-hour issue window after completion
-    // Pauses coach payout and marks lesson as disputed for admin resolution.
+    // S-REF-1: Categorized dispute intake with policy gate and abuse tracking.
     raiseIssue: protectedProcedure
       .input(z.object({
         lessonId: z.number(),
-        reason: z.string().min(1, "Please describe the issue"),
+        category: z.enum(["coach_no_show", "coach_late_or_short", "technical_failure", "not_as_described", "quality"]),
+        description: z.string().optional(),
+        evidenceUrls: z.array(z.string().url()).max(5).optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         const lesson = await db.getLessonById(input.lessonId);
@@ -1505,35 +1506,78 @@ export const appRouter = router({
         if (lesson.studentId !== ctx.user.id) {
           throw new TRPCError({ code: "FORBIDDEN", message: "Not your lesson" });
         }
-        // Can only raise issues on completed lessons (during issue window)
         if (lesson.status !== "completed") {
           throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Issues can only be raised for completed lessons" });
         }
-        // Check 24-hour issue window
         if (lesson.issueWindowEndsAt && new Date() > lesson.issueWindowEndsAt) {
-          throw new TRPCError({
-            code: "PRECONDITION_FAILED",
-            message: "The 24-hour issue window has expired",
-          });
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "The 24-hour issue window has expired" });
         }
 
-        // Mark as disputed — payout is paused until admin resolves
-        await db.updateLessonStatus(input.lessonId, "disputed", {
-          cancellationReason: input.reason,
+        const existingDispute = await db.getDisputeByLessonId(input.lessonId);
+        if (existingDispute) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "An issue has already been raised for this lesson" });
+        }
+
+        const requiresDescription = ["coach_late_or_short", "technical_failure", "not_as_described"].includes(input.category);
+        if (requiresDescription && (!input.description || input.description.trim().length < 20)) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Please provide at least 20 characters describing the issue" });
+        }
+
+        // Quality: feedback only — NOT refundable, payout NOT paused.
+        if (input.category === "quality") {
+          await db.createLessonDispute({
+            lessonId: input.lessonId,
+            raisedBy: ctx.user.id,
+            category: input.category,
+            description: input.description?.trim() || null,
+            evidenceUrls: input.evidenceUrls,
+            status: "resolved",
+            resolution: "feedback_only",
+          });
+          try {
+            await notifyOwner({
+              title: `Lesson Feedback (Non-Refundable): #${input.lessonId}`,
+              content: `Student #${ctx.user.id} left quality feedback on lesson #${input.lessonId}: ${input.description?.slice(0, 200) || "(no description)"}`,
+            });
+          } catch {}
+          return {
+            success: true,
+            policyGated: true,
+            message: "Quality feedback recorded. Per our policy, subjective dissatisfaction is not eligible for a refund. Your feedback has been shared with the coach.",
+          };
+        }
+
+        // Abuse check: >3 non-no-show disputes → flag.
+        const priorDisputeCount = await db.countNonNoShowDisputesByStudent(ctx.user.id);
+        const abuseFlag = priorDisputeCount > 3;
+
+        await db.createLessonDispute({
+          lessonId: input.lessonId,
+          raisedBy: ctx.user.id,
+          category: input.category,
+          description: input.description?.trim() || null,
+          evidenceUrls: input.evidenceUrls,
+          abuseFlag,
         });
 
-        // Notify admin/owner about the dispute
+        await db.updateLessonStatus(input.lessonId, "disputed", {
+          cancellationReason: `[${input.category}] ${input.description || ""}`,
+        });
+
         try {
           const student = await db.getUserById(ctx.user.id);
+          const title = abuseFlag
+            ? `⚠️ Abuse Flag: High-dispute student #${ctx.user.id} raised issue on lesson #${input.lessonId}`
+            : `Lesson Dispute [${input.category}]: #${input.lessonId}`;
           await notifyOwner({
-            title: `Lesson Dispute: #${input.lessonId}`,
-            content: `Student ${student?.name || ctx.user.id} raised an issue for lesson #${input.lessonId}: ${input.reason}`,
+            title,
+            content: `Student ${student?.name || ctx.user.id} raised [${input.category}] on lesson #${input.lessonId}: ${input.description?.slice(0, 200) || "(no description)"}`,
           });
         } catch (err) {
           console.error(`[raiseIssue] Failed to notify owner for lesson ${input.lessonId}:`, err);
         }
 
-        return { success: true };
+        return { success: true, policyGated: false };
       }),
 
     // LEGACY: Request refund (within 48-hour window) — kept for backward compatibility
