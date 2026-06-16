@@ -3,13 +3,14 @@
  * Replaces the generic DashboardLayout on dashboard pages only.
  */
 
-import { ReactNode, useEffect } from "react";
+import { ReactNode } from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 import { format } from "date-fns";
+import { Home } from "lucide-react";
 
 // ── Sidebar nav definitions ──────────────────────────────────────────────────
 
@@ -25,7 +26,7 @@ const STUDENT_NAV = [
 
 const COACH_NAV = [
   { key: "overview", label: "Overview" },
-  { key: "schedule", label: "Schedule" },
+  { key: "schedule", label: "All Lessons" },
   { key: "students", label: "Students" },
   { key: "inbox", label: "Inbox", badgeKey: "messages" },
   { key: "content-requests", label: "Content requests" },
@@ -105,12 +106,22 @@ export default function DashShell({
       <aside className="hidden md:flex w-[200px] shrink-0 flex-col bg-ink-deep border-r border-border/20 sticky top-0 h-screen overflow-y-auto">
         {/* Logo */}
         <div className="px-5 pt-5 pb-2">
-          <button onClick={() => setLocation("/")} className="text-ember text-sm font-bold tracking-tight">
+          <button
+            onClick={() => setLocation("/")}
+            className="text-ember text-sm font-bold tracking-tight cursor-pointer hover:text-ember/80 transition-colors"
+          >
             BooGMe
           </button>
           <div className="text-[9px] font-bold tracking-[0.2em] uppercase text-bone-muted mt-0.5">
             {roleTag}
           </div>
+          <button
+            onClick={() => setLocation("/")}
+            className="flex items-center gap-1 text-[10px] text-bone-muted hover:text-bone transition-colors mt-1.5"
+          >
+            <Home className="w-2.5 h-2.5" />
+            Home
+          </button>
         </div>
 
         {/* Role switcher (only for both-role users) */}
@@ -172,16 +183,25 @@ export default function DashShell({
             <div className="min-w-0">
               <div className="text-sm font-medium text-bone truncate">{user?.name || "User"}</div>
               <div className="text-[10px] font-bold tracking-[0.15em] uppercase text-bone-muted">
-                {initials} {roleTag}
+                {roleTag}
               </div>
             </div>
           </div>
-          <button
-            onClick={logout}
-            className="mt-3 text-[11px] text-bone-muted hover:text-bone transition-colors"
-          >
-            Sign out
-          </button>
+          <div className="mt-3 flex items-center gap-3">
+            <button
+              onClick={() => setLocation("/settings")}
+              className="text-[11px] text-bone-muted hover:text-bone transition-colors"
+            >
+              Settings
+            </button>
+            <span className="text-bone-muted/30 text-[10px]">·</span>
+            <button
+              onClick={logout}
+              className="text-[11px] text-bone-muted hover:text-bone transition-colors"
+            >
+              Sign out
+            </button>
+          </div>
         </div>
       </aside>
 
@@ -226,7 +246,12 @@ export default function DashShell({
                     Share Booking Link
                   </button>
                   <button
-                    onClick={() => toast.info("Content upload: coming soon")}
+                    onClick={() => {
+                      onSectionChange("storefront");
+                      const el = document.getElementById("storefront");
+                      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+                      toast.info("Content upload is coming soon — manage your storefront below.");
+                    }}
                     className="px-3 py-1.5 text-sm font-medium text-white bg-ember rounded-sm hover:bg-ember/90 transition-colors"
                   >
                     + Upload Content

@@ -1063,6 +1063,33 @@ export const appRouter = router({
       return await db.getStudentProfileByUserId(ctx.user.id);
     }),
 
+    // Set/update the student's current chess rating (S-DASH-2)
+    updateRating: protectedProcedure
+      .input(z.object({
+        currentRating: z.number().int().min(100).max(3200),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const existing = await db.getStudentProfileByUserId(ctx.user.id);
+        if (!existing) {
+          await db.createStudentProfile({
+            userId: ctx.user.id,
+            currentRating: input.currentRating,
+            skillLevel:
+              input.currentRating >= 2000 ? "expert"
+              : input.currentRating >= 1500 ? "advanced"
+              : input.currentRating >= 1000 ? "intermediate"
+              : "beginner",
+            primaryGoal: "rating_improvement",
+            playingStyle: "balanced",
+            learningStyle: "analytical",
+            practiceSchedule: "regular",
+          });
+        } else {
+          await db.updateStudentRating(ctx.user.id, input.currentRating);
+        }
+        return { success: true };
+      }),
+
     // Get student's achievements
     getAchievements: protectedProcedure.query(async ({ ctx }) => {
       return await db.getUserAchievements(ctx.user.id);

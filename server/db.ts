@@ -355,6 +355,15 @@ export async function getStudentProfileByUserId(userId: number) {
   return result.length > 0 ? result[0] : undefined;
 }
 
+export async function updateStudentRating(userId: number, currentRating: number) {
+  const db = await getDb();
+  if (!db) return;
+
+  await db.update(studentProfiles)
+    .set({ currentRating })
+    .where(eq(studentProfiles.userId, userId));
+}
+
 export async function updateStudentXp(userId: number, xpToAdd: number) {
   const db = await getDb();
   if (!db) return;

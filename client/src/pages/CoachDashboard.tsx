@@ -458,6 +458,12 @@ export function CoachDashboardContent({ user }: { user: any }) {
           </CardContent>
         </Card>
       </section>
+
+      {/* ── PROFILE (inline editor) ───────────────────────────────────────── */}
+      <section id="profile">
+        <span className="eyebrow mb-3 block">Profile</span>
+        <CoachProfileSection userId={user.id} />
+      </section>
     </div>
   );
 }
@@ -673,9 +679,15 @@ function EarningsModule({
   stripeDashUrl?: string;
   startOnboarding: any;
 }) {
-  // Monthly total (all non-cancelled lessons' coachPayoutCents)
+  // Monthly total — non-cancelled lessons in the current calendar month only.
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const monthlyTotal = (lessons || [])
-    .filter((l: any) => !CANCELLED_STATUSES.includes(l.status))
+    .filter(
+      (l: any) =>
+        !CANCELLED_STATUSES.includes(l.status) &&
+        new Date(l.scheduledAt) >= monthStart,
+    )
     .reduce((sum: number, l: any) => sum + (l.coachPayoutCents || 0), 0);
 
   const escrowTotal = earnings?.pendingEarningsCents || 0;
@@ -699,13 +711,14 @@ function EarningsModule({
         <div className="flex items-end justify-between mb-6">
           <div>
             <div className="text-3xl font-bold font-mono tabular-nums text-bone">
-              {formatCurrency(earnings?.totalEarningsCents || 0)}
+              {formatCurrency(monthlyTotal)}
             </div>
             <div className="flex items-center gap-2 mt-1">
-              <Badge className="bg-green-600/20 text-green-400 border-green-600/40 rounded-sm text-xs font-mono">
-                +22%
-              </Badge>
               <span className="text-xs text-bone-muted">this month</span>
+              <span className="text-bone-muted/30 text-[10px]">·</span>
+              <span className="text-xs text-bone-muted font-mono tabular-nums">
+                {formatCurrency(earnings?.totalEarningsCents || 0)} all-time
+              </span>
             </div>
           </div>
           <div className="text-right">
@@ -934,6 +947,15 @@ function ContentRequestsModule({
 }: {
   contentRequests: any;
 }) {
+  const utils = trpc.useUtils();
+  const updateStatus = trpc.contentRequest.updateStatus.useMutation({
+    onSuccess: () => {
+      toast.success("Request updated.");
+      utils.contentRequest.listForCoach.invalidate();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
   const requests = contentRequests || [];
   const queuedTotal = requests
     .filter((r: any) => r.status === "queued")
@@ -1010,19 +1032,25 @@ function ContentRequestsModule({
                     <Button
                       size="sm"
                       className="bg-ember hover:bg-ember/90 text-white rounded-sm text-xs h-7"
-                      onClick={() => toast.info("Fulfill: coming soon")}
+                      disabled={updateStatus.isPending}
+                      onClick={() => updateStatus.mutate({ requestId: req.id, status: "in_progress" })}
                     >
-                      FULFILL
+                      START
                     </Button>
                   )}
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="rounded-sm text-xs h-7 border-border/40 text-bone-muted hover:text-bone"
-                    onClick={() => toast.info("View content: coming soon")}
-                  >
-                    VIEW
-                  </Button>
+                  {req.status === "in_progress" && (
+                    <Button
+                      size="sm"
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-sm text-xs h-7"
+                      disabled={updateStatus.isPending}
+                      onClick={() => updateStatus.mutate({ requestId: req.id, status: "delivered" })}
+                    >
+                      MARK DELIVERED
+                    </Button>
+                  )}
+                  {req.status === "delivered" && (
+                    <span className="text-xs text-emerald-400 font-medium">Delivered</span>
+                  )}
                 </div>
               </div>
             ))}
@@ -1643,6 +1671,149 @@ function PendingLessonCard({
 // ─────────────────────────────────────────────────────────────────────────────
 // Referral Card — less prominent position at bottom
 // ─────────────────────────────────────────────────────────────────────────────
+
+function CoachProfileSection({ userId }: { userId: number }) {
+  const [, setLocation] = useLocation();
+  const utils = trpc.useUtils();
+  const { data, isLoading } = trpc.coach.getMyProfile.useQuery();
+
+  const [name, setName] = useState("");
+  const [bio, setBio] = useState("");
+  const [hourlyRate, setHourlyRate] = useState("");
+  const [chesscom, setChesscom] = useState("");
+  const [fide, setFide] = useState("");
+  const [specialties, setSpecialties] = useState("");
+  const [initialized, setInitialized] = useState(false);
+
+  // Populate fields once the profile loads.
+  useEffect(() => {
+    if (data && !initialized) {
+      setName(data.user?.name || "");
+      setBio((data.user as any)?.bio || "");
+      setHourlyRate(
+        data.profile?.hourlyRateCents ? String(Math.round(data.profile.hourlyRateCents / 100)) : "",
+      );
+      setChesscom((data.profile as any)?.chesscomUsername || "");
+      setFide(data.profile?.fideRating ? String(data.profile.fideRating) : "");
+      try {
+        const arr = data.profile?.specialties ? JSON.parse(data.profile.specialties as string) : [];
+        setSpecialties(Array.isArray(arr) ? arr.join(", ") : "");
+      } catch {
+        setSpecialties("");
+      }
+      setInitialized(true);
+    }
+  }, [data, initialized]);
+
+  const updateMutation = trpc.coach.updateProfile.useMutation({
+    onSuccess: () => {
+      toast.success("Profile updated.");
+      utils.coach.getMyProfile.invalidate();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const handleSave = () => {
+    const payload: any = {};
+    if (name.trim()) payload.name = name.trim();
+    payload.bio = bio.trim();
+    const rate = parseInt(hourlyRate, 10);
+    if (!isNaN(rate) && rate > 0) payload.hourlyRateCents = rate * 100;
+    payload.chesscomUsername = chesscom.trim();
+    const fideNum = parseInt(fide, 10);
+    if (!isNaN(fideNum)) payload.fideRating = fideNum;
+    payload.specialties = specialties
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    updateMutation.mutate(payload);
+  };
+
+  if (isLoading) {
+    return (
+      <Card className="bg-ink-raised border-border/20 rounded-sm">
+        <CardContent className="p-6">
+          <Skeleton className="h-40 w-full" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const field = "w-full px-3 py-2 text-sm bg-background border border-border/40 rounded-sm text-bone placeholder:text-bone-muted/50";
+  const labelCls = "text-xs text-bone-muted mb-1 block";
+
+  return (
+    <Card className="bg-ink-raised border-border/20 rounded-sm">
+      <CardContent className="p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-base font-semibold text-bone">Your Profile</h3>
+          <button
+            onClick={() => setLocation(`/coach/${userId}`)}
+            className="text-xs text-ember hover:text-ember/80 transition-colors inline-flex items-center gap-1"
+          >
+            View public profile <ExternalLink className="w-3 h-3" />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className={labelCls}>Display name</label>
+            <input className={field} value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" />
+          </div>
+          <div>
+            <label className={labelCls}>Hourly rate (USD)</label>
+            <input className={field} type="number" min={5} value={hourlyRate} onChange={(e) => setHourlyRate(e.target.value)} placeholder="e.g. 150" />
+          </div>
+          <div>
+            <label className={labelCls}>Chess.com username</label>
+            <div className="flex gap-2">
+              <input className={field} value={chesscom} onChange={(e) => setChesscom(e.target.value)} placeholder="username" />
+              {chesscom.trim() && (
+                <a
+                  href={`https://www.chess.com/member/${chesscom.trim()}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-2.5 py-2 text-xs text-bone-muted hover:text-bone border border-border/40 rounded-sm shrink-0 inline-flex items-center"
+                >
+                  Verify
+                </a>
+              )}
+            </div>
+          </div>
+          <div>
+            <label className={labelCls}>FIDE rating</label>
+            <input className={field} type="number" min={0} max={3000} value={fide} onChange={(e) => setFide(e.target.value)} placeholder="e.g. 2280" />
+          </div>
+        </div>
+
+        <div>
+          <label className={labelCls}>Bio</label>
+          <textarea
+            className={`${field} min-h-[80px] resize-none`}
+            value={bio}
+            onChange={(e) => setBio(e.target.value)}
+            placeholder="Tell students about your coaching experience and approach."
+          />
+        </div>
+
+        <div>
+          <label className={labelCls}>Specialties (comma-separated)</label>
+          <input className={field} value={specialties} onChange={(e) => setSpecialties(e.target.value)} placeholder="Openings, Endgames, Tactics" />
+        </div>
+
+        <div className="flex justify-end">
+          <Button
+            className="bg-ember hover:bg-ember/90 text-white rounded-sm"
+            disabled={updateMutation.isPending}
+            onClick={handleSave}
+          >
+            {updateMutation.isPending ? "Saving…" : "Save changes"}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 function ReferralCard() {
   const { data, isLoading } = trpc.referral.getMyCode.useQuery();

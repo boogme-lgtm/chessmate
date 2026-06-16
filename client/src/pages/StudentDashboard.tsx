@@ -29,6 +29,7 @@ import {
   MessageCircle,
   ArrowLeft,
   X,
+  BookOpen,
 } from "lucide-react";
 import {
   format,
@@ -189,6 +190,16 @@ export function StudentDashboardContent({ user }: { user: any }) {
     )
     .slice(0, 10);
 
+  // ── Distinct coaches the student has worked with (for content requests) ───
+  const studentCoaches: { id: number; name: string }[] = Array.from(
+    new Map<number, { id: number; name: string }>(
+      (lessons || []).map((l: any) => [
+        l.coachId as number,
+        { id: l.coachId as number, name: l.coachName || `Coach #${l.coachId}` },
+      ]),
+    ).values(),
+  );
+
   // ── Progress data — synthetic sparkline from student profile ──────────────
   const currentRating = (studentProfile as any)?.currentRating ?? null;
 
@@ -233,39 +244,45 @@ export function StudentDashboardContent({ user }: { user: any }) {
         )}
       </section>
 
-      {/* ── MODULE 2: CONTENT REQUESTS ─────────────────────────────────────── */}
-      <section id="content-requests">
-        <span className="eyebrow mb-3 block">02 — Content requests</span>
-        <ContentRequestsModule contentRequests={contentRequests} />
+      {/* ── MODULE 2: LESSONS (full history) ───────────────────────────────── */}
+      <section id="lessons">
+        <span className="eyebrow mb-3 block">02 — Lessons</span>
+        <LessonHistorySection lessons={lessons || []} />
       </section>
 
-      {/* ── MODULE 3: MESSAGES ─────────────────────────────────────────────── */}
+      {/* ── MODULE 3: CONTENT REQUESTS ─────────────────────────────────────── */}
+      <section id="content-requests">
+        <span className="eyebrow mb-3 block">03 — Content requests</span>
+        <ContentRequestsModule contentRequests={contentRequests} coaches={studentCoaches} />
+      </section>
+
+      {/* ── MODULE 4: MESSAGES ─────────────────────────────────────────────── */}
       <section id="messages">
-        <span className="eyebrow mb-3 block">03 — Messages</span>
+        <span className="eyebrow mb-3 block">04 — Messages</span>
         <MessagesModule
           lessons={lessonsWithMessages}
           unreadCounts={unreadCounts}
         />
       </section>
 
-      {/* ── MODULE 4: CONTENT LIBRARY ──────────────────────────────────────── */}
+      {/* ── MODULE 5: CONTENT LIBRARY ──────────────────────────────────────── */}
       <section id="content-library">
-        <span className="eyebrow mb-3 block">04 — Library</span>
+        <span className="eyebrow mb-3 block">05 — Library</span>
         <ContentLibraryModule />
       </section>
 
-      {/* ── MODULE 5: PROGRESS ─────────────────────────────────────────────── */}
+      {/* ── MODULE 6: PROGRESS ─────────────────────────────────────────────── */}
       <section id="progress">
-        <span className="eyebrow mb-3 block">05 — Progress</span>
+        <span className="eyebrow mb-3 block">06 — Progress</span>
         <ProgressModule currentRating={currentRating} />
       </section>
 
       {/* ── MODULE 6: PENDING REVIEWS (conditional) ────────────────────────── */}
       <PendingReviewsSection />
 
-      {/* ── MODULE 7: BILLING ──────────────────────────────────────────────── */}
+      {/* ── MODULE 8: BILLING ──────────────────────────────────────────────── */}
       <section id="billing">
-        <span className="eyebrow mb-3 block">07 — Billing</span>
+        <span className="eyebrow mb-3 block">08 — Billing</span>
         <Card className="bg-ink-raised border-border/20 rounded-sm">
           <CardContent className="p-6">
             <h3 className="text-base font-semibold text-bone mb-2">
@@ -1356,9 +1373,12 @@ function CoachMessagePreview({ lesson }: { lesson: any }) {
 
 function ContentRequestsModule({
   contentRequests,
+  coaches,
 }: {
   contentRequests: any;
+  coaches: { id: number; name: string }[];
 }) {
+  const [dialogOpen, setDialogOpen] = useState(false);
   const statusBadge = (status: string) => {
     switch (status) {
       case "in_progress":
@@ -1395,11 +1415,23 @@ function ContentRequestsModule({
           <Button
             size="sm"
             className="gap-1 bg-ember hover:bg-ember/90 text-white rounded-sm text-xs"
-            onClick={() => toast.info("Content requests: coming soon")}
+            onClick={() => {
+              if (coaches.length === 0) {
+                toast.info("Book a lesson with a coach first to request content.");
+                return;
+              }
+              setDialogOpen(true);
+            }}
           >
             + New Request
           </Button>
         </div>
+
+        <NewContentRequestDialog
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+          coaches={coaches}
+        />
 
         {requests.length === 0 ? (
           <p className="text-sm text-bone-muted">
@@ -1436,8 +1468,193 @@ function ContentRequestsModule({
   );
 }
 
+function NewContentRequestDialog({
+  open,
+  onOpenChange,
+  coaches,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  coaches: { id: number; name: string }[];
+}) {
+  const utils = trpc.useUtils();
+  const [coachId, setCoachId] = useState<number | null>(coaches[0]?.id ?? null);
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+
+  // Keep the default coach in sync once coaches load.
+  useEffect(() => {
+    if (coachId === null && coaches[0]) setCoachId(coaches[0].id);
+  }, [coaches, coachId]);
+
+  const createMutation = trpc.contentRequest.create.useMutation({
+    onSuccess: () => {
+      toast.success("Request sent to your coach.");
+      utils.contentRequest.listForStudent.invalidate();
+      setTitle("");
+      setDescription("");
+      onOpenChange(false);
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const canSubmit = coachId !== null && title.trim().length >= 3 && !createMutation.isPending;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="bg-ink-raised border-border/40 sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-bone">Request content from your coach</DialogTitle>
+          <DialogDescription className="text-bone-muted">
+            Ask for a specific video, analysis, or training material. Your coach will price and deliver it.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          {coaches.length > 1 && (
+            <div>
+              <label className="text-xs text-bone-muted mb-1 block">Coach</label>
+              <select
+                value={coachId ?? ""}
+                onChange={(e) => setCoachId(Number(e.target.value))}
+                className="w-full px-3 py-2 text-sm bg-background border border-border/40 rounded-sm text-bone"
+              >
+                {coaches.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          <div>
+            <label className="text-xs text-bone-muted mb-1 block">What do you need? (required)</label>
+            <input
+              type="text"
+              maxLength={255}
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="e.g. Caro-Kann Advance variation — Black"
+              className="w-full px-3 py-2 text-sm bg-background border border-border/40 rounded-sm text-bone placeholder:text-bone-muted/50"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-bone-muted mb-1 block">Details (optional)</label>
+            <textarea
+              maxLength={2000}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Add any context — games to review, positions to cover, etc."
+              className="w-full min-h-[80px] px-3 py-2 text-sm bg-background border border-border/40 rounded-sm text-bone placeholder:text-bone-muted/50 resize-none"
+            />
+          </div>
+        </div>
+        <DialogFooter className="gap-2">
+          <Button
+            variant="outline"
+            className="rounded-sm border-border/40 text-bone-muted hover:text-bone"
+            onClick={() => onOpenChange(false)}
+          >
+            Cancel
+          </Button>
+          <Button
+            className="bg-ember hover:bg-ember/90 text-white rounded-sm"
+            disabled={!canSubmit}
+            onClick={() =>
+              createMutation.mutate({
+                coachId: coachId!,
+                title: title.trim(),
+                description: description.trim() || undefined,
+              })
+            }
+          >
+            {createMutation.isPending ? "Sending…" : "Send Request"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
-// MODULE 3: Messages
+// MODULE: Lesson History (full list)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const STATUS_LABELS: Record<string, { label: string; cls: string }> = {
+  pending_payment: { label: "Awaiting Payment", cls: "bg-zinc-600/20 text-zinc-300 border-zinc-600/40" },
+  payment_collected: { label: "Paid — Awaiting Coach", cls: "bg-amber-600/20 text-amber-400 border-amber-600/40" },
+  confirmed: { label: "Confirmed", cls: "bg-blue-600/20 text-blue-400 border-blue-600/40" },
+  completed: { label: "Completed", cls: "bg-emerald-600/20 text-emerald-400 border-emerald-600/40" },
+  released: { label: "Complete", cls: "bg-emerald-600/20 text-emerald-400 border-emerald-600/40" },
+  disputed: { label: "Under Review", cls: "bg-orange-600/20 text-orange-400 border-orange-600/40" },
+  cancelled: { label: "Cancelled", cls: "bg-red-600/20 text-red-400 border-red-600/40" },
+  declined: { label: "Declined", cls: "bg-red-600/20 text-red-400 border-red-600/40" },
+  refunded: { label: "Refunded", cls: "bg-purple-600/20 text-purple-400 border-purple-600/40" },
+};
+
+function LessonHistorySection({ lessons }: { lessons: any[] }) {
+  const [showCancelled, setShowCancelled] = useState(false);
+
+  const sorted = [...lessons].sort(
+    (a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime(),
+  );
+  const cancelledCount = sorted.filter((l) => CANCELLED_STATUSES.includes(l.status)).length;
+  const visible = showCancelled ? sorted : sorted.filter((l) => !CANCELLED_STATUSES.includes(l.status));
+
+  return (
+    <Card className="bg-ink-raised border-border/20 rounded-sm">
+      <CardContent className="p-6">
+        {sorted.length === 0 ? (
+          <p className="text-sm text-bone-muted">
+            No lessons yet. Book your first lesson to get started.
+          </p>
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="text-[10px] font-bold tracking-[0.15em] uppercase text-bone-muted border-b border-border/20">
+                    <th className="py-2 pr-4 font-bold">Date</th>
+                    <th className="py-2 pr-4 font-bold">Coach</th>
+                    <th className="py-2 pr-4 font-bold">Duration</th>
+                    <th className="py-2 pr-4 font-bold">Status</th>
+                    <th className="py-2 font-bold text-right">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visible.map((l) => {
+                    const s = STATUS_LABELS[l.status] || { label: l.status, cls: "bg-zinc-600/20 text-zinc-300 border-zinc-600/40" };
+                    return (
+                      <tr key={l.id} className="border-b border-border/10 last:border-0">
+                        <td className="py-2.5 pr-4 text-bone">{format(new Date(l.scheduledAt), "MMM d, yyyy · h:mm a")}</td>
+                        <td className="py-2.5 pr-4 text-bone">{l.coachName || `Coach #${l.coachId}`}</td>
+                        <td className="py-2.5 pr-4 text-bone-muted font-mono tabular-nums">{l.durationMinutes || 60}m</td>
+                        <td className="py-2.5 pr-4">
+                          <Badge className={`${s.cls} rounded-sm text-xs`}>{s.label}</Badge>
+                        </td>
+                        <td className="py-2.5 text-right font-mono tabular-nums text-bone">
+                          ${((l.amountCents || 0) / 100).toFixed(2)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {cancelledCount > 0 && (
+              <button
+                onClick={() => setShowCancelled((v) => !v)}
+                className="mt-3 text-xs text-bone-muted hover:text-bone transition-colors"
+              >
+                {showCancelled ? "Hide" : "Show"} cancelled ({cancelledCount})
+              </button>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MODULE 4: Messages
 // ─────────────────────────────────────────────────────────────────────────────
 
 function MessagesModule({
@@ -1584,28 +1801,14 @@ function ContentLibraryModule() {
           </button>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className="border border-border/20 rounded-sm overflow-hidden"
-            >
-              <div className="aspect-video bg-ink-deep flex items-center justify-center">
-                <Video className="h-8 w-8 text-bone-muted/30" />
-              </div>
-              <div className="p-3">
-                <div className="text-sm font-medium text-bone-muted">
-                  Coming soon
-                </div>
-                <div className="text-xs text-bone-muted/60">
-                  Content library
-                </div>
-                <div className="text-xs text-bone-muted/60 mt-1 font-mono tabular-nums">
-                  0 videos
-                </div>
-              </div>
-            </div>
-          ))}
+        {/* TODO: wire to trpc.content.listOwned when content purchases ship */}
+        <div className="text-center py-12">
+          <BookOpen className="h-10 w-10 mx-auto mb-3 text-bone-muted/30" />
+          <p className="text-sm font-medium text-bone mb-1">Your library is empty</p>
+          <p className="text-xs text-bone-muted max-w-xs mx-auto">
+            Purchase content from your coach's storefront to build your personal
+            chess library.
+          </p>
         </div>
       </CardContent>
     </Card>
@@ -1621,6 +1824,28 @@ function ProgressModule({
 }: {
   currentRating: number | null;
 }) {
+  const utils = trpc.useUtils();
+  const [showRatingInput, setShowRatingInput] = useState(false);
+  const [ratingInput, setRatingInput] = useState("");
+  const updateRatingMutation = trpc.student.updateRating.useMutation({
+    onSuccess: () => {
+      toast.success("Rating saved.");
+      utils.student.getProfile.invalidate();
+      setShowRatingInput(false);
+      setRatingInput("");
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const handleSaveRating = () => {
+    const value = parseInt(ratingInput, 10);
+    if (isNaN(value) || value < 100 || value > 3200) {
+      toast.error("Enter a rating between 100 and 3200.");
+      return;
+    }
+    updateRatingMutation.mutate({ currentRating: value });
+  };
+
   // Synthetic sparkline: 8 data points ending at currentRating
   const rating = currentRating ?? 1200;
   const sparkData = Array.from({ length: 8 }, (_, i) => {
@@ -1698,9 +1923,45 @@ function ProgressModule({
           </svg>
         </div>
         {currentRating === null && (
-          <p className="text-xs text-bone-muted mt-3">
-            Set your rating in your profile to track progress over time.
-          </p>
+          <div className="mt-3 flex items-center gap-2">
+            {showRatingInput ? (
+              <>
+                <input
+                  type="number"
+                  min={100}
+                  max={3200}
+                  placeholder="e.g. 1200"
+                  value={ratingInput}
+                  onChange={(e) => setRatingInput(e.target.value)}
+                  autoFocus
+                  className="w-24 px-2 py-1 text-sm bg-background border border-border/40 rounded-sm text-bone font-mono"
+                />
+                <button
+                  onClick={handleSaveRating}
+                  disabled={updateRatingMutation.isPending}
+                  className="px-2 py-1 text-xs bg-ember text-white rounded-sm hover:bg-ember/90 disabled:opacity-50"
+                >
+                  {updateRatingMutation.isPending ? "Saving…" : "Save"}
+                </button>
+                <button
+                  onClick={() => {
+                    setShowRatingInput(false);
+                    setRatingInput("");
+                  }}
+                  className="text-xs text-bone-muted hover:text-bone"
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => setShowRatingInput(true)}
+                className="text-xs text-ember hover:text-ember/80 underline underline-offset-2"
+              >
+                Set your rating to track progress over time →
+              </button>
+            )}
+          </div>
         )}
       </CardContent>
     </Card>
@@ -1727,7 +1988,7 @@ function PendingReviewsSection() {
 
   return (
     <section id="pending-reviews">
-      <span className="eyebrow mb-3 block">06 — Pending reviews</span>
+      <span className="eyebrow mb-3 block">07 — Pending reviews</span>
       <Card className="bg-ink-raised border-amber-600/30 rounded-sm">
         <CardContent className="p-6">
           <div className="flex items-start gap-3 mb-4">
