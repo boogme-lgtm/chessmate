@@ -26,6 +26,8 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -604,8 +606,12 @@ export default function AdminDisputesPanel() {
         </div>
 
         {/* Tabs */}
-        <Tabs defaultValue="disputed">
+        <Tabs defaultValue="lesson-disputes">
           <TabsList className="mb-4">
+            <TabsTrigger value="lesson-disputes" className="gap-2">
+              <ShieldAlert className="h-4 w-4 text-orange-500" />
+              Lesson Disputes
+            </TabsTrigger>
             <TabsTrigger value="disputed" className="gap-2">
               <AlertTriangle className="h-4 w-4 text-orange-500" />
               Disputed Lessons
@@ -625,6 +631,11 @@ export default function AdminDisputesPanel() {
               )}
             </TabsTrigger>
           </TabsList>
+
+          {/* ── Lesson Disputes Tab (S-REF-2) ── */}
+          <TabsContent value="lesson-disputes">
+            <LessonDisputesTab isAdmin={user?.role === "admin"} />
+          </TabsContent>
 
           {/* ── Disputed Lessons Tab ── */}
           <TabsContent value="disputed">
@@ -867,5 +878,349 @@ export default function AdminDisputesPanel() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+// ─── Lesson Disputes Tab (S-REF-2) ──────────────────────────────────────────
+
+const CATEGORY_LABELS: Record<string, string> = {
+  coach_no_show: "Coach No-Show",
+  coach_late_or_short: "Late / Short",
+  technical_failure: "Technical Failure",
+  not_as_described: "Not As Described",
+  quality: "Quality Feedback",
+};
+
+const DISPUTE_STATUS_COLORS: Record<string, string> = {
+  open: "bg-amber-500",
+  coach_responded: "bg-blue-500",
+  escalated: "bg-orange-500",
+  resolved: "bg-green-600",
+};
+
+function LessonDisputesTab({ isAdmin }: { isAdmin: boolean }) {
+  const utils = trpc.useUtils();
+  const [selected, setSelected] = useState<any | null>(null);
+
+  const { data, isLoading, error, refetch } = trpc.admin.disputes.listLessonDisputes.useQuery(
+    undefined,
+    { enabled: isAdmin }
+  );
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between pb-3">
+        <CardTitle className="text-lg">Lesson Disputes</CardTitle>
+        <Button variant="ghost" size="sm" onClick={() => refetch()} className="gap-2 text-muted-foreground">
+          <RefreshCw className="h-4 w-4" />
+          Refresh
+        </Button>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <TableSkeleton />
+        ) : error ? (
+          <ErrorState message={formatAdminActionError(error.message)} onRetry={() => refetch()} />
+        ) : !data || data.length === 0 ? (
+          <EmptyState icon={CheckCircle2} message="No lesson disputes raised." />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="border-b border-border text-xs text-muted-foreground uppercase tracking-wide">
+                  <th className="py-2 px-4">Dispute</th>
+                  <th className="py-2 px-4">Lesson</th>
+                  <th className="py-2 px-4">Student</th>
+                  <th className="py-2 px-4">Category</th>
+                  <th className="py-2 px-4">Description</th>
+                  <th className="py-2 px-4">Amount</th>
+                  <th className="py-2 px-4">Status</th>
+                  <th className="py-2 px-4">Raised</th>
+                  <th className="py-2 px-4">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.map((d: any) => (
+                  <tr key={d.id} className="border-b border-border/50 hover:bg-accent/30">
+                    <td className="py-2 px-4 font-mono text-sm">
+                      #{d.id}
+                      {d.abuseFlag && (
+                        <span title="High-dispute student — review carefully" className="ml-1">⚠️</span>
+                      )}
+                    </td>
+                    <td className="py-2 px-4 font-mono text-sm">#{d.lessonId}</td>
+                    <td className="py-2 px-4 text-sm">
+                      <div className="font-medium">{d.studentName || `Student #${d.raisedBy}`}</div>
+                      <div className="text-xs text-muted-foreground">{d.studentEmail}</div>
+                    </td>
+                    <td className="py-2 px-4 text-sm">{CATEGORY_LABELS[d.category] ?? d.category}</td>
+                    <td className="py-2 px-4 text-sm max-w-[220px]">
+                      <span title={d.description || ""} className="line-clamp-1 text-muted-foreground">
+                        {d.description
+                          ? d.description.length > 80
+                            ? d.description.slice(0, 80) + "…"
+                            : d.description
+                          : "—"}
+                      </span>
+                    </td>
+                    <td className="py-2 px-4 text-sm">
+                      {d.lessonAmountCents != null ? `$${(d.lessonAmountCents / 100).toFixed(2)}` : "—"}
+                    </td>
+                    <td className="py-2 px-4">
+                      <Badge className={`${DISPUTE_STATUS_COLORS[d.status] ?? "bg-muted"} text-white text-xs`}>
+                        {d.status}
+                      </Badge>
+                    </td>
+                    <td className="py-2 px-4 text-sm text-muted-foreground">
+                      {d.createdAt ? format(new Date(d.createdAt), "MMM d, yyyy") : "—"}
+                    </td>
+                    <td className="py-2 px-4">
+                      <Button size="sm" variant="outline" onClick={() => setSelected(d)}>
+                        Review
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+
+      {selected && (
+        <LessonDisputeDetailDialog
+          dispute={selected}
+          onClose={() => setSelected(null)}
+          onResolved={() => {
+            setSelected(null);
+            utils.admin.disputes.listLessonDisputes.invalidate();
+            utils.admin.disputes.list.invalidate();
+            utils.admin.disputes.pendingPayouts.invalidate();
+          }}
+        />
+      )}
+    </Card>
+  );
+}
+
+function LessonDisputeDetailDialog({
+  dispute,
+  onClose,
+  onResolved,
+}: {
+  dispute: any;
+  onClose: () => void;
+  onResolved: () => void;
+}) {
+  const isResolved = dispute.status === "resolved";
+  const [resolution, setResolution] = useState<"refund_full" | "refund_partial" | "denied">("refund_full");
+  const [partialDollars, setPartialDollars] = useState("");
+  const [adminNote, setAdminNote] = useState("");
+  const [confirming, setConfirming] = useState(false);
+
+  const lessonAmountCents: number = dispute.lessonAmountCents ?? 0;
+  const partialCents = Math.round(Number(partialDollars) * 100);
+  const partialValid =
+    resolution !== "refund_partial" ||
+    (partialDollars !== "" && partialCents > 0 && partialCents <= lessonAmountCents);
+
+  const resolveMutation = trpc.admin.disputes.resolveLessonDispute.useMutation({
+    onSuccess: () => {
+      toast.success("Dispute resolved.");
+      onResolved();
+    },
+    onError: (err) => {
+      setConfirming(false);
+      toast.error(formatAdminActionError(err.message));
+    },
+  });
+
+  const evidenceUrls: string[] = (() => {
+    try {
+      return dispute.evidenceUrls ? JSON.parse(dispute.evidenceUrls) : [];
+    } catch {
+      return [];
+    }
+  })();
+
+  const submit = () => {
+    resolveMutation.mutate({
+      disputeId: dispute.id,
+      resolution,
+      refundAmountCents: resolution === "refund_partial" ? partialCents : undefined,
+      adminNote: adminNote.trim() || undefined,
+    });
+  };
+
+  const confirmText =
+    resolution === "denied"
+      ? `release the held payout to the coach`
+      : resolution === "refund_partial"
+      ? `refund $${(partialCents / 100).toFixed(2)} to the student`
+      : `refund the full $${(lessonAmountCents / 100).toFixed(2)} to the student`;
+
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            Dispute #{dispute.id} — Lesson #{dispute.lessonId}
+            {dispute.abuseFlag && <span title="High-dispute student">⚠️</span>}
+          </DialogTitle>
+          <DialogDescription>
+            {CATEGORY_LABELS[dispute.category] ?? dispute.category}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 text-sm">
+          {dispute.abuseFlag && (
+            <div className="rounded-md border border-red-500/40 bg-red-50/60 dark:bg-red-950/20 px-3 py-2 text-red-700 dark:text-red-300">
+              ⚠️ This student has a high number of prior disputes. Review carefully before refunding.
+            </div>
+          )}
+
+          <div className="rounded-lg bg-muted/50 p-3 space-y-1">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Student</span>
+              <span className="font-medium">{dispute.studentName || `#${dispute.raisedBy}`} · {dispute.studentEmail}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Lesson amount</span>
+              <span className="font-medium">${(lessonAmountCents / 100).toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Lesson status</span>
+              <span className="font-medium">{dispute.lessonStatus}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Scheduled</span>
+              <span className="font-medium">
+                {dispute.lessonScheduledAt ? format(new Date(dispute.lessonScheduledAt), "MMM d, yyyy") : "—"}
+              </span>
+            </div>
+          </div>
+
+          <div>
+            <div className="font-medium mb-1">Description</div>
+            <p className="text-muted-foreground whitespace-pre-wrap">{dispute.description || "(none provided)"}</p>
+          </div>
+
+          {evidenceUrls.length > 0 && (
+            <div>
+              <div className="font-medium mb-1">Evidence</div>
+              <ul className="list-disc pl-5 space-y-0.5">
+                {evidenceUrls.map((u, i) => (
+                  <li key={i}>
+                    <a href={u} target="_blank" rel="noopener noreferrer" className="text-primary underline break-all">{u}</a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <div>
+            <div className="font-medium mb-1">Coach response</div>
+            {dispute.coachResponse ? (
+              <p className="text-muted-foreground">
+                [{dispute.coachAction ?? "—"}] {dispute.coachResponse}
+                {dispute.coachRespondedAt && (
+                  <span className="block text-xs">{format(new Date(dispute.coachRespondedAt), "MMM d, yyyy h:mm a")}</span>
+                )}
+              </p>
+            ) : (
+              <p className="text-muted-foreground">No coach response yet.</p>
+            )}
+          </div>
+
+          {isResolved ? (
+            <div className="rounded-md border border-green-500/40 bg-green-50/60 dark:bg-green-950/20 px-3 py-2">
+              <div className="font-medium text-green-700 dark:text-green-300">Resolved: {dispute.resolution}</div>
+              {dispute.refundAmountCents != null && (
+                <div className="text-xs">Refund: ${(dispute.refundAmountCents / 100).toFixed(2)}</div>
+              )}
+              {dispute.resolvedAt && (
+                <div className="text-xs">{format(new Date(dispute.resolvedAt), "MMM d, yyyy h:mm a")}</div>
+              )}
+              {dispute.adminNote && <div className="text-xs mt-1">Note: {dispute.adminNote}</div>}
+            </div>
+          ) : dispute.category === "quality" ? (
+            <div className="rounded-md border border-border px-3 py-2 text-muted-foreground">
+              Quality feedback is non-refundable by policy. No action required.
+            </div>
+          ) : (
+            <div className="space-y-3 border-t border-border pt-3">
+              <div className="font-medium">Resolution</div>
+              <RadioGroup value={resolution} onValueChange={(v) => setResolution(v as any)}>
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="refund_full" id="r-full" />
+                  <Label htmlFor="r-full">Full refund to student</Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="refund_partial" id="r-partial" />
+                  <Label htmlFor="r-partial">Partial refund</Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="denied" id="r-deny" />
+                  <Label htmlFor="r-deny">Deny — release payout to coach</Label>
+                </div>
+              </RadioGroup>
+
+              {resolution === "refund_partial" && (
+                <div>
+                  <Label htmlFor="partial-amount" className="text-xs">Refund amount (USD, max ${(lessonAmountCents / 100).toFixed(2)})</Label>
+                  <Input
+                    id="partial-amount"
+                    type="number"
+                    min="0.01"
+                    max={(lessonAmountCents / 100).toFixed(2)}
+                    step="0.01"
+                    value={partialDollars}
+                    onChange={(e) => setPartialDollars(e.target.value)}
+                    placeholder="0.00"
+                    className="mt-1"
+                  />
+                </div>
+              )}
+
+              <div>
+                <Label htmlFor="admin-note" className="text-xs">Admin note (optional)</Label>
+                <Textarea
+                  id="admin-note"
+                  value={adminNote}
+                  onChange={(e) => setAdminNote(e.target.value)}
+                  placeholder="Reason for this decision…"
+                  className="mt-1"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {!isResolved && dispute.category !== "quality" && (
+          <DialogFooter className="gap-2">
+            {confirming ? (
+              <>
+                <span className="text-sm text-muted-foreground self-center mr-auto">
+                  Are you sure? This will {confirmText}.
+                </span>
+                <Button variant="outline" onClick={() => setConfirming(false)} disabled={resolveMutation.isPending}>
+                  Cancel
+                </Button>
+                <Button onClick={submit} disabled={resolveMutation.isPending}>
+                  {resolveMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm"}
+                </Button>
+              </>
+            ) : (
+              <Button
+                onClick={() => setConfirming(true)}
+                disabled={!partialValid || resolveMutation.isPending}
+              >
+                Resolve Dispute
+              </Button>
+            )}
+          </DialogFooter>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }

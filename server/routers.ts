@@ -3116,6 +3116,141 @@ export const appRouter = router({
           );
           return { success: true, refundAmountCents };
         }),
+
+      // ── S-REF-2: structured lesson-dispute admin panel ──────────────────
+      listLessonDisputes: protectedProcedure
+        .use(({ ctx, next }) => {
+          if (ctx.user.role !== "admin") {
+            throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
+          }
+          return next({ ctx });
+        })
+        .query(async () => {
+          return await db.getAllLessonDisputes();
+        }),
+
+      resolveLessonDispute: protectedProcedure
+        .input(z.object({
+          disputeId: z.number(),
+          resolution: z.enum(["refund_full", "refund_partial", "denied"]),
+          refundAmountCents: z.number().int().positive().optional(),
+          adminNote: z.string().optional(),
+        }))
+        .use(({ ctx, next }) => {
+          if (ctx.user.role !== "admin") {
+            throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
+          }
+          return next({ ctx });
+        })
+        .mutation(async ({ input }) => {
+          const dispute = await db.getDisputeById(input.disputeId);
+          if (!dispute) {
+            throw new TRPCError({ code: "NOT_FOUND", message: "Dispute not found" });
+          }
+          if (dispute.status === "resolved") {
+            throw new TRPCError({ code: "CONFLICT", message: "Dispute is already resolved" });
+          }
+          if (input.resolution === "refund_partial" && !input.refundAmountCents) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "refundAmountCents is required for partial refund" });
+          }
+
+          const lesson = await db.getLessonById(dispute.lessonId);
+          if (!lesson) {
+            throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
+          }
+
+          let resolvedRefundCents: number | null = null;
+
+          if (input.resolution === "refund_full" || input.resolution === "refund_partial") {
+            // A disputed lesson is always pre-payout (the dispute paused the payout),
+            // so we use the pre-payout refund path here — the same claim → Stripe
+            // refund → finalize sequence as admin.disputes.refundStudent. The
+            // post-payout reversal path is unreachable for disputes; guard for it.
+            if (lesson.status === "released") {
+              throw new TRPCError({
+                code: "PRECONDITION_FAILED",
+                message: "Payout already released for this lesson — use the post-payout refund flow (refundStudent).",
+              });
+            }
+            if (lesson.status !== "disputed" && lesson.status !== "completed") {
+              throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Lesson is not in a refundable state" });
+            }
+            if (!lesson.stripePaymentIntentId) {
+              throw new TRPCError({ code: "PRECONDITION_FAILED", message: "No payment recorded for this lesson" });
+            }
+
+            const refundAmountCents = input.resolution === "refund_partial"
+              ? input.refundAmountCents!
+              : lesson.amountCents;
+            if (refundAmountCents > lesson.amountCents) {
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message: `Refund amount exceeds the lesson amount ($${(lesson.amountCents / 100).toFixed(2)}).`,
+              });
+            }
+
+            const claimed = await db.claimLessonRefundSlot(dispute.lessonId, refundAmountCents);
+            if (!claimed) {
+              throw new TRPCError({
+                code: "CONFLICT",
+                message: "Could not claim refund slot — a concurrent settlement is in progress. Please retry.",
+              });
+            }
+            const idempotencyKey = `lesson_admin_refund_${dispute.lessonId}_${refundAmountCents}`;
+            try {
+              await stripeService.createRefund(
+                lesson.stripePaymentIntentId,
+                refundAmountCents === lesson.amountCents ? undefined : refundAmountCents,
+                "requested_by_customer",
+                idempotencyKey
+              );
+            } catch (stripeErr: any) {
+              await db.releaseAdminRefundClaim(dispute.lessonId);
+              throw new TRPCError({
+                code: "INTERNAL_SERVER_ERROR",
+                message: `Stripe refund failed: ${stripeErr?.message ?? "unknown error"}. The refund slot has been released — please retry.`,
+              });
+            }
+            await db.finalizeAdminRefund(
+              dispute.lessonId,
+              refundAmountCents,
+              input.adminNote || "Admin dispute refund",
+            );
+            resolvedRefundCents = refundAmountCents;
+          } else {
+            // denied → release the paused payout to the coach.
+            const result = await releaseLessonPayoutToCoach({
+              lessonId: dispute.lessonId,
+              adminOverrideReason: input.adminNote || "Admin denied dispute — payout released",
+            });
+            if (!result.success) {
+              throw new TRPCError({
+                code: "PRECONDITION_FAILED",
+                message: "reason" in result ? result.reason : "Payout release failed",
+              });
+            }
+          }
+
+          await db.updateLessonDispute(input.disputeId, {
+            status: "resolved",
+            resolution: input.resolution,
+            refundAmountCents: resolvedRefundCents,
+            resolvedBy: "admin",
+            resolvedAt: new Date(),
+            adminNote: input.adminNote,
+          });
+
+          try {
+            await notifyOwner({
+              title: `Dispute #${input.disputeId} resolved: ${input.resolution}`,
+              content: `Admin resolved dispute on lesson #${dispute.lessonId} with resolution: ${input.resolution}.${input.adminNote ? ` Note: ${input.adminNote}` : ""}`,
+            });
+          } catch (err) {
+            console.error(`[resolveLessonDispute] notifyOwner failed for dispute ${input.disputeId}:`, err);
+          }
+
+          return { success: true, resolution: input.resolution, refundAmountCents: resolvedRefundCents };
+        }),
     }),
 
     // Admin user lookup — batch-resolve user IDs to display name + email.

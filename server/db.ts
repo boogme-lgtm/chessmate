@@ -2201,3 +2201,72 @@ export async function countNonNoShowDisputesByStudent(studentId: number): Promis
     ));
   return rows[0]?.count ?? 0;
 }
+
+/**
+ * Return all lesson_disputes rows joined with basic lesson + raiser (student)
+ * info, newest first. Powers the admin Lesson Disputes panel (S-REF-2).
+ */
+export async function getAllLessonDisputes() {
+  const db = await getDb();
+  if (!db) return [];
+  return await db
+    .select({
+      id: lessonDisputes.id,
+      lessonId: lessonDisputes.lessonId,
+      raisedBy: lessonDisputes.raisedBy,
+      category: lessonDisputes.category,
+      description: lessonDisputes.description,
+      evidenceUrls: lessonDisputes.evidenceUrls,
+      status: lessonDisputes.status,
+      coachResponse: lessonDisputes.coachResponse,
+      coachRespondedAt: lessonDisputes.coachRespondedAt,
+      coachAction: lessonDisputes.coachAction,
+      resolution: lessonDisputes.resolution,
+      refundAmountCents: lessonDisputes.refundAmountCents,
+      resolvedBy: lessonDisputes.resolvedBy,
+      resolvedAt: lessonDisputes.resolvedAt,
+      adminNote: lessonDisputes.adminNote,
+      abuseFlag: lessonDisputes.abuseFlag,
+      createdAt: lessonDisputes.createdAt,
+      updatedAt: lessonDisputes.updatedAt,
+      lessonAmountCents: lessons.amountCents,
+      lessonStatus: lessons.status,
+      lessonScheduledAt: lessons.scheduledAt,
+      lessonStripePaymentIntentId: lessons.stripePaymentIntentId,
+      studentName: users.name,
+      studentEmail: users.email,
+    })
+    .from(lessonDisputes)
+    .leftJoin(lessons, eq(lessonDisputes.lessonId, lessons.id))
+    .leftJoin(users, eq(lessonDisputes.raisedBy, users.id))
+    .orderBy(desc(lessonDisputes.createdAt));
+}
+
+/**
+ * Update a lesson_dispute row (admin resolution, S-REF-2).
+ */
+export async function updateLessonDispute(
+  id: number,
+  data: {
+    status?: string;
+    resolution?: string;
+    refundAmountCents?: number | null;
+    resolvedBy?: "coach" | "admin" | "system";
+    resolvedAt?: Date;
+    adminNote?: string;
+  }
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(lessonDisputes)
+    .set({
+      ...(data.status ? { status: data.status as any } : {}),
+      ...(data.resolution ? { resolution: data.resolution as any } : {}),
+      ...(data.refundAmountCents !== undefined ? { refundAmountCents: data.refundAmountCents } : {}),
+      ...(data.resolvedBy ? { resolvedBy: data.resolvedBy } : {}),
+      ...(data.resolvedAt ? { resolvedAt: data.resolvedAt } : {}),
+      ...(data.adminNote !== undefined ? { adminNote: data.adminNote } : {}),
+    })
+    .where(eq(lessonDisputes.id, id));
+}
