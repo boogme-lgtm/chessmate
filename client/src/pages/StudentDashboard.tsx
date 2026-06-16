@@ -953,6 +953,7 @@ function LessonDetailDialog({
     { enabled: open }
   );
   const [showTipForm, setShowTipForm] = useState(false);
+  const [retryingTip, setRetryingTip] = useState(false);
   const [customAmount, setCustomAmount] = useState("");
   const tipMutation = trpc.tip.createCheckout.useMutation({
     onSuccess: (data) => {
@@ -1049,13 +1050,13 @@ function LessonDetailDialog({
                 <Timer className="h-4 w-4 text-muted-foreground" />
                 Tip checkout in progress — complete payment in the other tab
               </div>
-            ) : hasTipped && tipStatus === "failed" ? (
+            ) : hasTipped && tipStatus === "failed" && !retryingTip ? (
               <div className="space-y-1">
                 <div className="text-sm text-destructive flex items-center gap-2">
                   <XCircle className="h-4 w-4" />
                   Tip failed
                 </div>
-                <Button size="sm" variant="outline" onClick={() => setShowTipForm(true)}>
+                <Button size="sm" variant="outline" onClick={() => { setRetryingTip(true); setShowTipForm(true); }}>
                   Retry
                 </Button>
               </div>

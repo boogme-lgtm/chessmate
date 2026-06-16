@@ -155,6 +155,13 @@
       "when": 1781280486898,
       "tag": "0021_striped_mandroid",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "5",
+      "when": 1781571470885,
+      "tag": "0022_spooky_blue_shield",
+      "breakpoints": true
     }
   ]
 }
