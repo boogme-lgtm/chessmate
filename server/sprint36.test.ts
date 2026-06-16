@@ -283,7 +283,7 @@ describe("S36-5: raiseIssue — Raise Issue button only active during issue wind
     );
     const caller = appRouter.createCaller(createContext());
     await expect(
-      caller.lesson.raiseIssue({ lessonId: 100, reason: "Coach was late" })
+      caller.lesson.raiseIssue({ lessonId: 100, category: "coach_late_or_short", description: "Coach was consistently late and cut the lesson short by 20 minutes" })
     ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
   });
 
@@ -296,7 +296,7 @@ describe("S36-5: raiseIssue — Raise Issue button only active during issue wind
     );
     const caller = appRouter.createCaller(createContext());
     await expect(
-      caller.lesson.raiseIssue({ lessonId: 100, reason: "Coach was late" })
+      caller.lesson.raiseIssue({ lessonId: 100, category: "coach_late_or_short", description: "Coach was consistently late and cut the lesson short by 20 minutes" })
     ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
   });
 
@@ -312,13 +312,14 @@ describe("S36-5: raiseIssue — Raise Issue button only active during issue wind
     const caller = appRouter.createCaller(createContext());
     const result = await caller.lesson.raiseIssue({
       lessonId: 100,
-      reason: "Coach was 30 minutes late and ended early",
+      category: "coach_late_or_short",
+      description: "Coach was 30 minutes late and ended the lesson early without explanation",
     });
-    expect(result).toEqual({ success: true });
+    expect(result).toEqual({ success: true, policyGated: false });
     expect(db.updateLessonStatus).toHaveBeenCalledWith(
       100,
       "disputed",
-      expect.objectContaining({ cancellationReason: "Coach was 30 minutes late and ended early" })
+      expect.objectContaining({ cancellationReason: expect.stringContaining("coach_late_or_short") })
     );
   });
 });
@@ -364,7 +365,7 @@ describe("S36-7: raiseIssue — ownership check (only student can raise issue)",
     );
     const caller = appRouter.createCaller(createContext({ id: 1 }));
     await expect(
-      caller.lesson.raiseIssue({ lessonId: 100, reason: "Issue" })
+      caller.lesson.raiseIssue({ lessonId: 100, category: "coach_no_show" })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 });

@@ -901,7 +901,7 @@ describe("lesson.raiseIssue (24-hour issue window)", () => {
     vi.mocked(db.getLessonById).mockResolvedValue(makeLessonRow({ status: "confirmed" }));
     const caller = appRouter.createCaller(createContext());
 
-    await expect(caller.lesson.raiseIssue({ lessonId: 100, reason: "Coach was late" }))
+    await expect(caller.lesson.raiseIssue({ lessonId: 100, category: "coach_late_or_short", description: "Coach was consistently late and cut the lesson short by 20 minutes" }))
       .rejects.toThrow("Issues can only be raised for completed lessons");
   });
 
@@ -913,7 +913,7 @@ describe("lesson.raiseIssue (24-hour issue window)", () => {
     );
     const caller = appRouter.createCaller(createContext());
 
-    await expect(caller.lesson.raiseIssue({ lessonId: 100, reason: "Coach was late" }))
+    await expect(caller.lesson.raiseIssue({ lessonId: 100, category: "coach_late_or_short", description: "Coach was consistently late and cut the lesson short by 20 minutes" }))
       .rejects.toThrow("The 24-hour issue window has expired");
   });
 
@@ -929,12 +929,12 @@ describe("lesson.raiseIssue (24-hour issue window)", () => {
     vi.mocked(notifyOwner).mockResolvedValue(true);
 
     const caller = appRouter.createCaller(createContext());
-    const result = await caller.lesson.raiseIssue({ lessonId: 100, reason: "Coach was late" });
+    const result = await caller.lesson.raiseIssue({ lessonId: 100, category: "coach_late_or_short", description: "Coach was consistently late and cut the lesson short by 20 minutes" });
 
     expect(db.updateLessonStatus).toHaveBeenCalledWith(100, "disputed", expect.objectContaining({
-      cancellationReason: "Coach was late",
+      cancellationReason: expect.stringContaining("coach_late_or_short"),
     }));
-    expect(result).toEqual({ success: true });
+    expect(result).toEqual({ success: true, policyGated: false });
   });
 
   it("rejects when student is not the lesson's student", async () => {
@@ -945,7 +945,7 @@ describe("lesson.raiseIssue (24-hour issue window)", () => {
     );
     const caller = appRouter.createCaller(createContext());
 
-    await expect(caller.lesson.raiseIssue({ lessonId: 100, reason: "Issue" }))
+    await expect(caller.lesson.raiseIssue({ lessonId: 100, category: "coach_no_show" }))
       .rejects.toThrow("Not your lesson");
   });
 });

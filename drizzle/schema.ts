@@ -866,3 +866,54 @@ export const tips = mysqlTable("tips", {
 
 export type Tip = typeof tips.$inferSelect;
 export type InsertTip = typeof tips.$inferInsert;
+
+/**
+ * Lesson disputes (S-REF-1) — structured intake with category, policy gate,
+ * and abuse tracking. One dispute per lesson (unique on lessonId).
+ */
+export const disputeCategories = [
+  "coach_no_show",
+  "coach_late_or_short",
+  "technical_failure",
+  "not_as_described",
+  "quality",
+] as const;
+export type DisputeCategory = (typeof disputeCategories)[number];
+
+export const disputeStatuses = [
+  "open",
+  "coach_responded",
+  "escalated",
+  "resolved",
+] as const;
+
+export const disputeResolutions = [
+  "refund_full",
+  "refund_partial",
+  "denied",
+  "feedback_only",
+] as const;
+
+export const lessonDisputes = mysqlTable("lesson_disputes", {
+  id: int("id").primaryKey().autoincrement(),
+  lessonId: int("lessonId").notNull().unique(),
+  raisedBy: int("raisedBy").notNull(),
+  category: mysqlEnum("category", [...disputeCategories]).notNull(),
+  description: text("description"),
+  evidenceUrls: text("evidenceUrls"),
+  status: mysqlEnum("status", [...disputeStatuses]).notNull().default("open"),
+  coachResponse: text("coachResponse"),
+  coachRespondedAt: timestamp("coachRespondedAt"),
+  coachAction: mysqlEnum("coachAction", ["accept", "contest"]),
+  resolution: mysqlEnum("resolution", [...disputeResolutions]),
+  refundAmountCents: int("refundAmountCents"),
+  resolvedBy: mysqlEnum("resolvedBy", ["coach", "admin", "system"]),
+  resolvedAt: timestamp("resolvedAt"),
+  adminNote: text("adminNote"),
+  abuseFlag: boolean("abuseFlag").default(false),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  updatedAt: timestamp("updatedAt").notNull().defaultNow().onUpdateNow(),
+});
+
+export type LessonDispute = typeof lessonDisputes.$inferSelect;
+export type InsertLessonDispute = typeof lessonDisputes.$inferInsert;
