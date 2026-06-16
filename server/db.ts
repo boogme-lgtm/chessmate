@@ -1,4 +1,4 @@
-import { eq, and, or, desc, sql, gte, lte, isNotNull, isNull, inArray } from "drizzle-orm";
+import { eq, and, or, desc, ne, sql, gte, lte, isNotNull, isNull, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import {
@@ -32,6 +32,8 @@ import {
   InsertTip,
   lessonDisputes,
   type DisputeCategory,
+  contentRequests,
+  InsertContentRequest,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { computeCancellationRefund } from "@shared/cancellationPolicy";
@@ -2307,4 +2309,104 @@ export async function updateLessonDispute(
       ...(data.adminNote !== undefined ? { adminNote: data.adminNote } : {}),
     })
     .where(eq(lessonDisputes.id, id));
+}
+
+// Content Requests (S-DASH-1)
+
+export async function createContentRequest(data: InsertContentRequest) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result: any = await db.insert(contentRequests).values(data);
+  return result[0]?.insertId ?? null;
+}
+
+export async function getContentRequestsByStudent(studentId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return await db
+    .select({
+      id: contentRequests.id,
+      studentId: contentRequests.studentId,
+      coachId: contentRequests.coachId,
+      title: contentRequests.title,
+      description: contentRequests.description,
+      amountCents: contentRequests.amountCents,
+      status: contentRequests.status,
+      dueDate: contentRequests.dueDate,
+      deliveredAt: contentRequests.deliveredAt,
+      contentItemId: contentRequests.contentItemId,
+      createdAt: contentRequests.createdAt,
+      coachName: users.name,
+    })
+    .from(contentRequests)
+    .leftJoin(users, eq(contentRequests.coachId, users.id))
+    .where(eq(contentRequests.studentId, studentId))
+    .orderBy(desc(contentRequests.createdAt));
+}
+
+export async function getContentRequestsByCoach(coachId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return await db
+    .select({
+      id: contentRequests.id,
+      studentId: contentRequests.studentId,
+      coachId: contentRequests.coachId,
+      title: contentRequests.title,
+      description: contentRequests.description,
+      amountCents: contentRequests.amountCents,
+      status: contentRequests.status,
+      dueDate: contentRequests.dueDate,
+      deliveredAt: contentRequests.deliveredAt,
+      contentItemId: contentRequests.contentItemId,
+      createdAt: contentRequests.createdAt,
+      studentName: users.name,
+    })
+    .from(contentRequests)
+    .leftJoin(users, eq(contentRequests.studentId, users.id))
+    .where(and(
+      eq(contentRequests.coachId, coachId),
+      ne(contentRequests.status, "cancelled")
+    ))
+    .orderBy(contentRequests.status, desc(contentRequests.dueDate));
+}
+
+export async function getContentRequestById(id: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(contentRequests).where(eq(contentRequests.id, id)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function updateContentRequestStatus(
+  id: number,
+  status: "in_progress" | "delivered" | "cancelled",
+  extra?: { deliveredAt?: Date; contentItemId?: number }
+) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(contentRequests).set({ status, ...extra }).where(eq(contentRequests.id, id));
+}
+
+// Coach Student Roster (S-DASH-1)
+
+export async function getStudentRoster(coachId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const rows: any = await db.execute(sql`
+    SELECT
+      u.id, u.name, u.avatarUrl,
+      sp.currentRating,
+      MAX(l.scheduledAt) AS lastLessonAt,
+      COUNT(l.id) AS totalLessons
+    FROM lessons l
+    LEFT JOIN users u ON u.id = l.studentId
+    LEFT JOIN student_profiles sp ON sp.userId = l.studentId
+    WHERE l.coachId = ${coachId}
+      AND l.status IN ('completed', 'released', 'confirmed', 'payment_collected')
+    GROUP BY u.id, u.name, u.avatarUrl, sp.currentRating
+    ORDER BY lastLessonAt DESC
+    LIMIT 20
+  `);
+  return rows[0] || [];
 }

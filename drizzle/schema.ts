@@ -917,3 +917,24 @@ export const lessonDisputes = mysqlTable("lesson_disputes", {
 
 export type LessonDispute = typeof lessonDisputes.$inferSelect;
 export type InsertLessonDispute = typeof lessonDisputes.$inferInsert;
+
+/**
+ * Content Requests — students can request custom content from coaches (S-DASH-1).
+ */
+export const contentRequests = mysqlTable("content_requests", {
+  id: int("id").autoincrement().primaryKey(),
+  studentId: int("studentId").notNull(),
+  coachId: int("coachId").notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description"),
+  amountCents: int("amountCents").notNull().default(0),
+  status: mysqlEnum("status", ["queued", "in_progress", "delivered", "cancelled"]).default("queued").notNull(),
+  dueDate: timestamp("dueDate"),
+  deliveredAt: timestamp("deliveredAt"),
+  contentItemId: int("contentItemId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type ContentRequest = typeof contentRequests.$inferSelect;
+export type InsertContentRequest = typeof contentRequests.$inferInsert;
