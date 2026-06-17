@@ -262,19 +262,19 @@ export function StudentDashboardContent({ user }: { user: any }) {
         <LessonHistorySection lessons={lessons || []} />
       </section>
 
-      {/* ── MODULE 3: CONTENT REQUESTS ─────────────────────────────────────── */}
-      <section id="content-requests">
-        <span className="eyebrow mb-3 block">03 — Content requests</span>
-        <ContentRequestsModule contentRequests={contentRequests} coaches={studentCoaches} />
-      </section>
-
-      {/* ── MODULE 4: MESSAGES ─────────────────────────────────────────────── */}
+      {/* ── MODULE 3: MESSAGES ─────────────────────────────────────────────── */}
       <section id="messages">
-        <span className="eyebrow mb-3 block">04 — Messages</span>
+        <span className="eyebrow mb-3 block">03 — Messages</span>
         <MessagesModule
           lessons={lessonsWithMessages}
           unreadCounts={unreadCounts}
         />
+      </section>
+
+      {/* ── MODULE 4: CONTENT REQUESTS ─────────────────────────────────────── */}
+      <section id="content-requests">
+        <span className="eyebrow mb-3 block">04 — Content requests</span>
+        <ContentRequestsModule contentRequests={contentRequests} coaches={studentCoaches} />
       </section>
 
       {/* ── MODULE 5: CONTENT LIBRARY ──────────────────────────────────────── */}
@@ -289,12 +289,12 @@ export function StudentDashboardContent({ user }: { user: any }) {
         <ProgressModule currentRating={currentRating} />
       </section>
 
-      {/* ── MODULE 6: PENDING REVIEWS (conditional) ────────────────────────── */}
+      {/* ── PENDING REVIEWS (conditional, no eyebrow number) ────────────────── */}
       <PendingReviewsSection />
 
-      {/* ── MODULE 8: BILLING ──────────────────────────────────────────────── */}
+      {/* ── MODULE 7: BILLING ──────────────────────────────────────────────── */}
       <section id="billing">
-        <span className="eyebrow mb-3 block">08 — Billing</span>
+        <span className="eyebrow mb-3 block">07 — Billing</span>
         <Card className="bg-ink-raised border-border/20 rounded-sm">
           <CardContent className="p-6">
             <h3 className="text-base font-semibold text-bone mb-2">
