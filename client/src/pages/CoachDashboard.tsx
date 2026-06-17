@@ -952,6 +952,16 @@ function ContentRequestsModule({
   contentRequests: any;
 }) {
   const utils = trpc.useUtils();
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [declineId, setDeclineId] = useState<number | null>(null);
+
+  // Inline quote form state
+  const [priceInput, setPriceInput] = useState("");
+  const [dueInput, setDueInput] = useState("");
+  const [noteInput, setNoteInput] = useState("");
+  // Inline decline note state
+  const [declineNote, setDeclineNote] = useState("");
+
   const updateStatus = trpc.contentRequest.updateStatus.useMutation({
     onSuccess: () => {
       toast.success("Request updated.");
@@ -959,6 +969,53 @@ function ContentRequestsModule({
     },
     onError: (err) => toast.error(err.message),
   });
+
+  const quote = trpc.contentRequest.quote.useMutation({
+    onSuccess: () => {
+      toast.success("Quote sent to student.");
+      setExpandedId(null);
+      utils.contentRequest.listForCoach.invalidate();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const decline = trpc.contentRequest.decline.useMutation({
+    onSuccess: () => {
+      toast.success("Request declined.");
+      setDeclineId(null);
+      setDeclineNote("");
+      utils.contentRequest.listForCoach.invalidate();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const openQuoteForm = (req: any) => {
+    setDeclineId(null);
+    setExpandedId(req.id);
+    setPriceInput(req.amountCents ? String(req.amountCents / 100) : "");
+    setDueInput(req.dueDate ? format(new Date(req.dueDate), "yyyy-MM-dd") : "");
+    setNoteInput(req.coachNote || "");
+  };
+
+  const openDecline = (id: number) => {
+    setExpandedId(null);
+    setDeclineNote("");
+    setDeclineId(id);
+  };
+
+  const submitQuote = (req: any) => {
+    const dollars = parseFloat(priceInput);
+    if (isNaN(dollars) || dollars < 0) {
+      toast.error("Enter a valid price.");
+      return;
+    }
+    quote.mutate({
+      requestId: req.id,
+      amountCents: Math.round(dollars * 100),
+      dueDate: dueInput ? new Date(dueInput).toISOString() : undefined,
+      coachNote: noteInput.trim() || undefined,
+    });
+  };
 
   const requests = contentRequests || [];
   const queuedTotal = requests
@@ -1015,47 +1072,210 @@ function ContentRequestsModule({
             {requests.map((req: any) => (
               <div
                 key={req.id}
-                className="flex items-center justify-between py-2.5 px-3 border border-border/20 rounded-sm"
+                className="py-2.5 px-3 border border-border/20 rounded-sm"
               >
-                <div className="flex items-center gap-3 min-w-0">
-                  {statusBadge(req.status)}
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium text-bone truncate">
-                      {req.title}
-                    </div>
-                    <div className="text-xs text-bone-muted">
-                      {req.studentName || `Student #${req.studentId}`}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3 min-w-0">
+                    {statusBadge(req.status)}
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-bone truncate">
+                        {req.title}
+                      </div>
+                      <div className="text-xs text-bone-muted">
+                        {req.studentName || `Student #${req.studentId}`}
+                      </div>
+                      {req.coachNote && (
+                        <div className="text-xs text-bone-muted italic mt-0.5">
+                          Note: {req.coachNote}
+                        </div>
+                      )}
                     </div>
                   </div>
+                  <div className="flex items-center gap-2 shrink-0 ml-4">
+                    <span className="text-sm font-mono tabular-nums text-bone-muted">
+                      {formatCurrency(req.amountCents || 0)}
+                      {req.dueDate && (
+                        <span className="text-bone-muted">
+                          {" "}
+                          · Due {format(new Date(req.dueDate), "MMM d")}
+                        </span>
+                      )}
+                    </span>
+                    {req.status === "queued" && (
+                      <>
+                        <Button
+                          size="sm"
+                          className="bg-ember hover:bg-ember/90 text-white rounded-sm text-xs h-7"
+                          disabled={quote.isPending}
+                          onClick={() =>
+                            expandedId === req.id
+                              ? setExpandedId(null)
+                              : openQuoteForm(req)
+                          }
+                        >
+                          SET PRICE & DATE
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="bg-ember hover:bg-ember/90 text-white rounded-sm text-xs h-7"
+                          disabled={updateStatus.isPending}
+                          onClick={() =>
+                            updateStatus.mutate({
+                              requestId: req.id,
+                              status: "in_progress",
+                            })
+                          }
+                        >
+                          START
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-red-400 hover:text-red-300 hover:bg-red-600/10 rounded-sm text-xs h-7"
+                          disabled={decline.isPending}
+                          onClick={() => openDecline(req.id)}
+                        >
+                          DECLINE
+                        </Button>
+                      </>
+                    )}
+                    {req.status === "in_progress" && (
+                      <>
+                        <Button
+                          size="sm"
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-sm text-xs h-7"
+                          disabled={updateStatus.isPending}
+                          onClick={() =>
+                            updateStatus.mutate({
+                              requestId: req.id,
+                              status: "delivered",
+                            })
+                          }
+                        >
+                          MARK DELIVERED
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-red-400 hover:text-red-300 hover:bg-red-600/10 rounded-sm text-xs h-7"
+                          disabled={decline.isPending}
+                          onClick={() => openDecline(req.id)}
+                        >
+                          DECLINE
+                        </Button>
+                      </>
+                    )}
+                    {req.status === "delivered" && (
+                      <span className="text-xs text-emerald-400 font-medium">
+                        Delivered ✓
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 shrink-0 ml-4">
-                  <span className="text-sm font-mono tabular-nums text-bone-muted">
-                    {formatCurrency(req.amountCents || 0)}
-                  </span>
-                  {req.status === "queued" && (
-                    <Button
-                      size="sm"
-                      className="bg-ember hover:bg-ember/90 text-white rounded-sm text-xs h-7"
-                      disabled={updateStatus.isPending}
-                      onClick={() => updateStatus.mutate({ requestId: req.id, status: "in_progress" })}
-                    >
-                      START
-                    </Button>
-                  )}
-                  {req.status === "in_progress" && (
-                    <Button
-                      size="sm"
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-sm text-xs h-7"
-                      disabled={updateStatus.isPending}
-                      onClick={() => updateStatus.mutate({ requestId: req.id, status: "delivered" })}
-                    >
-                      MARK DELIVERED
-                    </Button>
-                  )}
-                  {req.status === "delivered" && (
-                    <span className="text-xs text-emerald-400 font-medium">Delivered</span>
-                  )}
-                </div>
+
+                {expandedId === req.id && (
+                  <div className="mt-3 pt-3 border-t border-border/20 space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs text-bone-muted block mb-1">
+                          Price (USD)
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          value={priceInput}
+                          onChange={(e) => setPriceInput(e.target.value)}
+                          className="w-full bg-ink-raised border border-border/30 rounded-sm px-2 py-1.5 text-sm text-bone focus:outline-none focus:border-ember"
+                          placeholder="0.00"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-bone-muted block mb-1">
+                          Due date
+                        </label>
+                        <input
+                          type="date"
+                          value={dueInput}
+                          onChange={(e) => setDueInput(e.target.value)}
+                          className="w-full bg-ink-raised border border-border/30 rounded-sm px-2 py-1.5 text-sm text-bone focus:outline-none focus:border-ember"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs text-bone-muted block mb-1">
+                        Note to student
+                      </label>
+                      <textarea
+                        value={noteInput}
+                        onChange={(e) => setNoteInput(e.target.value)}
+                        maxLength={2000}
+                        rows={2}
+                        className="w-full bg-ink-raised border border-border/30 rounded-sm px-2 py-1.5 text-sm text-bone focus:outline-none focus:border-ember resize-none"
+                        placeholder="Optional quote details…"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        className="bg-ember hover:bg-ember/90 text-white rounded-sm text-xs h-7"
+                        disabled={quote.isPending}
+                        onClick={() => submitQuote(req)}
+                      >
+                        SAVE QUOTE
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-bone-muted hover:text-bone rounded-sm text-xs h-7"
+                        onClick={() => setExpandedId(null)}
+                      >
+                        CANCEL
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {declineId === req.id && (
+                  <div className="mt-3 pt-3 border-t border-border/20 space-y-3">
+                    <div>
+                      <label className="text-xs text-bone-muted block mb-1">
+                        Reason (optional)
+                      </label>
+                      <textarea
+                        value={declineNote}
+                        onChange={(e) => setDeclineNote(e.target.value)}
+                        maxLength={2000}
+                        rows={2}
+                        className="w-full bg-ink-raised border border-border/30 rounded-sm px-2 py-1.5 text-sm text-bone focus:outline-none focus:border-ember resize-none"
+                        placeholder="Optional note to student…"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        className="bg-red-600 hover:bg-red-700 text-white rounded-sm text-xs h-7"
+                        disabled={decline.isPending}
+                        onClick={() =>
+                          decline.mutate({
+                            requestId: req.id,
+                            coachNote: declineNote.trim() || undefined,
+                          })
+                        }
+                      >
+                        CONFIRM DECLINE
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-bone-muted hover:text-bone rounded-sm text-xs h-7"
+                        onClick={() => setDeclineId(null)}
+                      >
+                        CANCEL
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>

@@ -358,6 +358,15 @@ export async function getStudentProfileByUserId(userId: number) {
   return result.length > 0 ? result[0] : undefined;
 }
 
+export async function updateStudentChessProfiles(
+  userId: number,
+  data: { chesscomUsername?: string; lichessUsername?: string; fideId?: string }
+) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(studentProfiles).set(data).where(eq(studentProfiles.userId, userId));
+}
+
 export async function updateStudentRating(userId: number, currentRating: number) {
   const db = await getDb();
   if (!db) return;
@@ -2346,6 +2355,7 @@ export async function getContentRequestsByStudent(studentId: number) {
       status: contentRequests.status,
       dueDate: contentRequests.dueDate,
       deliveredAt: contentRequests.deliveredAt,
+      coachNote: contentRequests.coachNote,
       contentItemId: contentRequests.contentItemId,
       createdAt: contentRequests.createdAt,
       coachName: users.name,
@@ -2370,6 +2380,7 @@ export async function getContentRequestsByCoach(coachId: number) {
       status: contentRequests.status,
       dueDate: contentRequests.dueDate,
       deliveredAt: contentRequests.deliveredAt,
+      coachNote: contentRequests.coachNote,
       contentItemId: contentRequests.contentItemId,
       createdAt: contentRequests.createdAt,
       studentName: users.name,
@@ -2393,11 +2404,29 @@ export async function getContentRequestById(id: number) {
 export async function updateContentRequestStatus(
   id: number,
   status: "in_progress" | "delivered" | "cancelled",
-  extra?: { deliveredAt?: Date; contentItemId?: number }
+  extra?: { deliveredAt?: Date; contentItemId?: number; coachNote?: string }
 ) {
   const db = await getDb();
   if (!db) return;
   await db.update(contentRequests).set({ status, ...extra }).where(eq(contentRequests.id, id));
+}
+
+// Coach sets/revises a quote (price, due date, note) on a content request.
+export async function updateContentRequestQuote(
+  id: number,
+  data: { amountCents: number; dueDate?: Date; coachNote?: string | null }
+) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(contentRequests)
+    .set({
+      amountCents: data.amountCents,
+      ...(data.dueDate !== undefined ? { dueDate: data.dueDate } : {}),
+      // A re-quote always rewrites the note (cleared field → null), so a coach
+      // can remove a previous note rather than have it stick.
+      coachNote: data.coachNote ?? null,
+    })
+    .where(eq(contentRequests.id, id));
 }
 
 // Coach Student Roster (S-DASH-1)

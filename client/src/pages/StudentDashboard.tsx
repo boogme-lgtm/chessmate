@@ -286,7 +286,7 @@ export function StudentDashboardContent({ user }: { user: any }) {
       {/* ── MODULE 6: PROGRESS ─────────────────────────────────────────────── */}
       <section id="progress">
         <span className="eyebrow mb-3 block">06 — Progress</span>
-        <ProgressModule currentRating={currentRating} />
+        <ProgressModule currentRating={currentRating} studentProfile={studentProfile} />
       </section>
 
       {/* ── PENDING REVIEWS (conditional, no eyebrow number) ────────────────── */}
@@ -1405,6 +1405,12 @@ function ContentRequestsModule({
             Delivered
           </Badge>
         );
+      case "cancelled":
+        return (
+          <Badge className="bg-red-600/20 text-red-400 border-red-600/40 rounded-sm text-xs">
+            Declined
+          </Badge>
+        );
       case "queued":
       default:
         return (
@@ -1464,6 +1470,11 @@ function ContentRequestsModule({
                     <div className="text-sm font-medium text-bone truncate">
                       {req.title}
                     </div>
+                    {req.coachNote && (
+                      <div className="text-xs text-bone-muted italic">
+                        Coach: {req.coachNote}
+                      </div>
+                    )}
                     <div className="text-xs text-bone-muted">
                       {req.coachName}
                     </div>
@@ -1471,6 +1482,9 @@ function ContentRequestsModule({
                 </div>
                 <span className="text-sm font-mono tabular-nums text-bone-muted ml-4 shrink-0">
                   ${(req.amountCents / 100).toFixed(2)}
+                  {req.dueDate && (
+                    <> · Due {format(new Date(req.dueDate), "MMM d")}</>
+                  )}
                 </span>
               </div>
             ))}
@@ -1837,12 +1851,22 @@ function ContentLibraryModule() {
 
 function ProgressModule({
   currentRating,
+  studentProfile,
 }: {
   currentRating: number | null;
+  studentProfile: any;
 }) {
   const utils = trpc.useUtils();
   const [showRatingInput, setShowRatingInput] = useState(false);
   const [ratingInput, setRatingInput] = useState("");
+  const [showEditPlatforms, setShowEditPlatforms] = useState(false);
+
+  const { data: liveRatings, isLoading: ratingsLoading } =
+    trpc.student.fetchLiveRatings.useQuery(undefined, {
+      enabled:
+        !!studentProfile?.chesscomUsername || !!studentProfile?.lichessUsername,
+      staleTime: 5 * 60 * 1000,
+    });
   const updateRatingMutation = trpc.student.updateRating.useMutation({
     onSuccess: () => {
       toast.success("Rating saved.");
@@ -1938,6 +1962,96 @@ function ProgressModule({
             })()}
           </svg>
         </div>
+
+        {/* ── Chess Platforms ──────────────────────────────────────────── */}
+        <div className="mt-6 pt-6 border-t border-border/20">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[10px] font-bold tracking-[0.2em] uppercase text-bone-muted">
+              Chess Platforms
+            </span>
+            <button
+              onClick={() => setShowEditPlatforms(true)}
+              className="text-xs text-ember hover:text-ember/80 underline underline-offset-2"
+            >
+              Edit Platforms
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {/* Chess.com */}
+            <div className="rounded-sm border border-border/20 p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="h-2 w-2 rounded-full bg-green-500 shrink-0" />
+                <span className="text-sm font-medium text-bone truncate">
+                  {studentProfile?.chesscomUsername || "Link account"}
+                </span>
+              </div>
+              <div className="text-xs font-mono tabular-nums text-bone-muted">
+                {studentProfile?.chesscomUsername ? (
+                  ratingsLoading ? (
+                    <span className="text-ember">…</span>
+                  ) : (
+                    <>
+                      {liveRatings?.chesscom?.rapid ?? "—"} /{" "}
+                      {liveRatings?.chesscom?.blitz ?? "—"} /{" "}
+                      {liveRatings?.chesscom?.bullet ?? "—"}
+                    </>
+                  )
+                ) : (
+                  "Rapid / Blitz / Bullet"
+                )}
+              </div>
+            </div>
+
+            {/* Lichess */}
+            <div className="rounded-sm border border-border/20 p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="h-2 w-2 rounded-full bg-orange-500 shrink-0" />
+                <span className="text-sm font-medium text-bone truncate">
+                  {studentProfile?.lichessUsername || "Link account"}
+                </span>
+              </div>
+              <div className="text-xs font-mono tabular-nums text-bone-muted">
+                {studentProfile?.lichessUsername ? (
+                  ratingsLoading ? (
+                    <span className="text-ember">…</span>
+                  ) : (
+                    <>
+                      {liveRatings?.lichess?.rapid ?? "—"} /{" "}
+                      {liveRatings?.lichess?.blitz ?? "—"} /{" "}
+                      {liveRatings?.lichess?.classical ?? "—"}
+                    </>
+                  )
+                ) : (
+                  "Rapid / Blitz / Classical"
+                )}
+              </div>
+            </div>
+
+            {/* FIDE */}
+            <div className="rounded-sm border border-border/20 p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="h-2 w-2 rounded-full bg-blue-500 shrink-0" />
+                <span className="text-sm font-medium text-bone truncate">
+                  {studentProfile?.fideId || "Add FIDE ID"}
+                </span>
+              </div>
+              <div className="text-xs font-mono tabular-nums text-bone-muted">
+                {studentProfile?.fideId ? (
+                  <>
+                    {currentRating ?? "—"}
+                    <span className="block text-[10px] not-italic text-bone-muted/70 font-sans">
+                      Your manually-entered rating
+                    </span>
+                  </>
+                ) : (
+                  "—"
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
         {currentRating === null && (
           <div className="mt-3 flex items-center gap-2">
             {showRatingInput ? (
@@ -1980,7 +2094,124 @@ function ProgressModule({
           </div>
         )}
       </CardContent>
+
+      <EditPlatformsDialog
+        open={showEditPlatforms}
+        onOpenChange={setShowEditPlatforms}
+        studentProfile={studentProfile}
+      />
     </Card>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Edit Chess Platforms Dialog
+// ─────────────────────────────────────────────────────────────────────────────
+
+function EditPlatformsDialog({
+  open,
+  onOpenChange,
+  studentProfile,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  studentProfile: any;
+}) {
+  const utils = trpc.useUtils();
+  const [chesscomUsername, setChesscomUsername] = useState("");
+  const [lichessUsername, setLichessUsername] = useState("");
+  const [fideId, setFideId] = useState("");
+
+  // Pre-fill from profile whenever the dialog opens.
+  useEffect(() => {
+    if (open) {
+      setChesscomUsername(studentProfile?.chesscomUsername ?? "");
+      setLichessUsername(studentProfile?.lichessUsername ?? "");
+      setFideId(studentProfile?.fideId ?? "");
+    }
+  }, [open, studentProfile]);
+
+  const updateMutation = trpc.student.updateChessProfiles.useMutation({
+    onSuccess: () => {
+      toast.success("Chess platforms updated.");
+      utils.student.getProfile.invalidate();
+      utils.student.fetchLiveRatings.invalidate();
+      onOpenChange(false);
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const handleSubmit = () => {
+    updateMutation.mutate({
+      chesscomUsername: chesscomUsername.trim() || undefined,
+      lichessUsername: lichessUsername.trim() || undefined,
+      fideId: fideId.trim() || undefined,
+    });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="bg-ink-raised border-border/40 sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-bone">Edit chess platforms</DialogTitle>
+          <DialogDescription className="text-bone-muted">
+            Link your accounts to show live ratings on your dashboard.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs text-bone-muted mb-1 block">
+              Chess.com username
+            </label>
+            <input
+              type="text"
+              value={chesscomUsername}
+              onChange={(e) => setChesscomUsername(e.target.value)}
+              placeholder="e.g. magnuscarlsen"
+              className="w-full px-3 py-2 text-sm bg-background border border-border/40 rounded-sm text-bone placeholder:text-bone-muted/50"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-bone-muted mb-1 block">
+              Lichess username
+            </label>
+            <input
+              type="text"
+              value={lichessUsername}
+              onChange={(e) => setLichessUsername(e.target.value)}
+              placeholder="e.g. DrNykterstein"
+              className="w-full px-3 py-2 text-sm bg-background border border-border/40 rounded-sm text-bone placeholder:text-bone-muted/50"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-bone-muted mb-1 block">FIDE ID</label>
+            <input
+              type="text"
+              value={fideId}
+              onChange={(e) => setFideId(e.target.value)}
+              placeholder="e.g. 1503014"
+              className="w-full px-3 py-2 text-sm bg-background border border-border/40 rounded-sm text-bone placeholder:text-bone-muted/50"
+            />
+          </div>
+        </div>
+        <DialogFooter className="gap-2">
+          <Button
+            variant="outline"
+            className="rounded-sm border-border/40 text-bone-muted hover:text-bone"
+            onClick={() => onOpenChange(false)}
+          >
+            Cancel
+          </Button>
+          <Button
+            className="bg-ember hover:bg-ember/90 text-white rounded-sm"
+            disabled={updateMutation.isPending}
+            onClick={handleSubmit}
+          >
+            {updateMutation.isPending ? "Saving…" : "Save"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

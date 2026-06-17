@@ -141,6 +141,11 @@ export const studentProfiles = mysqlTable("student_profiles", {
   skillLevel: mysqlEnum("skillLevel", ["beginner", "intermediate", "advanced", "expert"]).default("beginner"),
   currentRating: int("currentRating"),
   targetRating: int("targetRating"),
+
+  // Chess platform profiles (S-PROGRESS-1) — for live rating display
+  chesscomUsername: varchar("chesscomUsername", { length: 64 }),
+  lichessUsername: varchar("lichessUsername", { length: 64 }),
+  fideId: varchar("fideId", { length: 20 }),
   
   // Learning preferences (from quiz)
   primaryGoal: mysqlEnum("primaryGoal", ["rating_improvement", "tournament_prep", "openings", "tactics", "endgames", "general"]),
@@ -932,6 +937,7 @@ export const contentRequests = mysqlTable("content_requests", {
   status: mysqlEnum("status", ["queued", "in_progress", "delivered", "cancelled"]).default("queued").notNull(),
   dueDate: timestamp("dueDate"),
   deliveredAt: timestamp("deliveredAt"),
+  coachNote: text("coachNote"),
   contentItemId: int("contentItemId"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
@@ -990,6 +996,8 @@ export const notifications = mysqlTable("notifications", {
     "lesson_completed",
     "new_review",
     "content_delivered",
+    "content_request_quoted",
+    "content_request_declined",
   ]).notNull(),
   title: varchar("title", { length: 255 }).notNull(),
   body: text("body").notNull(),
