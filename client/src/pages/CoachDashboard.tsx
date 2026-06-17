@@ -989,6 +989,22 @@ function ContentRequestsModule({
     onError: (err) => toast.error(err.message),
   });
 
+  const startWork = trpc.contentRequest.startWork.useMutation({
+    onSuccess: () => {
+      toast.success("Work started.");
+      utils.contentRequest.listForCoach.invalidate();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const markDelivered = trpc.contentRequest.markDelivered.useMutation({
+    onSuccess: () => {
+      toast.success("Marked as delivered.");
+      utils.contentRequest.listForCoach.invalidate();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
   const openQuoteForm = (req: any) => {
     setDeclineId(null);
     setExpandedId(req.id);
@@ -1005,8 +1021,8 @@ function ContentRequestsModule({
 
   const submitQuote = (req: any) => {
     const dollars = parseFloat(priceInput);
-    if (isNaN(dollars) || dollars < 0) {
-      toast.error("Enter a valid price.");
+    if (isNaN(dollars) || dollars < 1) {
+      toast.error("Enter a price of at least $1.00.");
       return;
     }
     quote.mutate({
@@ -1024,6 +1040,24 @@ function ContentRequestsModule({
 
   const statusBadge = (status: string) => {
     switch (status) {
+      case "quoted":
+        return (
+          <Badge className="bg-yellow-600/20 text-yellow-400 border-yellow-600/40 rounded-sm text-xs">
+            Quote Sent
+          </Badge>
+        );
+      case "pending_payment":
+        return (
+          <Badge className="bg-blue-600/20 text-blue-400 border-blue-600/40 rounded-sm text-xs">
+            Awaiting Payment
+          </Badge>
+        );
+      case "payment_collected":
+        return (
+          <Badge className="bg-emerald-600/20 text-emerald-400 border-emerald-600/40 rounded-sm text-xs">
+            Paid — Ready
+          </Badge>
+        );
       case "in_progress":
         return (
           <Badge className="bg-amber-600/20 text-amber-400 border-amber-600/40 rounded-sm text-xs">
@@ -1036,11 +1070,17 @@ function ContentRequestsModule({
             Delivered
           </Badge>
         );
+      case "cancelled":
+        return (
+          <Badge className="bg-red-600/20 text-red-400 border-red-600/40 rounded-sm text-xs">
+            Declined
+          </Badge>
+        );
       case "queued":
       default:
         return (
           <Badge className="bg-zinc-600/20 text-zinc-400 border-zinc-600/40 rounded-sm text-xs">
-            Queued
+            Pending
           </Badge>
         );
     }
@@ -1117,16 +1157,29 @@ function ContentRequestsModule({
                         </Button>
                         <Button
                           size="sm"
+                          variant="ghost"
+                          className="text-red-400 hover:text-red-300 hover:bg-red-600/10 rounded-sm text-xs h-7"
+                          disabled={decline.isPending}
+                          onClick={() => openDecline(req.id)}
+                        >
+                          DECLINE
+                        </Button>
+                      </>
+                    )}
+                    {req.status === "quoted" && (
+                      <>
+                        <span className="text-xs text-yellow-400">Quote sent — awaiting student</span>
+                        <Button
+                          size="sm"
                           className="bg-ember hover:bg-ember/90 text-white rounded-sm text-xs h-7"
-                          disabled={updateStatus.isPending}
+                          disabled={quote.isPending}
                           onClick={() =>
-                            updateStatus.mutate({
-                              requestId: req.id,
-                              status: "in_progress",
-                            })
+                            expandedId === req.id
+                              ? setExpandedId(null)
+                              : openQuoteForm(req)
                           }
                         >
-                          START
+                          REVISE QUOTE
                         </Button>
                         <Button
                           size="sm"
@@ -1139,36 +1192,36 @@ function ContentRequestsModule({
                         </Button>
                       </>
                     )}
+                    {req.status === "pending_payment" && (
+                      <span className="text-xs text-blue-400">Awaiting student payment</span>
+                    )}
+                    {req.status === "payment_collected" && (
+                      <Button
+                        size="sm"
+                        className="bg-ember hover:bg-ember/90 text-white rounded-sm text-xs h-7"
+                        disabled={startWork.isPending}
+                        onClick={() => startWork.mutate({ requestId: req.id })}
+                      >
+                        START WORK
+                      </Button>
+                    )}
                     {req.status === "in_progress" && (
-                      <>
-                        <Button
-                          size="sm"
-                          className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-sm text-xs h-7"
-                          disabled={updateStatus.isPending}
-                          onClick={() =>
-                            updateStatus.mutate({
-                              requestId: req.id,
-                              status: "delivered",
-                            })
-                          }
-                        >
-                          MARK DELIVERED
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="text-red-400 hover:text-red-300 hover:bg-red-600/10 rounded-sm text-xs h-7"
-                          disabled={decline.isPending}
-                          onClick={() => openDecline(req.id)}
-                        >
-                          DECLINE
-                        </Button>
-                      </>
+                      <Button
+                        size="sm"
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-sm text-xs h-7"
+                        disabled={markDelivered.isPending}
+                        onClick={() => markDelivered.mutate({ requestId: req.id })}
+                      >
+                        MARK DELIVERED
+                      </Button>
                     )}
                     {req.status === "delivered" && (
                       <span className="text-xs text-emerald-400 font-medium">
-                        Delivered ✓
+                        Delivered
                       </span>
+                    )}
+                    {req.status === "cancelled" && (
+                      <span className="text-xs text-red-400">Declined</span>
                     )}
                   </div>
                 </div>

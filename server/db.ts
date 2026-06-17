@@ -34,6 +34,7 @@ import {
   type DisputeCategory,
   contentRequests,
   InsertContentRequest,
+  type ContentRequest,
   coachSubscriptionSettings,
   coachSubscriptions,
   notifications,
@@ -2427,6 +2428,146 @@ export async function updateContentRequestQuote(
       coachNote: data.coachNote ?? null,
     })
     .where(eq(contentRequests.id, id));
+}
+
+// S-CONTENT-2: Set status to "quoted" and store price/date/note
+export async function quoteContentRequest(
+  requestId: number,
+  data: { amountCents: number; dueDate?: Date; coachNote?: string }
+) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(contentRequests)
+    .set({ status: "quoted", amountCents: data.amountCents, dueDate: data.dueDate, coachNote: data.coachNote, updatedAt: new Date() })
+    .where(eq(contentRequests.id, requestId));
+}
+
+// S-CONTENT-2: Student accepts quote -> pending_payment
+export async function acceptContentRequestQuote(requestId: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(contentRequests)
+    .set({ status: "pending_payment", updatedAt: new Date() })
+    .where(eq(contentRequests.id, requestId));
+}
+
+// S-CONTENT-2: Student rejects quote -> back to queued, clear price/date
+export async function rejectContentRequestQuote(requestId: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(contentRequests)
+    .set({ status: "queued", amountCents: 0, dueDate: null, coachNote: null, updatedAt: new Date() })
+    .where(eq(contentRequests.id, requestId));
+}
+
+// S-CONTENT-2: Atomic CAS: set stripeCheckoutSessionId to "__pending__" only if currently NULL
+// Uses raw SQL since Drizzle .update().set().where() doesn't return affectedRows reliably
+export async function claimContentRequestCheckoutSlot(requestId: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  const result: any = await db.execute(sql`
+    UPDATE content_requests
+    SET stripeCheckoutSessionId = '__pending__', updatedAt = NOW()
+    WHERE id = ${requestId} AND stripeCheckoutSessionId IS NULL
+  `);
+  return (result[0]?.affectedRows ?? 0) > 0;
+}
+
+// S-CONTENT-2: Set the real session ID (overwrite __pending__)
+export async function setContentRequestCheckoutSession(requestId: number, sessionId: string) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(contentRequests)
+    .set({ stripeCheckoutSessionId: sessionId, updatedAt: new Date() })
+    .where(eq(contentRequests.id, requestId));
+}
+
+// S-CONTENT-2: Clear the checkout session slot (on failure or expiry)
+export async function clearContentRequestCheckoutSession(requestId: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(contentRequests)
+    .set({ stripeCheckoutSessionId: null, updatedAt: new Date() })
+    .where(eq(contentRequests.id, requestId));
+}
+
+// S-CONTENT-2: Mark payment collected -- store payment intent + charge, set status
+export async function markContentRequestPaymentCollected(
+  requestId: number,
+  paymentIntentId: string,
+  chargeId: string | null
+) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(contentRequests)
+    .set({
+      status: "payment_collected",
+      stripePaymentIntentId: paymentIntentId,
+      stripeChargeId: chargeId ?? undefined,
+      stripeCheckoutSessionId: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(contentRequests.id, requestId));
+}
+
+// S-CONTENT-2: Coach starts work (payment_collected -> in_progress)
+export async function startContentRequestWork(requestId: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(contentRequests)
+    .set({ status: "in_progress", updatedAt: new Date() })
+    .where(eq(contentRequests.id, requestId));
+}
+
+// S-CONTENT-2: Coach marks delivered -- set deliveredAt and payoutAt (48h window)
+export async function deliverContentRequest(requestId: number) {
+  const db = await getDb();
+  if (!db) return;
+  const now = new Date();
+  const payoutAt = new Date(now.getTime() + 48 * 60 * 60 * 1000);
+  await db.update(contentRequests)
+    .set({ status: "delivered", deliveredAt: now, payoutAt, updatedAt: now })
+    .where(eq(contentRequests.id, requestId));
+}
+
+// S-CONTENT-2: Fetch all delivered content requests whose payout window has expired and payout not yet released
+export async function getContentRequestsReadyForPayout() {
+  const db = await getDb();
+  if (!db) return [];
+  const now = new Date();
+  return db.select().from(contentRequests)
+    .where(and(
+      eq(contentRequests.status, "delivered"),
+      isNotNull(contentRequests.payoutAt),
+      lte(contentRequests.payoutAt, now),
+      isNull(contentRequests.payoutReleasedAt),
+      // Eligible with EITHER a charge OR a payment intent — a transient
+      // null-charge at webhook time must not permanently strand the payout;
+      // the service resolves the charge lazily from the PI before transfer.
+      or(
+        isNotNull(contentRequests.stripeChargeId),
+        isNotNull(contentRequests.stripePaymentIntentId),
+      ),
+    ));
+}
+
+// S-CONTENT-2: backfill the charge id on a content request (recovery path
+// when getChargeIdForPaymentIntent returned null at webhook time).
+export async function setContentRequestChargeId(requestId: number, chargeId: string) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(contentRequests)
+    .set({ stripeChargeId: chargeId, updatedAt: new Date() })
+    .where(eq(contentRequests.id, requestId));
+}
+
+// S-CONTENT-2: Mark payout released (stores the transfer id for reconciliation)
+export async function markContentRequestPayoutReleased(requestId: number, transferId: string) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(contentRequests)
+    .set({ stripeTransferId: transferId, payoutReleasedAt: new Date(), updatedAt: new Date() })
+    .where(eq(contentRequests.id, requestId));
 }
 
 // Coach Student Roster (S-DASH-1)

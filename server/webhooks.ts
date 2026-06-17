@@ -93,6 +93,12 @@ async function handleCheckoutCompleted(event: Stripe.Event) {
     return;
   }
 
+  // S-CONTENT-2: content request checkout
+  if (session.metadata?.type === 'content_request') {
+    await handleContentRequestCheckoutCompleted(session);
+    return;
+  }
+
   // Extract and validate lesson ID from metadata
   const rawLessonId = session.metadata?.lessonId;
 
@@ -387,5 +393,61 @@ async function handleAccountUpdated(event: Stripe.Event) {
     console.log(`[Webhook] User ${user.id} stripeConnectOnboarded set to true via account.updated`);
   } catch (err) {
     console.error(`[Webhook] Failed to process account.updated for ${account.id}:`, err);
+  }
+}
+
+/**
+ * S-CONTENT-2: Handle checkout.session.completed for content requests.
+ * Transitions pending_payment -> payment_collected, stores payment info, notifies coach.
+ */
+async function handleContentRequestCheckoutCompleted(session: Stripe.Checkout.Session) {
+  const rawRequestId = session.metadata?.requestId;
+  if (!rawRequestId) {
+    console.error('[Webhook] content_request checkout: no requestId in metadata');
+    return;
+  }
+  const requestId = parseInt(rawRequestId, 10);
+  if (isNaN(requestId) || requestId <= 0) return;
+
+  if (session.payment_status !== 'paid') return;
+
+  const request = await db.getContentRequestById(requestId);
+  if (!request) {
+    console.error(`[Webhook] content_request ${requestId} not found`);
+    return;
+  }
+  // Idempotency: only transition from pending_payment
+  if (request.status !== 'pending_payment') {
+    console.log(`[Webhook] content_request ${requestId} already in state '${request.status}' -- no-op`);
+    return;
+  }
+
+  const paymentIntentId = session.payment_intent
+    ? (typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent.id)
+    : null;
+  if (!paymentIntentId) {
+    console.error(`[Webhook] content_request ${requestId}: no payment_intent in session`);
+    return;
+  }
+
+  const chargeId = await getChargeIdForPaymentIntent(paymentIntentId);
+  await db.markContentRequestPaymentCollected(requestId, paymentIntentId, chargeId);
+
+  console.log(`[Webhook] content_request ${requestId} -> payment_collected (PI: ${paymentIntentId})`);
+
+  // Notify coach
+  try {
+    const student = await db.getUserById(request.studentId);
+    await db.createNotification({
+      userId: request.coachId,
+      type: "content_request_payment_collected",
+      title: "Payment received -- ready to start",
+      body: `${student?.name || "Your student"} paid for "${request.title}". You can now begin work.`,
+      relatedUserId: request.studentId,
+      relatedContentRequestId: requestId,
+      recipientRole: "coach",
+    });
+  } catch (err) {
+    console.error(`[Webhook] content_request ${requestId}: notify coach failed`, err);
   }
 }
