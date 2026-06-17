@@ -996,6 +996,9 @@ export const notifications = mysqlTable("notifications", {
   relatedUserId: int("relatedUserId"),
   relatedLessonId: int("relatedLessonId"),
   relatedContentRequestId: int("relatedContentRequestId"),
+  // S-DASH-4: which side the recipient was acting as (drives new_message routing
+  // for "both" accounts). Migration: NOT NULL DEFAULT 'student' — Manus runs the ALTER.
+  recipientRole: mysqlEnum("recipientRole", ["coach", "student"]).notNull().default("student"),
   readAt: timestamp("readAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });

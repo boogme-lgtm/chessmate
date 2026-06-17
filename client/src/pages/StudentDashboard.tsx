@@ -1679,9 +1679,10 @@ function MessagesModule({
 }) {
   const [openLessonId, setOpenLessonId] = useState<number | null>(null);
   const [openCoachName, setOpenCoachName] = useState("");
+  const [expanded, setExpanded] = useState(false);
 
-  // Take up to 3 lessons for compact inbox preview
-  const previewLessons = lessons.slice(0, 3);
+  // Compact inbox preview (3) — "View all" expands to the full list.
+  const previewLessons = expanded ? lessons : lessons.slice(0, 3);
 
   return (
     <>
@@ -1689,12 +1690,14 @@ function MessagesModule({
         <CardContent className="p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-base font-semibold text-bone">Messages</h3>
-            <button
-              className="text-xs text-ember hover:text-ember/80 transition-colors"
-              onClick={() => toast.info("Full inbox coming soon")}
-            >
-              View All
-            </button>
+            {lessons.length > 3 && (
+              <button
+                className="text-xs text-ember hover:text-ember/80 transition-colors"
+                onClick={() => setExpanded((v) => !v)}
+              >
+                {expanded ? "Show less" : `View all (${lessons.length})`}
+              </button>
+            )}
           </div>
 
           {previewLessons.length === 0 ? (

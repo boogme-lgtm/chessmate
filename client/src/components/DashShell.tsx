@@ -252,7 +252,6 @@ export default function DashShell({
                       onSectionChange("storefront");
                       const el = document.getElementById("storefront");
                       if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-                      toast.info("Content upload is coming soon — manage your storefront below.");
                     }}
                     className="px-3 py-1.5 text-sm font-medium text-white bg-ember rounded-sm hover:bg-ember/90 transition-colors"
                   >

@@ -9,6 +9,7 @@ import { Bell, MessageSquare, Star, UserPlus, BookOpen, Calendar, CheckCircle2, 
 import { formatDistanceToNow } from "date-fns";
 import { useState } from "react";
 import { useLocation } from "wouter";
+import { getNotificationUrl } from "@/lib/notificationRouting";
 
 const TYPE_ICONS: Record<string, typeof Bell> = {
   new_message: MessageSquare,
@@ -21,51 +22,6 @@ const TYPE_ICONS: Record<string, typeof Bell> = {
   content_delivered: BookOpen,
   new_review: Star,
 };
-
-/**
- * Return the URL to navigate to when a notification is clicked.
- * Routing is based on the notification TYPE, not the user's current active role,
- * because a "both" account should always land on the correct side of the marketplace.
- *
- * Coach-originated events (notifications sent TO the coach):
- *   new_content_request, new_subscriber, new_review
- * Ambiguous events (lesson events, messages) — use userType as tiebreaker.
- */
-function getNotificationUrl(type: string, userType: string | undefined): string {
-  // These notification types are ALWAYS sent to the coach — route to coach dashboard
-  const coachOnlyTypes = ["new_content_request", "new_subscriber"];
-  // These are ALWAYS sent to the student — route to student dashboard
-  const studentOnlyTypes = ["content_delivered"];
-
-  if (coachOnlyTypes.includes(type)) {
-    switch (type) {
-      case "new_content_request": return "/coach/dashboard#content-requests";
-      case "new_subscriber":      return "/coach/dashboard#students";
-    }
-  }
-
-  if (studentOnlyTypes.includes(type)) {
-    switch (type) {
-      case "content_delivered": return "/dashboard#content-library";
-    }
-  }
-
-  // For ambiguous types, use userType as a hint (defaults to coach if "both")
-  const isCoach = userType === "coach" || userType === "both";
-  switch (type) {
-    case "new_message":
-      return isCoach ? "/coach/dashboard#inbox" : "/dashboard#messages";
-    case "new_review":
-      return isCoach ? "/coach/dashboard#reviews" : "/dashboard";
-    case "lesson_booked":
-    case "lesson_confirmed":
-    case "lesson_cancelled":
-    case "lesson_completed":
-      return isCoach ? "/coach/dashboard#schedule" : "/dashboard#lessons";
-    default:
-      return isCoach ? "/coach/dashboard" : "/dashboard";
-  }
-}
 
 export default function NotificationBell() {
   const { user } = useAuth();
@@ -105,7 +61,7 @@ export default function NotificationBell() {
   const handleNotificationClick = (n: any) => {
     if (!n.readAt) markRead.mutate({ notificationId: n.id });
     setOpen(false);
-    const url = getNotificationUrl(n.type, userType);
+    const url = getNotificationUrl(n.type, userType, n.recipientRole);
     const [path, hash] = url.split("#");
     navigate(path);
     if (hash) {

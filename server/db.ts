@@ -2565,6 +2565,11 @@ export async function getCoachSubscriberCount(coachId: number): Promise<number> 
 
 // ============ NOTIFICATION OPERATIONS (S-DASH-3) ============
 
+// NOTE (S-DASH-4): when omitted, recipientRole falls back to the column default
+// 'student'. Coach-only/student-only types route by TYPE so they ignore it, and
+// new_message always supplies it. But any FUTURE role-ambiguous type whose
+// recipient can be a coach (e.g. lesson_*, new_review) MUST pass recipientRole,
+// or a "both" account will be mis-routed to the student dashboard.
 export async function createNotification(data: {
   userId: number;
   type: string;
@@ -2573,6 +2578,7 @@ export async function createNotification(data: {
   relatedUserId?: number;
   relatedLessonId?: number;
   relatedContentRequestId?: number;
+  recipientRole?: "coach" | "student";
 }): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -2584,6 +2590,7 @@ export async function createNotification(data: {
     relatedUserId: data.relatedUserId ?? null,
     relatedLessonId: data.relatedLessonId ?? null,
     relatedContentRequestId: data.relatedContentRequestId ?? null,
+    ...(data.recipientRole ? { recipientRole: data.recipientRole } : {}),
   });
   return result[0]?.insertId ?? 0;
 }

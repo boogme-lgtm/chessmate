@@ -1877,6 +1877,7 @@ export const appRouter = router({
         const sender = await db.getUserById(ctx.user.id);
         const recipient = await db.getUserById(recipientId);
 
+        const recipientRole: "coach" | "student" = recipientId === lesson.coachId ? "coach" : "student";
         await db.createNotification({
           userId: recipientId,
           type: "new_message",
@@ -1884,6 +1885,7 @@ export const appRouter = router({
           body: `${sender?.name || "Someone"} sent you a message`,
           relatedUserId: ctx.user.id,
           relatedLessonId: input.lessonId,
+          recipientRole,
         });
 
         // Email with 30-min cooldown

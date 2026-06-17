@@ -817,8 +817,9 @@ function InboxModule({
 }) {
   const [openLessonId, setOpenLessonId] = useState<number | null>(null);
   const [openStudentName, setOpenStudentName] = useState("");
+  const [expanded, setExpanded] = useState(false);
 
-  const previewLessons = lessons.slice(0, 5);
+  const previewLessons = expanded ? lessons : lessons.slice(0, 5);
 
   return (
     <>
@@ -833,12 +834,14 @@ function InboxModule({
               )}
               <h3 className="text-base font-semibold text-bone">Messages</h3>
             </div>
-            <button
-              className="text-xs text-ember hover:text-ember/80 transition-colors"
-              onClick={() => toast.info("Full inbox coming soon")}
-            >
-              OPEN INBOX
-            </button>
+            {lessons.length > 5 && (
+              <button
+                className="text-xs text-ember hover:text-ember/80 transition-colors"
+                onClick={() => setExpanded((v) => !v)}
+              >
+                {expanded ? "Show less" : `View all (${lessons.length})`}
+              </button>
+            )}
           </div>
 
           {previewLessons.length === 0 ? (
@@ -1100,6 +1103,7 @@ function StorefrontModule() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function StudentsModule({ roster }: { roster: any[] }) {
+  const [expanded, setExpanded] = useState(false);
   const trendArrow = (rating: number | null) => {
     if (rating === null || rating === undefined) {
       return <ArrowRight className="w-3 h-3 text-bone-muted" />;
@@ -1110,17 +1114,21 @@ function StudentsModule({ roster }: { roster: any[] }) {
     return <ArrowDownRight className="w-3 h-3 text-red-400" />;
   };
 
+  const visibleRoster = expanded ? roster : roster.slice(0, 5);
+
   return (
     <Card className="bg-ink-raised border-border/20 rounded-sm">
       <CardContent className="p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-base font-semibold text-bone">Active Students</h3>
-          <button
-            className="text-xs text-ember hover:text-ember/80 transition-colors"
-            onClick={() => toast.info("View all students: coming soon")}
-          >
-            VIEW ALL
-          </button>
+          {roster.length > 5 && (
+            <button
+              className="text-xs text-ember hover:text-ember/80 transition-colors"
+              onClick={() => setExpanded((v) => !v)}
+            >
+              {expanded ? "Show less" : `View all (${roster.length})`}
+            </button>
+          )}
         </div>
 
         {roster.length === 0 ? (
@@ -1133,7 +1141,7 @@ function StudentsModule({ roster }: { roster: any[] }) {
           </div>
         ) : (
           <div className="space-y-2">
-            {roster.map((student: any) => {
+            {visibleRoster.map((student: any) => {
               const initials = (() => {
                 if (!student.name) return "?";
                 const parts = student.name.trim().split(/\s+/);
@@ -1147,7 +1155,7 @@ function StudentsModule({ roster }: { roster: any[] }) {
                   key={student.id}
                   className="flex items-center gap-3 w-full text-left py-2.5 px-3 border border-border/20 rounded-sm hover:bg-ink-deep/50 transition-colors"
                   onClick={() =>
-                    toast.info("Student detail: coming soon")
+                    document.getElementById("schedule")?.scrollIntoView({ behavior: "smooth", block: "start" })
                   }
                 >
                   <div className="w-8 h-8 rounded-sm bg-ember/20 text-ember text-[11px] font-bold flex items-center justify-center shrink-0">
