@@ -346,63 +346,9 @@ export function CoachDashboardContent({ user }: { user: any }) {
         </div>
       </section>
 
-      {/* ── MODULE 2: EARNINGS (id="earnings") ─────────────────────────────── */}
-      <section id="earnings">
-        <span className="eyebrow mb-3 block">02 — Earnings</span>
-        <EarningsModule
-          earnings={earnings}
-          lessons={lessons || []}
-          stripeDashUrl={getDashboardLink.data?.url}
-          startOnboarding={startOnboarding}
-        />
-      </section>
-
-      {/* ── MODULE 3: INBOX (id="inbox") ──────────────────────────────────── */}
-      <section id="inbox">
-        <span className="eyebrow mb-3 block">03 — Inbox</span>
-        <InboxModule
-          lessons={lessonsWithMessages}
-          unreadCounts={unreadCounts}
-          totalUnread={totalUnread}
-        />
-      </section>
-
-      {/* ── MODULE 4: CONTENT REQUESTS (id="content-requests") ────────────── */}
-      <section id="content-requests">
-        <span className="eyebrow mb-3 block">04 — Content requests</span>
-        <ContentRequestsModule contentRequests={contentRequests} />
-      </section>
-
-      {/* ── MODULE 5: STOREFRONT (id="storefront") ────────────────────────── */}
-      <section id="storefront">
-        <span className="eyebrow mb-3 block">05 — Storefront</span>
-        <StorefrontModule />
-      </section>
-
-      {/* ── MODULE 6: ACTIVE STUDENTS (id="students") ─────────────────────── */}
-      <section id="students">
-        <span className="eyebrow mb-3 block">06 — Active students</span>
-        <StudentsModule roster={studentRoster || []} />
-      </section>
-
-      {/* ── MODULE 7: REVIEWS (id="reviews") ──────────────────────────────── */}
-      <section id="reviews">
-        <span className="eyebrow mb-3 block">07 — Reviews</span>
-        <ReviewsModule
-          coachReviews={coachReviews}
-          averageRating={profileData?.profile?.averageRating ?? undefined}
-          totalReviews={profileData?.profile?.totalReviews ?? undefined}
-        />
-      </section>
-
-      {/* ── REFERRAL (less prominent) ─────────────────────────────────────── */}
-      <section id="referral">
-        <ReferralCard />
-      </section>
-
-      {/* ── ALL LESSONS (collapsed) ───────────────────────────────────────── */}
+      {/* ── MODULE 2: ALL LESSONS (id="schedule") ────────────────────────── */}
       <section id="schedule">
-        <span className="eyebrow mb-3 block">All lessons</span>
+        <span className="eyebrow mb-3 block">02 — All Lessons</span>
         <Card className="bg-ink-raised border-border/20 rounded-sm">
           <CardContent className="p-6">
             <div className="flex items-center justify-between mb-4">
@@ -459,11 +405,65 @@ export function CoachDashboardContent({ user }: { user: any }) {
         </Card>
       </section>
 
-      {/* ── PROFILE (inline editor) ───────────────────────────────────────── */}
+      {/* ── MODULE 3: ACTIVE STUDENTS (id="students") ─────────────────────── */}
+      <section id="students">
+        <span className="eyebrow mb-3 block">03 — Active students</span>
+        <StudentsModule roster={studentRoster || []} />
+      </section>
+
+      {/* ── MODULE 4: INBOX (id="inbox") ──────────────────────────────────── */}
+      <section id="inbox">
+        <span className="eyebrow mb-3 block">04 — Inbox</span>
+        <InboxModule
+          lessons={lessonsWithMessages}
+          unreadCounts={unreadCounts}
+          totalUnread={totalUnread}
+        />
+      </section>
+
+      {/* ── MODULE 5: CONTENT REQUESTS (id="content-requests") ────────────── */}
+      <section id="content-requests">
+        <span className="eyebrow mb-3 block">05 — Content requests</span>
+        <ContentRequestsModule contentRequests={contentRequests} />
+      </section>
+
+      {/* ── MODULE 6: STOREFRONT (id="storefront") ────────────────────────── */}
+      <section id="storefront">
+        <span className="eyebrow mb-3 block">06 — Storefront</span>
+        <StorefrontModule />
+      </section>
+
+      {/* ── MODULE 7: EARNINGS (id="earnings") ─────────────────────────────── */}
+      <section id="earnings">
+        <span className="eyebrow mb-3 block">07 — Earnings</span>
+        <EarningsModule
+          earnings={earnings}
+          lessons={lessons || []}
+          stripeDashUrl={getDashboardLink.data?.url}
+          startOnboarding={startOnboarding}
+        />
+      </section>
+
+      {/* ── MODULE 8: REVIEWS (id="reviews") ──────────────────────────────── */}
+      <section id="reviews">
+        <span className="eyebrow mb-3 block">08 — Reviews</span>
+        <ReviewsModule
+          coachReviews={coachReviews}
+          averageRating={profileData?.profile?.averageRating ?? undefined}
+          totalReviews={profileData?.profile?.totalReviews ?? undefined}
+        />
+      </section>
+
+      {/* ── MODULE 9: PROFILE (inline editor) ─────────────────────────────── */}
       <section id="profile">
-        <span className="eyebrow mb-3 block">Profile</span>
+        <span className="eyebrow mb-3 block">09 — Profile</span>
         <CoachProfileSection userId={user.id} />
         <SubscriptionSettingsCard userId={user.id} />
+      </section>
+
+      {/* ── REFERRAL (no nav item, bottom of page) ────────────────────────── */}
+      <section id="referral">
+        <ReferralCard />
       </section>
     </div>
   );
