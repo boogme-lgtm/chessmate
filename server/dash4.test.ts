@@ -105,22 +105,22 @@ describe("S-DASH-4 — notifications.list returns recipientRole", () => {
 });
 
 describe("S-DASH-4 — getNotificationUrl routing", () => {
-  it("5: new_message + recipientRole 'student' on a 'both' account → /dashboard#messages", () => {
-    expect(getNotificationUrl("new_message", "both", "student")).toBe("/dashboard#messages");
+  it("5: new_message + recipientRole 'student' on a 'both' account → /dashboard?role=student#messages", () => {
+    expect(getNotificationUrl("new_message", "both", "student")).toBe("/dashboard?role=student#messages");
   });
 
-  it("new_message + recipientRole 'coach' on a 'both' account → /coach/dashboard#inbox", () => {
-    expect(getNotificationUrl("new_message", "both", "coach")).toBe("/coach/dashboard#inbox");
+  it("new_message + recipientRole 'coach' on a 'both' account → /dashboard?role=coach#inbox", () => {
+    expect(getNotificationUrl("new_message", "both", "coach")).toBe("/dashboard?role=coach#inbox");
   });
 
   it("new_message falls back to userType when no recipientRole", () => {
-    expect(getNotificationUrl("new_message", "student")).toBe("/dashboard#messages");
-    expect(getNotificationUrl("new_message", "both")).toBe("/coach/dashboard#inbox");
+    expect(getNotificationUrl("new_message", "student")).toBe("/dashboard?role=student#messages");
+    expect(getNotificationUrl("new_message", "both")).toBe("/dashboard?role=coach#inbox");
   });
 
   it("coach-only and student-only types ignore role entirely", () => {
-    expect(getNotificationUrl("new_content_request", "student")).toBe("/coach/dashboard#content-requests");
-    expect(getNotificationUrl("new_subscriber", "student")).toBe("/coach/dashboard#students");
-    expect(getNotificationUrl("content_delivered", "coach")).toBe("/dashboard#content-library");
+    expect(getNotificationUrl("new_content_request", "student")).toBe("/dashboard?role=coach#content-requests");
+    expect(getNotificationUrl("new_subscriber", "student")).toBe("/dashboard?role=coach#students");
+    expect(getNotificationUrl("content_delivered", "coach")).toBe("/dashboard?role=student#content-library");
   });
 });

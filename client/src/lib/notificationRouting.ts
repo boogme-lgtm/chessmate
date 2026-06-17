@@ -13,11 +13,13 @@ export function getNotificationUrl(
   userType: string | undefined,
   recipientRole?: "coach" | "student" | null,
 ): string {
-  // Always sent to the coach
-  if (type === "new_content_request") return "/coach/dashboard#content-requests";
-  if (type === "new_subscriber") return "/coach/dashboard#students";
+  // Always sent to the coach — use ?role=coach so Dashboard forces the coach view.
+  // NOTE: /coach/dashboard redirects to /dashboard and loses the hash, so we
+  // route everything through /dashboard?role= instead.
+  if (type === "new_content_request") return "/dashboard?role=coach#content-requests";
+  if (type === "new_subscriber")      return "/dashboard?role=coach#students";
   // Always sent to the student
-  if (type === "content_delivered") return "/dashboard#content-library";
+  if (type === "content_delivered")   return "/dashboard?role=student#content-library";
 
   // Prefer the stored recipientRole; fall back to userType (default coach for "both").
   const isCoach = recipientRole
@@ -26,15 +28,17 @@ export function getNotificationUrl(
 
   switch (type) {
     case "new_message":
-      return isCoach ? "/coach/dashboard#inbox" : "/dashboard#messages";
+      return isCoach ? "/dashboard?role=coach#inbox" : "/dashboard?role=student#messages";
     case "new_review":
-      return isCoach ? "/coach/dashboard#reviews" : "/dashboard";
+      return isCoach ? "/dashboard?role=coach#reviews" : "/dashboard?role=student";
     case "lesson_booked":
     case "lesson_confirmed":
     case "lesson_cancelled":
     case "lesson_completed":
-      return isCoach ? "/coach/dashboard#schedule" : "/dashboard#lessons";
+      return isCoach
+        ? "/dashboard?role=coach#schedule"
+        : "/dashboard?role=student#lessons";
     default:
-      return isCoach ? "/coach/dashboard" : "/dashboard";
+      return isCoach ? "/dashboard?role=coach" : "/dashboard?role=student";
   }
 }
