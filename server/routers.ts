@@ -1093,6 +1093,76 @@ export const appRouter = router({
         return { success: true };
       }),
 
+    // S-PROGRESS-1: link chess platform accounts (Chess.com / Lichess / FIDE)
+    updateChessProfiles: protectedProcedure
+      .input(z.object({
+        chesscomUsername: z.string().max(64).optional(),
+        lichessUsername: z.string().max(64).optional(),
+        fideId: z.string().max(20).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const existing = await db.getStudentProfileByUserId(ctx.user.id);
+        if (!existing) {
+          await db.createStudentProfile({
+            userId: ctx.user.id,
+            skillLevel: "beginner",
+            primaryGoal: "rating_improvement",
+            playingStyle: "balanced",
+            learningStyle: "analytical",
+            practiceSchedule: "regular",
+            chesscomUsername: input.chesscomUsername,
+            lichessUsername: input.lichessUsername,
+            fideId: input.fideId,
+          });
+        } else {
+          await db.updateStudentChessProfiles(ctx.user.id, input);
+        }
+        return { success: true };
+      }),
+
+    // S-PROGRESS-1: fetch live ratings from Chess.com + Lichess (FIDE is manual).
+    fetchLiveRatings: protectedProcedure.query(async ({ ctx }) => {
+      const profile = await db.getStudentProfileByUserId(ctx.user.id);
+      const results: {
+        chesscom: { rapid?: number; blitz?: number; bullet?: number } | null;
+        lichess: { rapid?: number; blitz?: number; bullet?: number; classical?: number } | null;
+      } = { chesscom: null, lichess: null };
+      if (!profile) return results;
+
+      if (profile.chesscomUsername) {
+        try {
+          const res = await fetch(
+            `https://api.chess.com/pub/player/${encodeURIComponent(profile.chesscomUsername)}/stats`,
+            { headers: { "User-Agent": "BooGMe/1.0 (https://boogme.com)" } }
+          );
+          if (res.ok) {
+            const data: any = await res.json();
+            results.chesscom = {
+              rapid: data.chess_rapid?.last?.rating,
+              blitz: data.chess_blitz?.last?.rating,
+              bullet: data.chess_bullet?.last?.rating,
+            };
+          }
+        } catch { /* network/parse error — leave null, show stale/empty */ }
+      }
+
+      if (profile.lichessUsername) {
+        try {
+          const { getPlayerProfile, summarizeRatings } = await import("./lichess");
+          const lichessProfile = await getPlayerProfile(profile.lichessUsername);
+          const s = summarizeRatings(lichessProfile);
+          results.lichess = {
+            rapid: s.rapid,
+            blitz: s.blitz,
+            bullet: s.bullet,
+            classical: s.classical,
+          };
+        } catch { /* ignore */ }
+      }
+
+      return results;
+    }),
+
     // Get student's achievements
     getAchievements: protectedProcedure.query(async ({ ctx }) => {
       return await db.getUserAchievements(ctx.user.id);
@@ -2640,6 +2710,73 @@ export const appRouter = router({
           ...(input.status === "delivered" ? { deliveredAt: new Date() } : {}),
           ...(input.contentItemId ? { contentItemId: input.contentItemId } : {}),
         });
+        return { success: true };
+      }),
+
+    // S-CONTENT-1: coach sets price + due date + note on a queued request.
+    quote: coachProcedure
+      .input(z.object({
+        requestId: z.number(),
+        amountCents: z.number().int().min(0).max(500000),
+        dueDate: z.string().datetime().optional(),
+        coachNote: z.string().max(2000).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const request = await db.getContentRequestById(input.requestId);
+        if (!request) throw new TRPCError({ code: "NOT_FOUND", message: "Content request not found" });
+        if (request.coachId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN", message: "Not your content request" });
+        if (request.status !== "queued") throw new TRPCError({ code: "BAD_REQUEST", message: "Can only quote a queued request" });
+        await db.updateContentRequestQuote(input.requestId, {
+          amountCents: input.amountCents,
+          dueDate: input.dueDate ? new Date(input.dueDate) : undefined,
+          coachNote: input.coachNote,
+        });
+        // Notify the student of the quote (fire-and-forget).
+        try {
+          const coach = await db.getUserById(ctx.user.id);
+          await db.createNotification({
+            userId: request.studentId,
+            type: "content_request_quoted",
+            title: "Your content request has been priced",
+            body: `${coach?.name || "Your coach"} set a price for "${request.title}"`,
+            relatedUserId: ctx.user.id,
+            relatedContentRequestId: input.requestId,
+            recipientRole: "student",
+          });
+        } catch (err) {
+          console.error(`[contentRequest.quote] notify failed for request ${input.requestId}:`, err);
+        }
+        return { success: true };
+      }),
+
+    // S-CONTENT-1: coach declines a queued or in-progress request.
+    decline: coachProcedure
+      .input(z.object({
+        requestId: z.number(),
+        coachNote: z.string().max(2000).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const request = await db.getContentRequestById(input.requestId);
+        if (!request) throw new TRPCError({ code: "NOT_FOUND", message: "Content request not found" });
+        if (request.coachId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN", message: "Not your content request" });
+        if (request.status === "delivered") throw new TRPCError({ code: "BAD_REQUEST", message: "Cannot decline a delivered request" });
+        await db.updateContentRequestStatus(input.requestId, "cancelled", {
+          ...(input.coachNote !== undefined ? { coachNote: input.coachNote } : {}),
+        });
+        try {
+          const coach = await db.getUserById(ctx.user.id);
+          await db.createNotification({
+            userId: request.studentId,
+            type: "content_request_declined",
+            title: "Content request declined",
+            body: `${coach?.name || "Your coach"} declined your request: "${request.title}"`,
+            relatedUserId: ctx.user.id,
+            relatedContentRequestId: input.requestId,
+            recipientRole: "student",
+          });
+        } catch (err) {
+          console.error(`[contentRequest.decline] notify failed for request ${input.requestId}:`, err);
+        }
         return { success: true };
       }),
   }),
