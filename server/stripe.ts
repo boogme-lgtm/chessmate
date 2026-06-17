@@ -416,6 +416,87 @@ export async function createTipCheckoutSession(params: {
   return session;
 }
 
+// ============ CONTENT REQUEST CHECKOUT (S-CONTENT-2) ============
+
+export async function createContentRequestCheckoutSession(params: {
+  amountCents: number;
+  currency: string;
+  requestId: number;
+  studentId: number;
+  studentEmail: string;
+  coachName: string;
+  coachConnectAccountId: string;
+  coachPricingTier: string | null | undefined;
+  requestTitle: string;
+  successUrl: string;
+  cancelUrl: string;
+  idempotencyKey?: string;
+}) {
+  const {
+    amountCents, currency, requestId, studentId, studentEmail,
+    coachName, coachConnectAccountId, coachPricingTier, requestTitle,
+    successUrl, cancelUrl, idempotencyKey,
+  } = params;
+
+  const feePercent = getTierFeePercent(coachPricingTier ?? DEFAULT_PRICING_TIER);
+  const platformFeeCents = Math.round((amountCents * feePercent) / 100);
+  const stripeFeeCents = calculateStripeFeeCents(amountCents);
+
+  const isTestAccount = coachConnectAccountId.startsWith("acct_test_coach_");
+
+  const paymentIntentData: any = {
+    metadata: {
+      type: "content_request",
+      requestId: requestId.toString(),
+      studentId: studentId.toString(),
+      platform: "boogme",
+      tier: coachPricingTier ?? DEFAULT_PRICING_TIER,
+      feePercent: feePercent.toString(),
+      coachConnectAccountId: isTestAccount ? "" : coachConnectAccountId,
+    },
+  };
+
+  const session = await stripe.checkout.sessions.create({
+    mode: "payment",
+    payment_method_types: ["card"],
+    customer_email: studentEmail,
+    line_items: [
+      {
+        price_data: {
+          currency: currency.toLowerCase(),
+          product_data: {
+            name: `Content: ${requestTitle}`,
+            description: `Custom content request from ${coachName}`,
+          },
+          unit_amount: amountCents,
+        },
+        quantity: 1,
+      },
+      {
+        price_data: {
+          currency: currency.toLowerCase(),
+          product_data: {
+            name: "Payment processing fee",
+            description: "Covers Stripe's 2.9% + $0.30 processing charge",
+          },
+          unit_amount: stripeFeeCents,
+        },
+        quantity: 1,
+      },
+    ],
+    payment_intent_data: paymentIntentData,
+    success_url: successUrl,
+    cancel_url: cancelUrl,
+    metadata: {
+      type: "content_request",
+      requestId: requestId.toString(),
+      studentId: studentId.toString(),
+    },
+  }, idempotencyKey ? { idempotencyKey } : undefined);
+
+  return session;
+}
+
 // ============ SUBSCRIPTION (PREMIUM PLANS) ============
 
 /**

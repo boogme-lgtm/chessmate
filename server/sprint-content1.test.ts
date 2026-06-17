@@ -28,6 +28,7 @@ const delivered = { ...queued, status: "delivered" };
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(db.updateContentRequestQuote).mockResolvedValue(undefined as any);
+  vi.mocked(db.quoteContentRequest).mockResolvedValue(undefined as any);
   vi.mocked(db.updateContentRequestStatus).mockResolvedValue(undefined as any);
   vi.mocked(db.createNotification).mockResolvedValue(1);
   vi.mocked(db.getUserById).mockResolvedValue(coach as any);
@@ -44,7 +45,7 @@ describe("contentRequest.quote", () => {
       coachNote: "I'll cover the main lines and key traps.",
     });
     expect(res.success).toBe(true);
-    expect(db.updateContentRequestQuote).toHaveBeenCalledWith(5, expect.objectContaining({
+    expect(db.quoteContentRequest).toHaveBeenCalledWith(5, expect.objectContaining({
       amountCents: 4900,
       dueDate: expect.any(Date),
       coachNote: "I'll cover the main lines and key traps.",
@@ -60,8 +61,8 @@ describe("contentRequest.quote", () => {
     vi.mocked(db.getContentRequestById).mockResolvedValue(inProgress as any);
     const caller = appRouter.createCaller(ctx(coach));
     await expect(caller.contentRequest.quote({ requestId: 5, amountCents: 4900 }))
-      .rejects.toThrow(/Can only quote a queued request/);
-    expect(db.updateContentRequestQuote).not.toHaveBeenCalled();
+      .rejects.toThrow(/Can only quote a queued or quoted request/);
+    expect(db.quoteContentRequest).not.toHaveBeenCalled();
   });
 
   it("outsider cannot quote someone else's request", async () => {

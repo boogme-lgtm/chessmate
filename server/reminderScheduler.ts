@@ -11,6 +11,7 @@
 import { sql } from "drizzle-orm";
 import { getDb, cancelLesson, getCompletedLessonsReadyForPayout } from "./db";
 import { releaseLessonPayoutToCoach } from "./payoutService";
+import { releaseAllEligibleContentRequestPayouts } from "./contentRequestPayoutService";
 import {
   sendEmail,
   getStudentLessonReminderEmail,
@@ -883,9 +884,9 @@ export async function autoReleasePayouts(): Promise<void> {
     const lessons = await getCompletedLessonsReadyForPayout();
     if (lessons.length === 0) {
       console.log("[Auto-Release Payouts] No eligible lessons found.");
-      return;
+    } else {
+      console.log(`[Auto-Release Payouts] Processing ${lessons.length} eligible lesson(s).`);
     }
-    console.log(`[Auto-Release Payouts] Processing ${lessons.length} eligible lesson(s).`);
 
     for (const lesson of lessons) {
       try {
@@ -907,6 +908,13 @@ export async function autoReleasePayouts(): Promise<void> {
         // Catch unexpected errors per-lesson so the loop continues for others
         console.error(`[Auto-Release Payouts] Lesson ${lesson.id} — unexpected error:`, err);
       }
+    }
+
+    // S-CONTENT-2: Also release content request payouts
+    try {
+      await releaseAllEligibleContentRequestPayouts();
+    } catch (err) {
+      console.error("[Auto-Release Payouts] Content request payout release failed:", err);
     }
   } finally {
     _autoReleaseRunning = false;

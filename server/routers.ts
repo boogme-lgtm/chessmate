@@ -9,6 +9,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import * as db from "./db";
 import * as stripeService from "./stripe";
+import { retrieveCheckoutSession, createContentRequestCheckoutSession } from "./stripe";
 import { ENV } from "./_core/env";
 import { PRICING_TIERS, type PricingTier, calculateLessonBreakdown } from "@shared/pricing";
 import { toCountryCode } from "@shared/countries";
@@ -2713,11 +2714,11 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    // S-CONTENT-1: coach sets price + due date + note on a queued request.
+    // S-CONTENT-2: coach.quote now sets status to "quoted"
     quote: coachProcedure
       .input(z.object({
         requestId: z.number(),
-        amountCents: z.number().int().min(0).max(500000),
+        amountCents: z.number().int().min(100).max(500000),
         dueDate: z.string().datetime().optional(),
         coachNote: z.string().max(2000).optional(),
       }))
@@ -2725,26 +2726,183 @@ export const appRouter = router({
         const request = await db.getContentRequestById(input.requestId);
         if (!request) throw new TRPCError({ code: "NOT_FOUND", message: "Content request not found" });
         if (request.coachId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN", message: "Not your content request" });
-        if (request.status !== "queued") throw new TRPCError({ code: "BAD_REQUEST", message: "Can only quote a queued request" });
-        await db.updateContentRequestQuote(input.requestId, {
+        if (!["queued", "quoted"].includes(request.status)) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Can only quote a queued or quoted request" });
+        }
+        await db.quoteContentRequest(input.requestId, {
           amountCents: input.amountCents,
           dueDate: input.dueDate ? new Date(input.dueDate) : undefined,
           coachNote: input.coachNote,
         });
-        // Notify the student of the quote (fire-and-forget).
         try {
           const coach = await db.getUserById(ctx.user.id);
           await db.createNotification({
             userId: request.studentId,
             type: "content_request_quoted",
             title: "Your content request has been priced",
-            body: `${coach?.name || "Your coach"} set a price for "${request.title}"`,
+            body: `${coach?.name || "Your coach"} set a price of $${(input.amountCents / 100).toFixed(2)} for "${request.title}"`,
             relatedUserId: ctx.user.id,
             relatedContentRequestId: input.requestId,
             recipientRole: "student",
           });
         } catch (err) {
           console.error(`[contentRequest.quote] notify failed for request ${input.requestId}:`, err);
+        }
+        return { success: true };
+      }),
+
+    // S-CONTENT-2: Student accepts the coach's quote -> pending_payment
+    acceptQuote: protectedProcedure
+      .input(z.object({ requestId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const request = await db.getContentRequestById(input.requestId);
+        if (!request) throw new TRPCError({ code: "NOT_FOUND", message: "Content request not found" });
+        if (request.studentId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN", message: "Not your content request" });
+        if (request.status !== "quoted") throw new TRPCError({ code: "BAD_REQUEST", message: "No active quote to accept" });
+        await db.acceptContentRequestQuote(input.requestId);
+        try {
+          const student = await db.getUserById(ctx.user.id);
+          await db.createNotification({
+            userId: request.coachId,
+            type: "content_request_accepted",
+            title: "Quote accepted",
+            body: `${student?.name || "Your student"} accepted your quote for "${request.title}" — they will now complete payment.`,
+            relatedUserId: ctx.user.id,
+            relatedContentRequestId: input.requestId,
+            recipientRole: "coach",
+          });
+        } catch (err) {
+          console.error(`[contentRequest.acceptQuote] notify failed for request ${input.requestId}:`, err);
+        }
+        return { success: true };
+      }),
+
+    // S-CONTENT-2: Student rejects the coach's quote -> back to queued
+    rejectQuote: protectedProcedure
+      .input(z.object({ requestId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const request = await db.getContentRequestById(input.requestId);
+        if (!request) throw new TRPCError({ code: "NOT_FOUND", message: "Content request not found" });
+        if (request.studentId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN", message: "Not your content request" });
+        if (request.status !== "quoted") throw new TRPCError({ code: "BAD_REQUEST", message: "No active quote to reject" });
+        await db.rejectContentRequestQuote(input.requestId);
+        try {
+          const student = await db.getUserById(ctx.user.id);
+          await db.createNotification({
+            userId: request.coachId,
+            type: "new_content_request",
+            title: "Quote rejected",
+            body: `${student?.name || "Your student"} rejected your quote for "${request.title}" — you may revise and re-quote.`,
+            relatedUserId: ctx.user.id,
+            relatedContentRequestId: input.requestId,
+            recipientRole: "coach",
+          });
+        } catch (err) {
+          console.error(`[contentRequest.rejectQuote] notify failed for request ${input.requestId}:`, err);
+        }
+        return { success: true };
+      }),
+
+    // S-CONTENT-2: Student creates Stripe Checkout for a pending_payment content request
+    createCheckout: protectedProcedure
+      .input(z.object({ requestId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const request = await db.getContentRequestById(input.requestId);
+        if (!request) throw new TRPCError({ code: "NOT_FOUND", message: "Content request not found" });
+        if (request.studentId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN", message: "Not your content request" });
+        if (request.status !== "pending_payment") {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: `Cannot checkout: request is in '${request.status}' state (must be 'pending_payment')` });
+        }
+        if (request.stripeCheckoutSessionId && request.stripeCheckoutSessionId !== "__pending__") {
+          try {
+            const existing = await retrieveCheckoutSession(request.stripeCheckoutSessionId);
+            if (existing.status === "open") return { url: existing.url };
+          } catch { /* fall through */ }
+        }
+        // Recover an orphaned "__pending__" slot left by a crashed prior attempt:
+        // if it's been stuck for >3 min it can never be a live concurrent request,
+        // so clear it rather than CONFLICT the student forever.
+        if (request.stripeCheckoutSessionId === "__pending__") {
+          const updatedAt = (request as any).updatedAt ? new Date((request as any).updatedAt).getTime() : 0;
+          if (Date.now() - updatedAt > 3 * 60 * 1000) {
+            await db.clearContentRequestCheckoutSession(request.id);
+          }
+        }
+        const claimed = await db.claimContentRequestCheckoutSlot(request.id);
+        if (!claimed) {
+          throw new TRPCError({ code: "CONFLICT", message: "Checkout is already being created. Please try again shortly." });
+        }
+        try {
+          const coach = await db.getUserById(request.coachId);
+          if (!coach?.stripeConnectAccountId) {
+            await db.clearContentRequestCheckoutSession(request.id);
+            throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Coach has not completed payment setup" });
+          }
+          const student = await db.getUserById(ctx.user.id);
+          const coachProfile = await db.getCoachProfileByUserId(request.coachId);
+          const baseUrl = process.env.VITE_FRONTEND_URL || "http://localhost:3000";
+          const session = await createContentRequestCheckoutSession({
+            amountCents: request.amountCents,
+            currency: "USD",
+            requestId: request.id,
+            studentId: ctx.user.id,
+            studentEmail: student?.email || "",
+            coachName: coach.name || "Coach",
+            coachConnectAccountId: coach.stripeConnectAccountId,
+            coachPricingTier: coachProfile?.pricingTier,
+            requestTitle: request.title,
+            successUrl: `${baseUrl}/dashboard?section=content-requests&payment=success`,
+            cancelUrl: `${baseUrl}/dashboard?section=content-requests&payment=cancelled`,
+            idempotencyKey: `content_request_checkout_${request.id}`,
+          });
+          await db.setContentRequestCheckoutSession(request.id, session.id);
+          return { url: session.url };
+        } catch (err) {
+          if (!(err instanceof TRPCError)) {
+            await db.clearContentRequestCheckoutSession(request.id);
+          }
+          throw err;
+        }
+      }),
+
+    // S-CONTENT-2: coach.startWork -- only allowed from payment_collected
+    startWork: coachProcedure
+      .input(z.object({ requestId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const request = await db.getContentRequestById(input.requestId);
+        if (!request) throw new TRPCError({ code: "NOT_FOUND", message: "Content request not found" });
+        if (request.coachId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN", message: "Not your content request" });
+        if (request.status !== "payment_collected") {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Cannot start work until the student has paid" });
+        }
+        await db.startContentRequestWork(input.requestId);
+        return { success: true };
+      }),
+
+    // S-CONTENT-2: coach.markDelivered -- sets deliveredAt + payoutAt (48h window)
+    markDelivered: coachProcedure
+      .input(z.object({ requestId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const request = await db.getContentRequestById(input.requestId);
+        if (!request) throw new TRPCError({ code: "NOT_FOUND", message: "Content request not found" });
+        if (request.coachId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN", message: "Not your content request" });
+        if (request.status !== "in_progress") {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Can only mark in-progress requests as delivered" });
+        }
+        await db.deliverContentRequest(input.requestId);
+        try {
+          const coach = await db.getUserById(ctx.user.id);
+          await db.createNotification({
+            userId: request.studentId,
+            type: "content_delivered",
+            title: "Your content is ready",
+            body: `${coach?.name || "Your coach"} delivered "${request.title}"`,
+            relatedUserId: ctx.user.id,
+            relatedContentRequestId: input.requestId,
+            recipientRole: "student",
+          });
+        } catch (err) {
+          console.error(`[contentRequest.markDelivered] notify failed for request ${input.requestId}:`, err);
         }
         return { success: true };
       }),

@@ -1391,8 +1391,66 @@ function ContentRequestsModule({
   coaches: { id: number; name: string }[];
 }) {
   const [dialogOpen, setDialogOpen] = useState(false);
+
+  const utils = trpc.useUtils();
+
+  const acceptQuote = trpc.contentRequest.acceptQuote.useMutation({
+    onSuccess: () => {
+      toast.success("Quote accepted! Proceeding to payment...");
+      utils.contentRequest.listForStudent.invalidate();
+    },
+    onError: (err: any) => toast.error(err.message),
+  });
+
+  const rejectQuote = trpc.contentRequest.rejectQuote.useMutation({
+    onSuccess: () => {
+      toast.success("Quote rejected. Your coach can revise and re-quote.");
+      utils.contentRequest.listForStudent.invalidate();
+    },
+    onError: (err: any) => toast.error(err.message),
+  });
+
+  const createCheckout = trpc.contentRequest.createCheckout.useMutation({
+    onSuccess: (data: any) => {
+      if (data.url) {
+        window.location.href = data.url;
+      }
+    },
+    onError: (err: any) => toast.error(err.message),
+  });
+
+  const handleAcceptAndPay = async (requestId: number) => {
+    try {
+      await acceptQuote.mutateAsync({ requestId });
+      const result = await createCheckout.mutateAsync({ requestId });
+      if (result.url) {
+        window.location.href = result.url;
+      }
+    } catch {
+      // Errors handled by individual mutation error handlers
+    }
+  };
+
   const statusBadge = (status: string) => {
     switch (status) {
+      case "quoted":
+        return (
+          <Badge className="bg-yellow-600/20 text-yellow-400 border-yellow-600/40 rounded-sm text-xs">
+            Quote Ready
+          </Badge>
+        );
+      case "pending_payment":
+        return (
+          <Badge className="bg-blue-600/20 text-blue-400 border-blue-600/40 rounded-sm text-xs">
+            Payment Needed
+          </Badge>
+        );
+      case "payment_collected":
+        return (
+          <Badge className="bg-emerald-600/20 text-emerald-400 border-emerald-600/40 rounded-sm text-xs">
+            Paid
+          </Badge>
+        );
       case "in_progress":
         return (
           <Badge className="bg-amber-600/20 text-amber-400 border-amber-600/40 rounded-sm text-xs">
@@ -1462,30 +1520,79 @@ function ContentRequestsModule({
             {requests.map((req: any) => (
               <div
                 key={req.id}
-                className="flex items-center justify-between py-2.5 px-3 border border-border/20 rounded-sm"
+                className="py-2.5 px-3 border border-border/20 rounded-sm"
               >
-                <div className="flex items-center gap-3 min-w-0">
-                  {statusBadge(req.status)}
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium text-bone truncate">
-                      {req.title}
-                    </div>
-                    {req.coachNote && (
-                      <div className="text-xs text-bone-muted italic">
-                        Coach: {req.coachNote}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3 min-w-0">
+                    {statusBadge(req.status)}
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-bone truncate">
+                        {req.title}
                       </div>
-                    )}
-                    <div className="text-xs text-bone-muted">
-                      {req.coachName}
+                      <div className="text-xs text-bone-muted">
+                        {req.coachName}
+                      </div>
                     </div>
                   </div>
+                  <div className="flex items-center gap-2 shrink-0 ml-4">
+                    <span className="text-sm font-mono tabular-nums text-bone-muted">
+                      {req.amountCents > 0 ? `$${(req.amountCents / 100).toFixed(2)}` : ""}
+                      {req.dueDate && (
+                        <> · Due {format(new Date(req.dueDate), "MMM d")}</>
+                      )}
+                    </span>
+                    {req.status === "quoted" && (
+                      <>
+                        <Button
+                          size="sm"
+                          className="bg-ember hover:bg-ember/90 text-white rounded-sm text-xs h-7"
+                          disabled={acceptQuote.isPending || createCheckout.isPending}
+                          onClick={() => handleAcceptAndPay(req.id)}
+                        >
+                          {acceptQuote.isPending || createCheckout.isPending ? "Processing..." : "ACCEPT & PAY"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-red-400 hover:text-red-300 hover:bg-red-600/10 rounded-sm text-xs h-7"
+                          disabled={rejectQuote.isPending}
+                          onClick={() => rejectQuote.mutate({ requestId: req.id })}
+                        >
+                          REJECT
+                        </Button>
+                      </>
+                    )}
+                    {req.status === "pending_payment" && (
+                      <Button
+                        size="sm"
+                        className="bg-ember hover:bg-ember/90 text-white rounded-sm text-xs h-7"
+                        disabled={createCheckout.isPending}
+                        onClick={() => createCheckout.mutate({ requestId: req.id })}
+                      >
+                        COMPLETE PAYMENT
+                      </Button>
+                    )}
+                    {req.status === "payment_collected" && (
+                      <span className="text-xs text-emerald-400">Payment received — coach will begin soon</span>
+                    )}
+                    {req.status === "in_progress" && (
+                      <span className="text-xs text-amber-400">In progress</span>
+                    )}
+                    {req.status === "delivered" && (
+                      <span className="text-xs text-emerald-400">Delivered — contact support within 48h for issues</span>
+                    )}
+                  </div>
                 </div>
-                <span className="text-sm font-mono tabular-nums text-bone-muted ml-4 shrink-0">
-                  ${(req.amountCents / 100).toFixed(2)}
-                  {req.dueDate && (
-                    <> · Due {format(new Date(req.dueDate), "MMM d")}</>
-                  )}
-                </span>
+                {req.status === "quoted" && req.coachNote && (
+                  <div className="mt-2 pt-2 border-t border-border/20 text-xs text-bone-muted italic">
+                    Coach note: {req.coachNote}
+                  </div>
+                )}
+                {req.status === "cancelled" && req.coachNote && (
+                  <div className="mt-2 pt-2 border-t border-border/20 text-xs text-bone-muted italic">
+                    Coach: {req.coachNote}
+                  </div>
+                )}
               </div>
             ))}
           </div>
