@@ -3,7 +3,7 @@
  * Replaces the generic DashboardLayout on dashboard pages only.
  */
 
-import { ReactNode } from "react";
+import { ReactNode, useEffect, useRef } from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
@@ -85,11 +85,138 @@ export default function DashShell({
   const firstName = user?.name?.split(" ")[0] || "there";
   const greeting = getGreeting();
 
+  // ── Scroll-spy state ────────────────────────────────────────────────────────
+  // Stable refs so the IntersectionObserver closure never goes stale and the
+  // effect doesn't need to re-run (and tear down observers) on every render.
+  const suppressSpyRef = useRef(false);          // true during a programmatic scroll
+  const suppressTimerRef = useRef<number | null>(null);
+  const lastEmittedRef = useRef<string>(activeSection);
+  const onSectionChangeRef = useRef(onSectionChange);
+  useEffect(() => { onSectionChangeRef.current = onSectionChange; }, [onSectionChange]);
+  // Keep lastEmitted in sync when activeSection is changed by anything other than
+  // the spy itself (nav click, deep link, header buttons) so we never emit stale.
+  useEffect(() => { lastEmittedRef.current = activeSection; }, [activeSection]);
+
   const handleNavClick = (key: string) => {
     onSectionChange(key);
+    lastEmittedRef.current = key;
+    // Suppress the spy until the smooth-scroll settles so it doesn't flicker
+    // through intermediate sections. Cleared by `scrollend`; the timer is a
+    // fallback for browsers without it. Re-arming clears any prior timer.
+    suppressSpyRef.current = true;
+    if (suppressTimerRef.current !== null) clearTimeout(suppressTimerRef.current);
+    suppressTimerRef.current = window.setTimeout(() => {
+      suppressSpyRef.current = false;
+      suppressTimerRef.current = null;
+    }, 1200);
     const el = document.getElementById(key);
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (el) {
+      const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+    }
   };
+
+  // ── Scroll-spy: highlight the section currently in the upper viewport ─────────
+  useEffect(() => {
+    const sectionKeys = navItems.map((item) => item.key);
+    // Latest intersection state per section id.
+    const state: Record<string, { intersecting: boolean; top: number }> = {};
+    let io: IntersectionObserver | null = null;
+    let mo: MutationObserver | null = null;
+
+    const recompute = () => {
+      if (suppressSpyRef.current) return;
+      // Bottom-of-page: the last section may be too short to reach the band, so
+      // pin it explicitly when the page is scrolled to the end.
+      const atBottom =
+        window.innerHeight + window.scrollY >=
+        document.documentElement.scrollHeight - 2;
+      let best = "";
+      if (atBottom) {
+        best = sectionKeys[sectionKeys.length - 1] ?? "";
+      } else {
+        // The topmost section currently inside the detection band — i.e. the
+        // one the reader is looking at. Tie-break by DOM position, not nav order.
+        let bestTop = Infinity;
+        for (const key of sectionKeys) {
+          const s = state[key];
+          if (s?.intersecting && s.top < bestTop) {
+            bestTop = s.top;
+            best = key;
+          }
+        }
+      }
+      if (best && best !== lastEmittedRef.current) {
+        lastEmittedRef.current = best;
+        onSectionChangeRef.current(best);
+      }
+    };
+
+    const onIntersect: IntersectionObserverCallback = (entries) => {
+      // Record state even while suppressed so it's accurate the moment the
+      // programmatic scroll settles.
+      for (const entry of entries) {
+        state[entry.target.id] = {
+          intersecting: entry.isIntersecting,
+          top: entry.boundingClientRect.top,
+        };
+      }
+      recompute();
+    };
+
+    const attach = (): boolean => {
+      const els = sectionKeys
+        .map((k) => document.getElementById(k))
+        .filter((el): el is HTMLElement => el !== null);
+      if (els.length === 0) return false;
+      io = new IntersectionObserver(onIntersect, {
+        // Detection band = top ~35% of the viewport.
+        rootMargin: "0px 0px -65% 0px",
+        threshold: [0, 1],
+      });
+      els.forEach((el) => io!.observe(el));
+      return true;
+    };
+
+    // Dashboard content renders a loading skeleton first, so the section
+    // elements may not exist yet on mount. Attach now if present; otherwise
+    // wait for them to appear, then attach once and stop watching.
+    if (!attach()) {
+      mo = new MutationObserver(() => {
+        if (attach()) {
+          mo?.disconnect();
+          mo = null;
+        }
+      });
+      mo.observe(document.body, { childList: true, subtree: true });
+    }
+
+    // `scrollend` ends the click-suppression precisely when scrolling settles
+    // (with the handleNavClick timeout as the fallback). Also re-evaluates the
+    // active section at the bottom of the page where IO may not fire.
+    const onScrollEnd = () => {
+      if (suppressTimerRef.current !== null) {
+        clearTimeout(suppressTimerRef.current);
+        suppressTimerRef.current = null;
+      }
+      suppressSpyRef.current = false;
+      recompute();
+    };
+    window.addEventListener("scrollend", onScrollEnd);
+
+    return () => {
+      io?.disconnect();
+      mo?.disconnect();
+      window.removeEventListener("scrollend", onScrollEnd);
+      if (suppressTimerRef.current !== null) {
+        clearTimeout(suppressTimerRef.current);
+        suppressTimerRef.current = null;
+      }
+    };
+    // navItems is a stable module constant per role; re-run only on role change.
+    // onSectionChange is read via ref to avoid teardown churn.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [role]);
 
   const initials = (() => {
     if (!user?.name) return "?";
