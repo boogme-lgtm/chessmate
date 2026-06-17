@@ -2595,6 +2595,7 @@ export const appRouter = router({
           body: `${student?.name || "A student"} requested: "${input.title}"`,
           relatedUserId: ctx.user.id,
           relatedContentRequestId: id,
+          recipientRole: "coach",  // always sent to the coach side
         });
 
         if (coach?.email && student) {
@@ -2695,6 +2696,7 @@ export const appRouter = router({
             title: "New subscriber",
             body: `${subscriber?.name || "Someone"} subscribed to your channel${settings.monthlyPriceCents > 0 ? ` ($${(settings.monthlyPriceCents / 100).toFixed(2)}/mo)` : " (free)"}`,
             relatedUserId: ctx.user.id,
+            recipientRole: "coach",  // always sent to the coach side
           });
         } catch (e) {
           console.error("[subscribe] Post-subscribe side-effect failed:", e);

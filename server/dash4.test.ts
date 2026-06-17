@@ -124,3 +124,19 @@ describe("S-DASH-4 — getNotificationUrl routing", () => {
     expect(getNotificationUrl("content_delivered", "coach")).toBe("/dashboard?role=student#content-library");
   });
 });
+
+describe("S-DASH-4b — recipientRole: 'coach' on coach-targeted notifications", () => {
+  it("new_content_request notification carries recipientRole: 'coach'", async () => {
+    vi.mocked(db.createContentRequest).mockResolvedValue({ insertId: 99 } as any);
+    const caller = appRouter.createCaller(ctx(student));
+    await caller.contentRequest.create({
+      coachId: 42,
+      title: "Endgame analysis video",
+    });
+    const call = vi.mocked(db.createNotification).mock.calls.find(
+      (c) => c[0].type === "new_content_request",
+    );
+    expect(call).toBeTruthy();
+    expect(call![0]).toMatchObject({ userId: 42, recipientRole: "coach" });
+  });
+});
