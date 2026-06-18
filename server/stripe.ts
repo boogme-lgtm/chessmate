@@ -497,6 +497,53 @@ export async function createContentRequestCheckoutSession(params: {
   return session;
 }
 
+// ============ CONTENT ITEM CHECKOUT (S-STOREFRONT-1) ============
+
+/**
+ * Create a Stripe Checkout Session for a public storefront content purchase.
+ *
+ * Separate Charges and Transfers model (mirrors the tip flow): the platform
+ * collects the full price on its own account; the coach's share is transferred
+ * via a charge-sourced transfer in the webhook. NO transfer_data /
+ * application_fee here.
+ */
+export async function createContentItemCheckoutSession(params: {
+  contentItem: { id: number; title: string; priceCents: number; currency: string };
+  buyer: { id: number; email: string };
+  baseUrl: string;
+}) {
+  const { contentItem, buyer, baseUrl } = params;
+  const currency = (contentItem.currency || "USD").toLowerCase();
+
+  const session = await stripe.checkout.sessions.create({
+    mode: "payment",
+    payment_method_types: ["card"],
+    customer_email: buyer.email,
+    line_items: [
+      {
+        price_data: {
+          currency,
+          product_data: {
+            name: contentItem.title,
+            description: "Premium chess content",
+          },
+          unit_amount: contentItem.priceCents,
+        },
+        quantity: 1,
+      },
+    ],
+    metadata: {
+      type: "content_item",
+      contentItemId: contentItem.id.toString(),
+      buyerId: buyer.id.toString(),
+    },
+    success_url: `${baseUrl}/dashboard?section=content-library&purchase=success`,
+    cancel_url: `${baseUrl}/dashboard?section=content-library`,
+  });
+
+  return session;
+}
+
 // ============ SUBSCRIPTION (PREMIUM PLANS) ============
 
 /**

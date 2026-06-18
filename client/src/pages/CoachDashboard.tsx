@@ -33,13 +33,42 @@ import {
   ArrowDownRight,
   Copy,
   Share2,
+  Video,
+  FileText,
+  FileBox,
+  Package,
+  Lock,
+  MoreVertical,
+  Pencil,
+  Trash2,
+  Download,
 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { useState, useEffect, useCallback } from "react";
 import MessageThread from "@/components/MessageThread";
@@ -1366,32 +1395,492 @@ function ContentRequestsModule({
 // MODULE 5: STOREFRONT
 // ─────────────────────────────────────────────────────────────────────────────
 
-function StorefrontModule() {
-  return (
-    <Card className="bg-ink-raised border-border/20 rounded-sm">
-      <CardContent className="p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-base font-semibold text-bone">Your Content</h3>
-          <Button
-            size="sm"
-            className="gap-1.5 bg-ember hover:bg-ember/90 text-white rounded-sm text-xs"
-            onClick={() => toast.info("Upload: coming soon")}
-          >
-            <Upload className="w-3 h-3" />
-            + UPLOAD
-          </Button>
-        </div>
+const CONTENT_KIND_ICONS: Record<string, typeof Video> = {
+  video: Video,
+  pdf: FileText,
+  pgn: FileBox,
+  course: Package,
+  bundle: Package,
+};
 
-        <div className="text-center py-10">
-          <Upload className="h-10 w-10 mx-auto mb-3 text-bone-muted/30" />
-          <p className="text-sm text-bone-muted mb-1">No content uploaded yet</p>
-          <p className="text-xs text-bone-muted">
-            Upload videos, PGN packs, and lesson materials to sell on your
-            storefront.
-          </p>
+const KIND_ACCEPT: Record<string, string> = {
+  video: ".mp4,.mov,.webm",
+  pdf: ".pdf",
+  pgn: ".pgn,.txt",
+  course: ".zip",
+  bundle: ".zip",
+};
+
+function readFileAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      // Strip the "data:<mime>;base64," prefix
+      resolve(result.split(",")[1] ?? "");
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+function StorefrontModule() {
+  const utils = trpc.useUtils();
+  const { data: items, isLoading } = trpc.content.listMine.useQuery();
+  const [tab, setTab] = useState<"all" | "public" | "student_only" | "request_fulfillment">("all");
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [editItem, setEditItem] = useState<any | null>(null);
+
+  const publishMutation = trpc.content.publish.useMutation({
+    onSuccess: () => utils.content.listMine.invalidate(),
+    onError: (err) => toast.error(err.message),
+  });
+  const deleteMutation = trpc.content.delete.useMutation({
+    onSuccess: (res) => {
+      utils.content.listMine.invalidate();
+      toast.success(res.deleted ? "Content deleted" : "Content unpublished (has purchases)");
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const all = (items as any[]) || [];
+  const counts = {
+    public: all.filter((i) => i.accessType === "public").length,
+    student_only: all.filter((i) => i.accessType === "student_only").length,
+    request_fulfillment: all.filter((i) => i.accessType === "request_fulfillment").length,
+  };
+  const filtered = tab === "all" ? all : all.filter((i) => i.accessType === tab);
+
+  return (
+    <>
+      <Card className="bg-ink-raised border-border/20 rounded-sm">
+        <CardContent className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-base font-semibold text-bone">Your Content</h3>
+            <Button
+              size="sm"
+              className="gap-1.5 bg-ember hover:bg-ember/90 text-white rounded-sm text-xs"
+              onClick={() => setUploadOpen(true)}
+            >
+              <Upload className="w-3 h-3" />+ UPLOAD
+            </Button>
+          </div>
+
+          <Tabs value={tab} onValueChange={(v) => setTab(v as any)} className="mb-4">
+            <TabsList className="bg-ink border-border/20 rounded-sm">
+              <TabsTrigger value="all" className="text-xs data-[state=active]:bg-ember data-[state=active]:text-white">
+                All ({all.length})
+              </TabsTrigger>
+              <TabsTrigger value="public" className="text-xs data-[state=active]:bg-ember data-[state=active]:text-white">
+                Public ({counts.public})
+              </TabsTrigger>
+              <TabsTrigger value="student_only" className="text-xs data-[state=active]:bg-ember data-[state=active]:text-white">
+                Student-Specific ({counts.student_only})
+              </TabsTrigger>
+              <TabsTrigger value="request_fulfillment" className="text-xs data-[state=active]:bg-ember data-[state=active]:text-white">
+                Requests ({counts.request_fulfillment})
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+
+          {isLoading ? (
+            <div className="text-center py-10 text-sm text-bone-muted">Loading…</div>
+          ) : filtered.length === 0 ? (
+            <div className="text-center py-10">
+              <Upload className="h-10 w-10 mx-auto mb-3 text-bone-muted/30" />
+              <p className="text-sm text-bone-muted mb-1">No content here yet</p>
+              <p className="text-xs text-bone-muted">
+                Upload videos, PGN packs, and lesson materials to sell or deliver.
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-border/20 border border-border/20 rounded-sm">
+              {filtered.map((item) => {
+                const Icon = CONTENT_KIND_ICONS[item.kind] || FileText;
+                const isPublic = item.accessType === "public";
+                return (
+                  <div key={item.id} className="flex items-center gap-3 px-4 py-3">
+                    <Icon className="w-5 h-5 text-ember shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-bone truncate">{item.title}</p>
+                      <p className="text-xs text-bone-muted">
+                        {item.kind}
+                        {item.accessType === "student_only" && item.targetStudentName
+                          ? ` · for ${item.targetStudentName}`
+                          : item.accessType === "request_fulfillment"
+                          ? " · request fulfillment"
+                          : ""}
+                        {" · "}
+                        {item.published ? "Published" : "Draft"}
+                      </p>
+                    </div>
+                    <span className="text-xs text-bone shrink-0">
+                      {item.priceCents > 0 ? `$${(item.priceCents / 100).toFixed(2)}` : "Free"}
+                    </span>
+                    {isPublic ? (
+                      <Switch
+                        checked={!!item.published}
+                        disabled={publishMutation.isPending}
+                        onCheckedChange={(checked) =>
+                          publishMutation.mutate({ id: item.id, published: checked })
+                        }
+                      />
+                    ) : (
+                      <Lock className="w-4 h-4 text-bone-muted/50 shrink-0" />
+                    )}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button className="text-bone-muted hover:text-bone p-1">
+                          <MoreVertical className="w-4 h-4" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="bg-ink-raised border-border/20">
+                        <DropdownMenuItem className="text-xs text-bone" onClick={() => setEditItem(item)}>
+                          <Pencil className="w-3 h-3 mr-2" /> Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="text-xs text-red-400"
+                          onClick={() => deleteMutation.mutate({ id: item.id })}
+                        >
+                          <Trash2 className="w-3 h-3 mr-2" /> Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <ContentUploadDialog open={uploadOpen} onOpenChange={setUploadOpen} />
+      <ContentEditDialog item={editItem} onClose={() => setEditItem(null)} />
+    </>
+  );
+}
+
+function ContentUploadDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
+  const utils = trpc.useUtils();
+  const { data: roster } = trpc.coach.getStudentRoster.useQuery(undefined, { enabled: open });
+  const { data: requests } = trpc.contentRequest.listForCoach.useQuery(undefined, { enabled: open });
+
+  const [step, setStep] = useState(1);
+  const [accessType, setAccessType] = useState<"public" | "student_only" | "request_fulfillment">("public");
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [kind, setKind] = useState<"video" | "pdf" | "pgn" | "course" | "bundle">("video");
+  const [priceDollars, setPriceDollars] = useState("");
+  const [previewContent, setPreviewContent] = useState("");
+  const [targetStudentId, setTargetStudentId] = useState<string>("");
+  const [contentRequestId, setContentRequestId] = useState<string>("");
+  const [file, setFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+
+  const reset = () => {
+    setStep(1);
+    setAccessType("public");
+    setTitle("");
+    setDescription("");
+    setKind("video");
+    setPriceDollars("");
+    setPreviewContent("");
+    setTargetStudentId("");
+    setContentRequestId("");
+    setFile(null);
+  };
+
+  const createMutation = trpc.content.create.useMutation({
+    onSuccess: () => {
+      toast.success("Content uploaded");
+      utils.content.listMine.invalidate();
+      reset();
+      onOpenChange(false);
+    },
+    onError: (err) => toast.error(err.message),
+    onSettled: () => setUploading(false),
+  });
+
+  const inProgressRequests = ((requests as any[]) || []).filter(
+    (r) => r.status === "in_progress" || r.status === "payment_collected",
+  );
+
+  const handleSubmit = async () => {
+    if (!file) {
+      toast.error("Please choose a file");
+      return;
+    }
+    if (title.trim().length < 3) {
+      toast.error("Title must be at least 3 characters");
+      return;
+    }
+    if (accessType === "student_only" && !targetStudentId) {
+      toast.error("Please pick a student");
+      return;
+    }
+    if (accessType === "request_fulfillment" && !contentRequestId) {
+      toast.error("Please pick a request");
+      return;
+    }
+    setUploading(true);
+    try {
+      const fileBase64 = await readFileAsBase64(file);
+      const priceCents =
+        accessType === "public" ? Math.round((parseFloat(priceDollars) || 0) * 100) : 0;
+      createMutation.mutate({
+        title: title.trim(),
+        description: description || undefined,
+        kind,
+        accessType,
+        targetStudentId: accessType === "student_only" ? Number(targetStudentId) : undefined,
+        contentRequestId: accessType === "request_fulfillment" ? Number(contentRequestId) : undefined,
+        priceCents,
+        fileBase64,
+        fileName: file.name,
+        previewContent: previewContent || undefined,
+      });
+    } catch {
+      setUploading(false);
+      toast.error("Failed to read file");
+    }
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) reset();
+        onOpenChange(v);
+      }}
+    >
+      <DialogContent className="bg-ink-raised border-border/20 rounded-sm text-bone max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-bone">Upload Content</DialogTitle>
+          <DialogDescription className="text-bone-muted text-xs">Step {step} of 3</DialogDescription>
+        </DialogHeader>
+
+        {step === 1 && (
+          <div className="space-y-2">
+            <p className="text-sm text-bone mb-2">Who is this content for?</p>
+            {[
+              { v: "public", label: "Public storefront", sub: "Anyone can purchase" },
+              { v: "student_only", label: "Specific student", sub: "Private delivery to one student" },
+              { v: "request_fulfillment", label: "Content request", sub: "Fulfill a pending request" },
+            ].map((opt) => (
+              <button
+                key={opt.v}
+                onClick={() => setAccessType(opt.v as any)}
+                className={`w-full text-left px-3 py-2 rounded-sm border ${
+                  accessType === opt.v ? "border-ember bg-ember/10" : "border-border/20"
+                }`}
+              >
+                <p className="text-sm text-bone">{opt.label}</p>
+                <p className="text-xs text-bone-muted">{opt.sub}</p>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {step === 2 && (
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs text-bone-muted">Title</Label>
+              <Input value={title} onChange={(e) => setTitle(e.target.value)} className="bg-ink border-border/20 text-bone" />
+            </div>
+            <div>
+              <Label className="text-xs text-bone-muted">Description</Label>
+              <Textarea value={description} onChange={(e) => setDescription(e.target.value)} className="bg-ink border-border/20 text-bone" />
+            </div>
+            <div>
+              <Label className="text-xs text-bone-muted">Kind</Label>
+              <Select value={kind} onValueChange={(v) => setKind(v as any)}>
+                <SelectTrigger className="bg-ink border-border/20 text-bone">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="video">Video</SelectItem>
+                  <SelectItem value="pdf">PDF</SelectItem>
+                  <SelectItem value="pgn">PGN</SelectItem>
+                  <SelectItem value="course">Course</SelectItem>
+                  <SelectItem value="bundle">Bundle</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {accessType === "public" && (
+              <div>
+                <Label className="text-xs text-bone-muted">Price (USD)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={priceDollars}
+                  onChange={(e) => setPriceDollars(e.target.value)}
+                  placeholder="0.00 (free)"
+                  className="bg-ink border-border/20 text-bone"
+                />
+              </div>
+            )}
+            {accessType === "student_only" && (
+              <div>
+                <Label className="text-xs text-bone-muted">Student</Label>
+                <Select value={targetStudentId} onValueChange={setTargetStudentId}>
+                  <SelectTrigger className="bg-ink border-border/20 text-bone">
+                    <SelectValue placeholder="Select a student" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {((roster as any[]) || []).map((s) => (
+                      <SelectItem key={s.id} value={String(s.id)}>
+                        {s.name || `Student #${s.id}`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {accessType === "request_fulfillment" && (
+              <div>
+                <Label className="text-xs text-bone-muted">Request</Label>
+                <Select value={contentRequestId} onValueChange={setContentRequestId}>
+                  <SelectTrigger className="bg-ink border-border/20 text-bone">
+                    <SelectValue placeholder="Select a request" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {inProgressRequests.map((r) => (
+                      <SelectItem key={r.id} value={String(r.id)}>
+                        {r.title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div>
+              <Label className="text-xs text-bone-muted">Preview snippet (optional)</Label>
+              <Input value={previewContent} onChange={(e) => setPreviewContent(e.target.value)} className="bg-ink border-border/20 text-bone" />
+            </div>
+          </div>
+        )}
+
+        {step === 3 && (
+          <div className="space-y-3">
+            <Label className="text-xs text-bone-muted">
+              File (accepted: {KIND_ACCEPT[kind]})
+            </Label>
+            <Input
+              type="file"
+              accept={KIND_ACCEPT[kind]}
+              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              className="bg-ink border-border/20 text-bone"
+            />
+            {file && <p className="text-xs text-bone-muted">{file.name}</p>}
+          </div>
+        )}
+
+        <DialogFooter className="gap-2">
+          {step > 1 && (
+            <Button variant="ghost" className="text-xs text-bone-muted" onClick={() => setStep(step - 1)} disabled={uploading}>
+              Back
+            </Button>
+          )}
+          {step < 3 ? (
+            <Button className="bg-ember hover:bg-ember/90 text-white text-xs" onClick={() => setStep(step + 1)}>
+              Next
+            </Button>
+          ) : (
+            <Button className="bg-ember hover:bg-ember/90 text-white text-xs" onClick={handleSubmit} disabled={uploading}>
+              {uploading ? "Uploading…" : "Upload"}
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ContentEditDialog({ item, onClose }: { item: any | null; onClose: () => void }) {
+  const utils = trpc.useUtils();
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [priceDollars, setPriceDollars] = useState("");
+  const [previewContent, setPreviewContent] = useState("");
+
+  useEffect(() => {
+    if (item) {
+      setTitle(item.title || "");
+      setDescription(item.description || "");
+      setPriceDollars(item.priceCents ? (item.priceCents / 100).toFixed(2) : "");
+      setPreviewContent(item.previewContent || "");
+    }
+  }, [item]);
+
+  const updateMutation = trpc.content.update.useMutation({
+    onSuccess: () => {
+      toast.success("Content updated");
+      utils.content.listMine.invalidate();
+      onClose();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  return (
+    <Dialog open={!!item} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="bg-ink-raised border-border/20 rounded-sm text-bone max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-bone">Edit Content</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <Label className="text-xs text-bone-muted">Title</Label>
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} className="bg-ink border-border/20 text-bone" />
+          </div>
+          <div>
+            <Label className="text-xs text-bone-muted">Description</Label>
+            <Textarea value={description} onChange={(e) => setDescription(e.target.value)} className="bg-ink border-border/20 text-bone" />
+          </div>
+          {item?.accessType === "public" && (
+            <div>
+              <Label className="text-xs text-bone-muted">Price (USD)</Label>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={priceDollars}
+                onChange={(e) => setPriceDollars(e.target.value)}
+                className="bg-ink border-border/20 text-bone"
+              />
+            </div>
+          )}
+          <div>
+            <Label className="text-xs text-bone-muted">Preview snippet</Label>
+            <Input value={previewContent} onChange={(e) => setPreviewContent(e.target.value)} className="bg-ink border-border/20 text-bone" />
+          </div>
         </div>
-      </CardContent>
-    </Card>
+        <DialogFooter>
+          <Button
+            className="bg-ember hover:bg-ember/90 text-white text-xs"
+            disabled={updateMutation.isPending}
+            onClick={() =>
+              item &&
+              updateMutation.mutate({
+                id: item.id,
+                title: title.trim() || undefined,
+                description,
+                priceCents: item.accessType === "public" ? Math.round((parseFloat(priceDollars) || 0) * 100) : undefined,
+                previewContent,
+              })
+            }
+          >
+            {updateMutation.isPending ? "Saving…" : "Save"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

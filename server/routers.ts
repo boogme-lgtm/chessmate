@@ -9,9 +9,9 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import * as db from "./db";
 import * as stripeService from "./stripe";
-import { retrieveCheckoutSession, createContentRequestCheckoutSession } from "./stripe";
+import { retrieveCheckoutSession, createContentRequestCheckoutSession, createContentItemCheckoutSession } from "./stripe";
 import { ENV } from "./_core/env";
-import { PRICING_TIERS, type PricingTier, calculateLessonBreakdown } from "@shared/pricing";
+import { PRICING_TIERS, type PricingTier, calculateLessonBreakdown, getTierFeePercent, DEFAULT_PRICING_TIER } from "@shared/pricing";
 import { toCountryCode } from "@shared/countries";
 import {
   sendEmail,
@@ -31,7 +31,7 @@ import {
 } from "./emailService";
 import { sendNurtureEmails, sendNurtureEmailsManual } from "./nurtureEmailScheduler";
 import { resendWelcomeEmails } from "./resendWelcomeEmails";
-import { storagePut } from "./storage";
+import { storagePut, storageGet } from "./storage";
 import { sendEmail as sendSimpleEmail, getCoachWelcomeEmail } from "./email";
 import { notifyOwner } from "./_core/notification";
 import { transferToCoach } from "./stripeConnect";
@@ -2373,6 +2373,241 @@ export const appRouter = router({
           throw insertErr;
         }
         return { success: true, alreadyOwned: false };
+      }),
+
+    // ============ S-STOREFRONT-1: coach content management ============
+
+    /** Coach: list ALL own content (published + unpublished, every accessType). */
+    listMine: coachProcedure.query(async ({ ctx }) => {
+      return db.getContentItemsByCoach(ctx.user.id);
+    }),
+
+    /** Coach: upload a new content item. */
+    create: coachProcedure
+      .input(z.object({
+        title: z.string().min(3).max(255),
+        description: z.string().max(2000).optional(),
+        kind: z.enum(["course", "video", "pdf", "pgn", "bundle"]),
+        accessType: z.enum(["public", "student_only", "request_fulfillment"]),
+        targetStudentId: z.number().optional(),
+        contentRequestId: z.number().optional(),
+        priceCents: z.number().int().min(0).max(500000).default(0),
+        fileBase64: z.string(),
+        fileName: z.string(),
+        thumbnailBase64: z.string().optional(),
+        previewContent: z.string().max(2000).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        // File size limit: 50 MB. base64 length * 0.75 ~= decoded byte count.
+        if (input.fileBase64.length * 0.75 > 52_428_800) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "File exceeds the 50 MB limit" });
+        }
+
+        let resolvedContentRequestId: number | null = null;
+
+        // Validate access-type-specific rules.
+        if (input.accessType === "student_only") {
+          if (!input.targetStudentId) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "targetStudentId is required for student_only content" });
+          }
+          const roster = await db.getStudentRoster(ctx.user.id);
+          const isStudent = (roster as any[]).some((s) => Number(s.id) === input.targetStudentId);
+          if (!isStudent) {
+            throw new TRPCError({ code: "FORBIDDEN", message: "Target student is not one of your active students" });
+          }
+        } else if (input.accessType === "request_fulfillment") {
+          if (!input.contentRequestId) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "contentRequestId is required for request_fulfillment content" });
+          }
+          const request = await db.getContentRequestById(input.contentRequestId);
+          if (!request || request.coachId !== ctx.user.id) {
+            throw new TRPCError({ code: "FORBIDDEN", message: "Content request not found or not yours" });
+          }
+          if (request.status !== "in_progress" && request.status !== "payment_collected") {
+            throw new TRPCError({ code: "PRECONDITION_FAILED", message: `Request must be in_progress or payment_collected (is '${request.status}')` });
+          }
+          resolvedContentRequestId = input.contentRequestId;
+        }
+
+        // Decode + upload the main file.
+        const buffer = Buffer.from(input.fileBase64, "base64");
+        const ext = (input.fileName.split(".").pop() || "bin").toLowerCase();
+        const uniqueId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        const storageKey = `coach-content/${ctx.user.id}/${uniqueId}.${ext}`;
+        await storagePut(storageKey, buffer);
+
+        // Optional thumbnail upload.
+        let thumbnailUrl: string | undefined;
+        if (input.thumbnailBase64) {
+          const thumbBuffer = Buffer.from(input.thumbnailBase64, "base64");
+          const thumbKey = `coach-content/${ctx.user.id}/${uniqueId}-thumb.jpg`;
+          const { url } = await storagePut(thumbKey, thumbBuffer, "image/jpeg");
+          thumbnailUrl = url;
+        }
+
+        // student_only and request_fulfillment are always free/included.
+        const priceCents = input.accessType === "public" ? input.priceCents : 0;
+
+        const newId = await db.createContentItem({
+          coachId: ctx.user.id,
+          title: input.title,
+          description: input.description,
+          kind: input.kind,
+          storageKey,
+          thumbnailUrl,
+          priceCents,
+          previewContent: input.previewContent,
+          accessType: input.accessType,
+          targetStudentId: input.accessType === "student_only" ? input.targetStudentId : undefined,
+          published: false,
+        });
+
+        // Link the content request to the newly created item.
+        if (resolvedContentRequestId) {
+          await db.updateContentRequestStatus(resolvedContentRequestId, "in_progress", { contentItemId: newId });
+        }
+
+        return { id: newId, storageKey };
+      }),
+
+    /** Coach: edit metadata (not the file itself). */
+    update: coachProcedure
+      .input(z.object({
+        id: z.number(),
+        title: z.string().min(3).max(255).optional(),
+        description: z.string().max(2000).optional(),
+        priceCents: z.number().int().min(0).max(500000).optional(),
+        previewContent: z.string().max(2000).optional(),
+        thumbnailBase64: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const items = await db.getContentItemsByCoach(ctx.user.id);
+        const item = (items as any[]).find((i) => i.id === input.id);
+        if (!item) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Content item not found" });
+        }
+
+        const data: Record<string, any> = {};
+        if (input.title !== undefined) data.title = input.title;
+        if (input.description !== undefined) data.description = input.description;
+        // Only public items carry a price. student_only / request_fulfillment are
+        // always free/included — never let an edit put a price on them.
+        if (input.priceCents !== undefined && item.accessType === "public") {
+          data.priceCents = input.priceCents;
+        }
+        if (input.previewContent !== undefined) data.previewContent = input.previewContent;
+
+        if (input.thumbnailBase64) {
+          const thumbBuffer = Buffer.from(input.thumbnailBase64, "base64");
+          const thumbKey = `coach-content/${ctx.user.id}/${input.id}-thumb-${Date.now()}.jpg`;
+          const { url } = await storagePut(thumbKey, thumbBuffer, "image/jpeg");
+          data.thumbnailUrl = url;
+        }
+
+        await db.updateContentItem(input.id, ctx.user.id, data);
+        return { success: true };
+      }),
+
+    /** Coach: publish/unpublish — only public items may be published. */
+    publish: coachProcedure
+      .input(z.object({ id: z.number(), published: z.boolean() }))
+      .mutation(async ({ ctx, input }) => {
+        const items = await db.getContentItemsByCoach(ctx.user.id);
+        const item = (items as any[]).find((i) => i.id === input.id);
+        if (!item) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Content item not found" });
+        }
+        if (input.published && item.accessType !== "public") {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Only public content can be published to the storefront",
+          });
+        }
+        await db.setContentItemPublished(input.id, ctx.user.id, input.published);
+        return { success: true, published: input.published };
+      }),
+
+    /** Coach: delete — soft (unpublish) if purchases exist, else hard delete. */
+    delete: coachProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const items = await db.getContentItemsByCoach(ctx.user.id);
+        const item = (items as any[]).find((i) => i.id === input.id);
+        if (!item) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Content item not found" });
+        }
+        // Never hard-delete an item that someone depends on:
+        //  - purchases exist (would strip a buyer's library), or
+        //  - a content_request references it (would dangle content_requests.contentItemId
+        //    and silently drop the student's delivered request_fulfillment item).
+        // In those cases soft-delete (unpublish) instead.
+        const purchaseCount = await db.getContentPurchaseCount(input.id);
+        const requestRefs = await db.getContentRequestRefCount(input.id);
+        if (purchaseCount > 0 || requestRefs > 0) {
+          await db.setContentItemPublished(input.id, ctx.user.id, false);
+          return { deleted: false, unpublished: true };
+        }
+        // NOTE: the storage proxy exposes no delete endpoint, so the backing
+        // object is left in place (no public URL is ever issued without an
+        // access check, and the DB row is gone). Reclaim via storage GC if a
+        // delete endpoint becomes available.
+        await db.deleteContentItem(input.id, ctx.user.id);
+        return { deleted: true };
+      }),
+
+    /** Student: list everything they own/unlocked. */
+    listOwned: protectedProcedure.query(async ({ ctx }) => {
+      return db.getOwnedContentItems(ctx.user.id);
+    }),
+
+    /** Get a fresh download URL — access-checked. */
+    getDownloadUrl: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ ctx, input }) => {
+        const hasAccess = await db.userHasContentAccess(ctx.user.id, input.id);
+        if (!hasAccess) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "You do not have access to this content" });
+        }
+        const item = await db.getContentItemById(input.id);
+        if (!item || !item.storageKey) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Content file not found" });
+        }
+        const { url } = await storageGet(item.storageKey);
+        return { url };
+      }),
+
+    /** Student: start Stripe checkout to buy a public storefront item. */
+    createStorefrontCheckout: protectedProcedure
+      .input(z.object({ contentItemId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const item = await db.getContentItemById(input.contentItemId);
+        if (!item || !item.published || item.accessType !== "public" || item.priceCents <= 0) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Content item is not available for purchase" });
+        }
+
+        // Already owned?
+        if (await db.userHasContentAccess(ctx.user.id, input.contentItemId)) {
+          throw new TRPCError({ code: "CONFLICT", message: "You already own this content" });
+        }
+
+        const coach = await db.getUserById(item.coachId);
+        if (!coach?.stripeConnectAccountId) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Coach is not set up to receive payments" });
+        }
+
+        const baseUrl = process.env.VITE_FRONTEND_URL || "http://localhost:3000";
+        const session = await createContentItemCheckoutSession({
+          contentItem: {
+            id: item.id,
+            title: item.title,
+            priceCents: item.priceCents,
+            currency: item.currency || "USD",
+          },
+          buyer: { id: ctx.user.id, email: ctx.user.email },
+          baseUrl,
+        });
+
+        return { url: session.url };
       }),
   }),
 

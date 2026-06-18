@@ -35,6 +35,9 @@ import {
   contentRequests,
   InsertContentRequest,
   type ContentRequest,
+  contentItems,
+  type InsertContentItem,
+  type ContentItem,
   coachSubscriptionSettings,
   coachSubscriptions,
   notifications,
@@ -2925,4 +2928,243 @@ export async function createSubscriptionDmLesson(studentId: number, coachId: num
     VALUES (${studentId}, ${coachId}, NOW(), 0, 'subscription_dm', 0, 0, 0, 'Direct Message Channel')
   `);
   return result[0]?.insertId ?? null;
+}
+
+// ============ CONTENT ITEMS (S-STOREFRONT-1) ============
+
+/** Fetch a single content item by id (all fields). */
+export async function getContentItemById(id: number): Promise<ContentItem | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(contentItems).where(eq(contentItems.id, id)).limit(1);
+  return rows[0] ?? null;
+}
+
+/** Insert a new content item. Returns the new insertId. */
+export async function createContentItem(data: InsertContentItem): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result: any = await db.insert(contentItems).values(data);
+  return Number(result[0].insertId);
+}
+
+/**
+ * All content items for a coach (published + unpublished, every accessType).
+ * Includes targetStudentName via LEFT JOIN on users(targetStudentId).
+ */
+export async function getContentItemsByCoach(coachId: number): Promise<any[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const result: any = await db.execute(sql`
+    SELECT
+      ci.id, ci.coachId, ci.title, ci.description, ci.kind,
+      ci.storageKey, ci.thumbnailUrl, ci.priceCents, ci.currency,
+      ci.previewContent, ci.published, ci.publishedAt,
+      ci.accessType, ci.targetStudentId,
+      ci.createdAt, ci.updatedAt,
+      u.name AS targetStudentName
+    FROM content_items ci
+    LEFT JOIN users u ON u.id = ci.targetStudentId
+    WHERE ci.coachId = ${coachId}
+    ORDER BY ci.createdAt DESC
+  `);
+  return result[0] || [];
+}
+
+/**
+ * All content items a user can access:
+ *  (a) anything they purchased (content_purchases join)
+ *  (b) student_only items targeted at them
+ *  (c) request_fulfillment items whose linked request is theirs AND delivered
+ * Includes coachName and unlockedAt. Ordered by unlockedAt DESC.
+ */
+export async function getOwnedContentItems(
+  userId: number
+): Promise<Array<ContentItem & { unlockedAt: Date; coachName: string | null }>> {
+  const db = await getDb();
+  if (!db) return [];
+  const result: any = await db.execute(sql`
+    SELECT t.*, u.name AS coachName FROM (
+      SELECT
+        ci.id, ci.coachId, ci.title, ci.description, ci.kind,
+        ci.storageKey, ci.thumbnailUrl, ci.priceCents, ci.currency,
+        ci.previewContent, ci.published, ci.publishedAt,
+        ci.accessType, ci.targetStudentId, ci.createdAt, ci.updatedAt,
+        cp.unlockedAt AS unlockedAt
+      FROM content_purchases cp
+      JOIN content_items ci ON ci.id = cp.contentItemId
+      WHERE cp.userId = ${userId}
+
+      UNION
+
+      SELECT
+        ci.id, ci.coachId, ci.title, ci.description, ci.kind,
+        ci.storageKey, ci.thumbnailUrl, ci.priceCents, ci.currency,
+        ci.previewContent, ci.published, ci.publishedAt,
+        ci.accessType, ci.targetStudentId, ci.createdAt, ci.updatedAt,
+        ci.createdAt AS unlockedAt
+      FROM content_items ci
+      WHERE ci.accessType = 'student_only' AND ci.targetStudentId = ${userId}
+
+      UNION
+
+      SELECT
+        ci.id, ci.coachId, ci.title, ci.description, ci.kind,
+        ci.storageKey, ci.thumbnailUrl, ci.priceCents, ci.currency,
+        ci.previewContent, ci.published, ci.publishedAt,
+        ci.accessType, ci.targetStudentId, ci.createdAt, ci.updatedAt,
+        cr.deliveredAt AS unlockedAt
+      FROM content_items ci
+      JOIN content_requests cr ON cr.contentItemId = ci.id
+      WHERE ci.accessType = 'request_fulfillment'
+        AND cr.studentId = ${userId}
+        AND cr.status = 'delivered'
+    ) t
+    LEFT JOIN users u ON u.id = t.coachId
+    ORDER BY t.unlockedAt DESC
+  `);
+  return result[0] || [];
+}
+
+/** Update provided fields of a content item, scoped to its owning coach. */
+export async function updateContentItem(
+  id: number,
+  coachId: number,
+  data: Partial<InsertContentItem>
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  if (Object.keys(data).length === 0) return;
+  await db.update(contentItems).set(data).where(and(eq(contentItems.id, id), eq(contentItems.coachId, coachId)));
+}
+
+/** Hard delete a content item, scoped to its owning coach. */
+export async function deleteContentItem(id: number, coachId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(contentItems).where(and(eq(contentItems.id, id), eq(contentItems.coachId, coachId)));
+}
+
+/** Toggle published state (and publishedAt), scoped to owning coach. */
+export async function setContentItemPublished(
+  id: number,
+  coachId: number,
+  published: boolean
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db
+    .update(contentItems)
+    .set({ published, publishedAt: published ? new Date() : null })
+    .where(and(eq(contentItems.id, id), eq(contentItems.coachId, coachId)));
+}
+
+/**
+ * Whether a user may access a content item:
+ *  - they are the coach owner, OR
+ *  - they have a purchase row, OR
+ *  - they are the targetStudentId of a student_only item, OR
+ *  - they are the student of a delivered request_fulfillment item.
+ */
+export async function userHasContentAccess(userId: number, contentItemId: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  const result: any = await db.execute(sql`
+    SELECT 1 FROM content_items ci
+    WHERE ci.id = ${contentItemId}
+      AND (
+        ci.coachId = ${userId}
+        OR EXISTS (
+          SELECT 1 FROM content_purchases cp
+          WHERE cp.contentItemId = ci.id AND cp.userId = ${userId}
+        )
+        OR (ci.accessType = 'student_only' AND ci.targetStudentId = ${userId})
+        OR (
+          ci.accessType = 'request_fulfillment'
+          AND EXISTS (
+            SELECT 1 FROM content_requests cr
+            WHERE cr.contentItemId = ci.id
+              AND cr.studentId = ${userId}
+              AND cr.status = 'delivered'
+          )
+        )
+      )
+    LIMIT 1
+  `);
+  return (result[0]?.length ?? 0) > 0;
+}
+
+/** Count purchase rows for a content item (drives the delete soft/hard decision). */
+export async function getContentPurchaseCount(contentItemId: number): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  const result: any = await db.execute(sql`
+    SELECT COUNT(*) AS cnt FROM content_purchases WHERE contentItemId = ${contentItemId}
+  `);
+  return Number(result[0]?.[0]?.cnt ?? 0);
+}
+
+/**
+ * Outcome of recording a storefront content purchase:
+ *  - "inserted": a new purchase row was created -> proceed to pay the coach.
+ *  - "duplicate_same_pi": the SAME PaymentIntent was already recorded (a webhook
+ *    retry) -> no-op, no payout, no refund.
+ *  - "duplicate_other_pi": the buyer already owns this item via a DIFFERENT
+ *    PaymentIntent (a concurrent double-checkout) -> no payout; the redundant
+ *    charge must be refunded.
+ */
+export type RecordContentPurchaseResult =
+  | "inserted"
+  | "duplicate_same_pi"
+  | "duplicate_other_pi";
+
+/**
+ * Record a storefront content purchase (called from the webhook). Race-safe and
+ * idempotent via two UNIQUE constraints: stripePaymentIntentId (retry dedupe)
+ * and (contentItemId, userId) (one unlock per buyer+item). The composite
+ * constraint is what catches a concurrent double-checkout, where the buyer ends
+ * up with two distinct PaymentIntents for the same item.
+ */
+export async function recordContentPurchase(data: {
+  contentItemId: number;
+  userId: number;
+  amountPaidCents: number;
+  stripePaymentIntentId: string;
+}): Promise<RecordContentPurchaseResult> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  try {
+    await db.execute(sql`
+      INSERT INTO content_purchases
+        (contentItemId, userId, unlockMethod, amountPaidCents, stripePaymentIntentId)
+      VALUES
+        (${data.contentItemId}, ${data.userId}, 'purchase', ${data.amountPaidCents}, ${data.stripePaymentIntentId})
+    `);
+    return "inserted";
+  } catch (err: any) {
+    if (err?.errno === 1062 || err?.code === "ER_DUP_ENTRY") {
+      // A row already exists for this (item, user). Determine whether it's the
+      // same PaymentIntent (true retry) or a different one (double-purchase).
+      const existing: any = await db.execute(sql`
+        SELECT stripePaymentIntentId FROM content_purchases
+        WHERE contentItemId = ${data.contentItemId} AND userId = ${data.userId}
+        LIMIT 1
+      `);
+      const existingPI = existing[0]?.[0]?.stripePaymentIntentId ?? null;
+      return existingPI === data.stripePaymentIntentId
+        ? "duplicate_same_pi"
+        : "duplicate_other_pi";
+    }
+    throw err;
+  }
+}
+
+/** Number of content_requests that reference this content item (drives delete safety). */
+export async function getContentRequestRefCount(contentItemId: number): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  const result: any = await db.execute(sql`
+    SELECT COUNT(*) AS cnt FROM content_requests WHERE contentItemId = ${contentItemId}
+  `);
+  return Number(result[0]?.[0]?.cnt ?? 0);
 }
