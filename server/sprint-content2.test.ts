@@ -184,7 +184,7 @@ describe("contentRequest.markDelivered", () => {
     vi.mocked(db.getContentRequestById).mockResolvedValue({ ...baseRequest, status: "queued" } as any);
     const caller = appRouter.createCaller(ctx(coach));
     await expect(caller.contentRequest.markDelivered({ requestId: 10 }))
-      .rejects.toThrow(/Can only mark in-progress requests as delivered/);
+      .rejects.toThrow(/Can only mark in-progress or overdue requests as delivered/);
   });
 });
 

@@ -1909,6 +1909,63 @@ export function getNewMessageEmail(params: {
   return disputeEmailShell('New Message', body, `${frontendUrl}/dashboard`, 'Read Message');
 }
 
+// ─── S-CONTENT-3: Content Request Deadline & Overdue Emails ──────────────────
+
+export function getCoachDeadlineReminderEmail(params: {
+  coachName: string;
+  studentName: string;
+  requestTitle: string;
+  dueDate: Date;
+  hoursRemaining: 24 | 1;
+}): string {
+  const { coachName, studentName, requestTitle, dueDate, hoursRemaining } = params;
+  const frontendUrl = process.env.VITE_FRONTEND_URL || 'http://localhost:3000';
+  const formattedDate = dueDate.toLocaleDateString("en-US", {
+    weekday: "long", year: "numeric", month: "long", day: "numeric", timeZone: "UTC",
+  });
+  const body = `
+  <p style="margin:0 0 20px;font-size:16px;line-height:1.6;color:#e0e0e0;">Hi ${coachName},</p>
+  <p style="margin:0 0 20px;font-size:16px;line-height:1.6;color:#e0e0e0;">This is a reminder that <strong>${studentName}</strong>'s content request <strong>"${requestTitle}"</strong> is due in <strong>${hoursRemaining} hour(s)</strong>.</p>
+  <div style="background-color:#2a2a2a;padding:25px;margin:30px 0;border-radius:8px;border-left:4px solid #8b4513;">
+    <table width="100%" cellpadding="8" cellspacing="0">
+      ${detailRow("Request", requestTitle)}
+      ${detailRow("Student", studentName)}
+      ${detailRow("Due Date", formattedDate)}
+    </table>
+  </div>
+  <p style="margin:0 0 20px;font-size:16px;line-height:1.6;color:#e0e0e0;">Please ensure you deliver the content before the deadline to avoid the request being marked as overdue.</p>`;
+  return disputeEmailShell(`Content Request Due in ${hoursRemaining}h`, body, `${frontendUrl}/dashboard`, 'Go to Dashboard');
+}
+
+export function getStudentContentOverdueEmail(params: {
+  studentName: string;
+  coachName: string;
+  requestTitle: string;
+  dueDate: Date;
+}): string {
+  const { studentName, coachName, requestTitle, dueDate } = params;
+  const frontendUrl = process.env.VITE_FRONTEND_URL || 'http://localhost:3000';
+  const formattedDate = dueDate.toLocaleDateString("en-US", {
+    weekday: "long", year: "numeric", month: "long", day: "numeric", timeZone: "UTC",
+  });
+  const body = `
+  <p style="margin:0 0 20px;font-size:16px;line-height:1.6;color:#e0e0e0;">Hi ${studentName},</p>
+  <p style="margin:0 0 20px;font-size:16px;line-height:1.6;color:#e0e0e0;">Your content request <strong>"${requestTitle}"</strong> from <strong>${coachName}</strong> was due on <strong>${formattedDate}</strong> and has not been delivered.</p>
+  <div style="background-color:#2a2a2a;padding:25px;margin:30px 0;border-radius:8px;border-left:4px solid #8b4513;">
+    <table width="100%" cellpadding="8" cellspacing="0">
+      ${detailRow("Request", requestTitle)}
+      ${detailRow("Coach", coachName)}
+      ${detailRow("Due Date", formattedDate)}
+    </table>
+  </div>
+  <p style="margin:0 0 20px;font-size:16px;line-height:1.6;color:#e0e0e0;">You have two options:</p>
+  <ul style="margin:0 0 20px;padding-left:20px;font-size:16px;line-height:1.8;color:#e0e0e0;">
+    <li><strong>Extend the deadline</strong> — propose a new due date from your dashboard</li>
+    <li><strong>Cancel and get a full refund</strong> — cancel the request and receive a full refund</li>
+  </ul>`;
+  return disputeEmailShell('Your Content Request is Overdue', body, `${frontendUrl}/dashboard`, 'View Request');
+}
+
 export function getNewSubscriberEmail(params: {
   coachName: string;
   subscriberName: string;

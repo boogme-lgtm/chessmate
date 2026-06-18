@@ -2404,7 +2404,7 @@ export async function getContentRequestById(id: number) {
 
 export async function updateContentRequestStatus(
   id: number,
-  status: "in_progress" | "delivered" | "cancelled",
+  status: "in_progress" | "delivered" | "cancelled" | "overdue",
   extra?: { deliveredAt?: Date; contentItemId?: number; coachNote?: string }
 ) {
   const db = await getDb();
@@ -2568,6 +2568,101 @@ export async function markContentRequestPayoutReleased(requestId: number, transf
   await db.update(contentRequests)
     .set({ stripeTransferId: transferId, payoutReleasedAt: new Date(), updatedAt: new Date() })
     .where(eq(contentRequests.id, requestId));
+}
+
+// ============ CONTENT REQUEST DEADLINE & OVERDUE HELPERS (S-CONTENT-3) ============
+
+export async function getContentRequestsDueForReminder24h() {
+  const db = await getDb();
+  if (!db) return [];
+  const result: any = await db.execute(sql`
+    SELECT cr.*, su.name AS studentName, su.email AS studentEmail,
+           cu.name AS coachName, cu.email AS coachEmail
+    FROM content_requests cr
+    JOIN users su ON su.id = cr.studentId
+    JOIN users cu ON cu.id = cr.coachId
+    WHERE cr.status IN ('payment_collected', 'in_progress')
+      AND cr.dueDate IS NOT NULL
+      AND cr.dueDate BETWEEN DATE_ADD(NOW(), INTERVAL 20 HOUR) AND DATE_ADD(NOW(), INTERVAL 28 HOUR)
+      AND cr.deadline24hReminderSentAt IS NULL
+  `);
+  return result[0] || [];
+}
+
+export async function getContentRequestsDueForReminder1h() {
+  const db = await getDb();
+  if (!db) return [];
+  const result: any = await db.execute(sql`
+    SELECT cr.*, su.name AS studentName, su.email AS studentEmail,
+           cu.name AS coachName, cu.email AS coachEmail
+    FROM content_requests cr
+    JOIN users su ON su.id = cr.studentId
+    JOIN users cu ON cu.id = cr.coachId
+    WHERE cr.status IN ('payment_collected', 'in_progress')
+      AND cr.dueDate IS NOT NULL
+      AND cr.dueDate BETWEEN DATE_ADD(NOW(), INTERVAL 45 MINUTE) AND DATE_ADD(NOW(), INTERVAL 75 MINUTE)
+      AND cr.deadline1hReminderSentAt IS NULL
+  `);
+  return result[0] || [];
+}
+
+export async function getOverdueContentRequests() {
+  const db = await getDb();
+  if (!db) return [];
+  const result: any = await db.execute(sql`
+    SELECT cr.*, su.name AS studentName, su.email AS studentEmail,
+           cu.name AS coachName, cu.email AS coachEmail
+    FROM content_requests cr
+    JOIN users su ON su.id = cr.studentId
+    JOIN users cu ON cu.id = cr.coachId
+    WHERE cr.status IN ('payment_collected', 'in_progress')
+      AND cr.dueDate IS NOT NULL
+      AND cr.dueDate < NOW()
+      AND cr.overdueNotifiedAt IS NULL
+  `);
+  return result[0] || [];
+}
+
+export async function stampContentRequestDeadlineReminder(
+  id: number,
+  field: "deadline24hReminderSentAt" | "deadline1hReminderSentAt" | "overdueNotifiedAt"
+) {
+  const allowed = ["deadline24hReminderSentAt", "deadline1hReminderSentAt", "overdueNotifiedAt"];
+  if (!allowed.includes(field)) {
+    throw new Error(`Invalid field: ${field}`);
+  }
+  const db = await getDb();
+  if (!db) return;
+  await db.execute(sql`UPDATE content_requests SET ${sql.raw(field)} = NOW() WHERE id = ${id}`);
+}
+
+export async function proposeContentRequestDeadlineExtension(id: number, newDueDate: Date) {
+  const db = await getDb();
+  if (!db) return;
+  await db.execute(sql`
+    UPDATE content_requests
+    SET dueDate = ${newDueDate},
+        status = 'in_progress',
+        deadline24hReminderSentAt = NULL,
+        deadline1hReminderSentAt = NULL,
+        overdueNotifiedAt = NULL,
+        updatedAt = NOW()
+    WHERE id = ${id}
+  `);
+}
+
+export async function cancelOverdueContentRequest(id: number) {
+  const db = await getDb();
+  if (!db) return;
+  // CAS: only cancel if still overdue — prevents a read-then-write race
+  // where two concurrent cancelOverdue calls both pass the router's status
+  // check. (The Stripe idempotency key already prevents double-refund, but
+  // this keeps the DB transition atomic too.)
+  await db.execute(sql`
+    UPDATE content_requests
+    SET status = 'cancelled', updatedAt = NOW()
+    WHERE id = ${id} AND status = 'overdue'
+  `);
 }
 
 // Coach Student Roster (S-DASH-1)

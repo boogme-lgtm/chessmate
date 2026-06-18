@@ -9,7 +9,12 @@
  */
 
 import { sql } from "drizzle-orm";
-import { getDb, cancelLesson, getCompletedLessonsReadyForPayout } from "./db";
+import {
+  getDb, cancelLesson, getCompletedLessonsReadyForPayout,
+  getContentRequestsDueForReminder24h, getContentRequestsDueForReminder1h,
+  getOverdueContentRequests, stampContentRequestDeadlineReminder,
+  updateContentRequestStatus, createNotification,
+} from "./db";
 import { releaseLessonPayoutToCoach } from "./payoutService";
 import { releaseAllEligibleContentRequestPayouts } from "./contentRequestPayoutService";
 import {
@@ -18,6 +23,8 @@ import {
   getCoachLessonReminderEmail,
   getStudentCancellationEmail,
   getCoachCancellationEmail,
+  getCoachDeadlineReminderEmail,
+  getStudentContentOverdueEmail,
 } from "./emailService";
 
 interface LessonReminderRow {
@@ -852,6 +859,133 @@ export async function recoverStuckPendingStates(): Promise<void> {
 }
 
 /**
+ * S-CONTENT-3: Send content request deadline reminders and handle overdue requests.
+ *
+ * Three scan phases:
+ * 1. 24h reminder — warns coach their content request deadline is approaching
+ * 2. 1h reminder — same pattern, tighter window
+ * 3. Overdue scan — marks overdue, notifies student with extend/cancel options
+ */
+export async function sendContentRequestDeadlineReminders(): Promise<void> {
+  // ── Phase 1: 24h reminders ──────────────────────────────────────────────
+  try {
+    const rows24h = await getContentRequestsDueForReminder24h();
+    if (rows24h.length > 0) {
+      console.log(`[Content Deadline] Found ${rows24h.length} request(s) due for 24h reminder.`);
+    }
+    for (const req of rows24h) {
+      try {
+        const html = getCoachDeadlineReminderEmail({
+          coachName: req.coachName || "Coach",
+          studentName: req.studentName || "Student",
+          requestTitle: req.title,
+          dueDate: new Date(req.dueDate),
+          hoursRemaining: 24,
+        });
+        await sendEmail({
+          to: req.coachEmail,
+          subject: `Content Request Due in 24h — "${req.title}"`,
+          html,
+        });
+        await stampContentRequestDeadlineReminder(req.id, "deadline24hReminderSentAt");
+        await createNotification({
+          userId: req.coachId,
+          type: "content_request_deadline_24h",
+          title: "Content request due in 24 hours",
+          body: `"${req.title}" for ${req.studentName || "Student"} is due in 24 hours`,
+          relatedUserId: req.studentId,
+          relatedContentRequestId: req.id,
+          recipientRole: "coach",
+        });
+        console.log(`[Content Deadline] 24h reminder sent for request ${req.id}`);
+      } catch (err) {
+        console.error(`[Content Deadline] 24h reminder failed for request ${req.id}:`, err);
+      }
+    }
+  } catch (err) {
+    console.error("[Content Deadline] 24h scan failed:", err);
+  }
+
+  // ── Phase 2: 1h reminders ───────────────────────────────────────────────
+  try {
+    const rows1h = await getContentRequestsDueForReminder1h();
+    if (rows1h.length > 0) {
+      console.log(`[Content Deadline] Found ${rows1h.length} request(s) due for 1h reminder.`);
+    }
+    for (const req of rows1h) {
+      try {
+        const html = getCoachDeadlineReminderEmail({
+          coachName: req.coachName || "Coach",
+          studentName: req.studentName || "Student",
+          requestTitle: req.title,
+          dueDate: new Date(req.dueDate),
+          hoursRemaining: 1,
+        });
+        await sendEmail({
+          to: req.coachEmail,
+          subject: `Content Request Due in 1h — "${req.title}"`,
+          html,
+        });
+        await stampContentRequestDeadlineReminder(req.id, "deadline1hReminderSentAt");
+        await createNotification({
+          userId: req.coachId,
+          type: "content_request_deadline_1h",
+          title: "Content request due in 1 hour",
+          body: `"${req.title}" for ${req.studentName || "Student"} is due in 1 hour`,
+          relatedUserId: req.studentId,
+          relatedContentRequestId: req.id,
+          recipientRole: "coach",
+        });
+        console.log(`[Content Deadline] 1h reminder sent for request ${req.id}`);
+      } catch (err) {
+        console.error(`[Content Deadline] 1h reminder failed for request ${req.id}:`, err);
+      }
+    }
+  } catch (err) {
+    console.error("[Content Deadline] 1h scan failed:", err);
+  }
+
+  // ── Phase 3: Overdue scan ───────────────────────────────────────────────
+  try {
+    const overdueRows = await getOverdueContentRequests();
+    if (overdueRows.length > 0) {
+      console.log(`[Content Deadline] Found ${overdueRows.length} overdue request(s).`);
+    }
+    for (const req of overdueRows) {
+      try {
+        await updateContentRequestStatus(req.id, "overdue");
+        const html = getStudentContentOverdueEmail({
+          studentName: req.studentName || "Student",
+          coachName: req.coachName || "Coach",
+          requestTitle: req.title,
+          dueDate: new Date(req.dueDate),
+        });
+        await sendEmail({
+          to: req.studentEmail,
+          subject: `Your Content Request is Overdue — "${req.title}"`,
+          html,
+        });
+        await stampContentRequestDeadlineReminder(req.id, "overdueNotifiedAt");
+        await createNotification({
+          userId: req.studentId,
+          type: "content_request_overdue",
+          title: "Content request is overdue",
+          body: `"${req.title}" from ${req.coachName || "Coach"} was due and has not been delivered`,
+          relatedUserId: req.coachId,
+          relatedContentRequestId: req.id,
+          recipientRole: "student",
+        });
+        console.log(`[Content Deadline] Request ${req.id} marked overdue, student notified`);
+      } catch (err) {
+        console.error(`[Content Deadline] Overdue processing failed for request ${req.id}:`, err);
+      }
+    }
+  } catch (err) {
+    console.error("[Content Deadline] Overdue scan failed:", err);
+  }
+}
+
+/**
  * Start the hourly reminder scheduler.
  * Call once at server startup.
  */
@@ -938,6 +1072,9 @@ export function startReminderScheduler(): void {
     );
     await autoCompletePastLessons().catch((err) =>
       console.error("[Reminder Scheduler] Auto-complete run failed:", err)
+    );
+    await sendContentRequestDeadlineReminders().catch((err) =>
+      console.error("[Reminder Scheduler] Content request deadline reminders failed:", err)
     );
   };
 
