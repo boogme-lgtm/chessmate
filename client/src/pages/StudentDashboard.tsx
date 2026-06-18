@@ -1419,6 +1419,28 @@ function ContentRequestsModule({
     onError: (err: any) => toast.error(err.message),
   });
 
+  const proposeDeadlineExtension = trpc.contentRequest.proposeDeadlineExtension.useMutation({
+    onSuccess: () => {
+      toast.success("New deadline proposed — the request is back in progress.");
+      utils.contentRequest.listForStudent.invalidate();
+      setExtendDialogReqId(null);
+    },
+    onError: (err: any) => toast.error(err.message),
+  });
+
+  const cancelOverdue = trpc.contentRequest.cancelOverdue.useMutation({
+    onSuccess: () => {
+      toast.success("Request cancelled and refund initiated.");
+      utils.contentRequest.listForStudent.invalidate();
+      setCancelDialogReqId(null);
+    },
+    onError: (err: any) => toast.error(err.message),
+  });
+
+  const [extendDialogReqId, setExtendDialogReqId] = useState<number | null>(null);
+  const [cancelDialogReqId, setCancelDialogReqId] = useState<number | null>(null);
+  const [newDeadlineInput, setNewDeadlineInput] = useState("");
+
   const handleAcceptAndPay = async (requestId: number) => {
     try {
       await acceptQuote.mutateAsync({ requestId });
@@ -1461,6 +1483,12 @@ function ContentRequestsModule({
         return (
           <Badge className="bg-emerald-600/20 text-emerald-400 border-emerald-600/40 rounded-sm text-xs">
             Delivered
+          </Badge>
+        );
+      case "overdue":
+        return (
+          <Badge className="bg-red-600/20 text-red-400 border-red-600/40 rounded-sm text-xs">
+            Overdue
           </Badge>
         );
       case "cancelled":
@@ -1581,6 +1609,28 @@ function ContentRequestsModule({
                     {req.status === "delivered" && (
                       <span className="text-xs text-emerald-400">Delivered — contact support within 48h for issues</span>
                     )}
+                    {req.status === "overdue" && (
+                      <>
+                        <Button
+                          size="sm"
+                          className="bg-amber-600 hover:bg-amber-700 text-white rounded-sm text-xs h-7"
+                          onClick={() => {
+                            setNewDeadlineInput("");
+                            setExtendDialogReqId(req.id);
+                          }}
+                        >
+                          PROPOSE NEW DEADLINE
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-red-400 hover:text-red-300 hover:bg-red-600/10 rounded-sm text-xs h-7"
+                          onClick={() => setCancelDialogReqId(req.id)}
+                        >
+                          CANCEL & REFUND
+                        </Button>
+                      </>
+                    )}
                   </div>
                 </div>
                 {req.status === "quoted" && req.coachNote && (
@@ -1597,6 +1647,66 @@ function ContentRequestsModule({
             ))}
           </div>
         )}
+        {/* S-CONTENT-3: Propose New Deadline Dialog */}
+        <Dialog open={extendDialogReqId !== null} onOpenChange={(open) => !open && setExtendDialogReqId(null)}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Propose New Deadline</DialogTitle>
+            </DialogHeader>
+            <div className="py-4">
+              <label className="text-sm text-bone-muted block mb-2">New due date</label>
+              <input
+                type="date"
+                className="w-full px-3 py-2 bg-ink border border-border/30 rounded-sm text-bone text-sm"
+                value={newDeadlineInput}
+                onChange={(e) => setNewDeadlineInput(e.target.value)}
+              />
+            </div>
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => setExtendDialogReqId(null)}>Cancel</Button>
+              <Button
+                className="bg-ember hover:bg-ember/90 text-white"
+                disabled={!newDeadlineInput || proposeDeadlineExtension.isPending}
+                onClick={() => {
+                  if (extendDialogReqId && newDeadlineInput) {
+                    proposeDeadlineExtension.mutate({
+                      requestId: extendDialogReqId,
+                      newDueDate: new Date(newDeadlineInput + "T23:59:59Z").toISOString(),
+                    });
+                  }
+                }}
+              >
+                {proposeDeadlineExtension.isPending ? "Submitting..." : "Propose Deadline"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* S-CONTENT-3: Cancel & Refund Confirmation Dialog */}
+        <Dialog open={cancelDialogReqId !== null} onOpenChange={(open) => !open && setCancelDialogReqId(null)}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Cancel & Request Refund</DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-bone-muted py-4">
+              Are you sure you want to cancel this overdue content request? A full refund will be initiated.
+            </p>
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => setCancelDialogReqId(null)}>Keep Request</Button>
+              <Button
+                className="bg-red-600 hover:bg-red-700 text-white"
+                disabled={cancelOverdue.isPending}
+                onClick={() => {
+                  if (cancelDialogReqId) {
+                    cancelOverdue.mutate({ requestId: cancelDialogReqId });
+                  }
+                }}
+              >
+                {cancelOverdue.isPending ? "Cancelling..." : "Cancel & Refund"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </CardContent>
     </Card>
   );

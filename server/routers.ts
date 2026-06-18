@@ -2886,8 +2886,8 @@ export const appRouter = router({
         const request = await db.getContentRequestById(input.requestId);
         if (!request) throw new TRPCError({ code: "NOT_FOUND", message: "Content request not found" });
         if (request.coachId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN", message: "Not your content request" });
-        if (request.status !== "in_progress") {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "Can only mark in-progress requests as delivered" });
+        if (request.status !== "in_progress" && request.status !== "overdue") {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Can only mark in-progress or overdue requests as delivered" });
         }
         await db.deliverContentRequest(input.requestId);
         try {
@@ -2903,6 +2903,109 @@ export const appRouter = router({
           });
         } catch (err) {
           console.error(`[contentRequest.markDelivered] notify failed for request ${input.requestId}:`, err);
+        }
+        return { success: true };
+      }),
+
+    // S-CONTENT-3: Student proposes a new deadline for an overdue request (unilateral reset)
+    proposeDeadlineExtension: protectedProcedure
+      .input(z.object({
+        requestId: z.number(),
+        newDueDate: z.string().datetime(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const request = await db.getContentRequestById(input.requestId);
+        if (!request) throw new TRPCError({ code: "NOT_FOUND", message: "Content request not found" });
+        if (request.studentId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN", message: "Not your content request" });
+        if (request.status !== "overdue") {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Can only extend an overdue request" });
+        }
+        await db.proposeContentRequestDeadlineExtension(input.requestId, new Date(input.newDueDate));
+        try {
+          const student = await db.getUserById(ctx.user.id);
+          await db.createNotification({
+            userId: request.coachId,
+            type: "content_request_deadline_extended",
+            title: "Deadline extended",
+            body: `${student?.name || "Your student"} set a new deadline for "${request.title}"`,
+            relatedUserId: ctx.user.id,
+            relatedContentRequestId: input.requestId,
+            recipientRole: "coach",
+          });
+        } catch (err) {
+          console.error(`[contentRequest.proposeDeadlineExtension] notify failed for request ${input.requestId}:`, err);
+        }
+        return { success: true };
+      }),
+
+    // S-CONTENT-3: Student cancels an overdue request and gets a refund
+    cancelOverdue: protectedProcedure
+      .input(z.object({ requestId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const request = await db.getContentRequestById(input.requestId);
+        if (!request) throw new TRPCError({ code: "NOT_FOUND", message: "Content request not found" });
+        if (request.studentId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN", message: "Not your content request" });
+        if (request.status !== "overdue") {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Can only cancel an overdue request" });
+        }
+        // MONEY PATH: issue a full Stripe refund if payment was collected
+        if (request.stripePaymentIntentId) {
+          try {
+            await stripeService.createRefund(
+              request.stripePaymentIntentId,
+              undefined,
+              "requested_by_customer",
+              `content_request_cancel_overdue_${input.requestId}`
+            );
+          } catch (err) {
+            console.error(`[contentRequest.cancelOverdue] Stripe refund failed for request ${input.requestId}:`, err);
+          }
+        }
+        await db.cancelOverdueContentRequest(input.requestId);
+        try {
+          const student = await db.getUserById(ctx.user.id);
+          await db.createNotification({
+            userId: request.coachId,
+            type: "content_request_cancelled_overdue",
+            title: "Overdue request cancelled",
+            body: `${student?.name || "Your student"} cancelled the overdue request "${request.title}"`,
+            relatedUserId: ctx.user.id,
+            relatedContentRequestId: input.requestId,
+            recipientRole: "coach",
+          });
+        } catch (err) {
+          console.error(`[contentRequest.cancelOverdue] notify failed for request ${input.requestId}:`, err);
+        }
+        return { success: true };
+      }),
+
+    // S-CONTENT-3: Coach accepts deadline extension (pass-through — student already reset status)
+    acceptDeadlineExtension: coachProcedure
+      .input(z.object({ requestId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const request = await db.getContentRequestById(input.requestId);
+        if (!request) throw new TRPCError({ code: "NOT_FOUND", message: "Content request not found" });
+        if (request.coachId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN", message: "Not your content request" });
+        // Accept from overdue state — student's proposeDeadlineExtension already sets in_progress,
+        // but if the coach UI shows this button while still overdue, allow it.
+        if (request.status !== "overdue" && request.status !== "in_progress") {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Request is not in overdue or in_progress state" });
+        }
+        // Ensure status is in_progress and reminder stamps are cleared
+        await db.proposeContentRequestDeadlineExtension(input.requestId, request.dueDate || new Date());
+        try {
+          const coach = await db.getUserById(ctx.user.id);
+          await db.createNotification({
+            userId: request.studentId,
+            type: "content_request_deadline_extended",
+            title: "Coach accepted new deadline",
+            body: `${coach?.name || "Your coach"} accepted the new deadline for "${request.title}"`,
+            relatedUserId: ctx.user.id,
+            relatedContentRequestId: input.requestId,
+            recipientRole: "student",
+          });
+        } catch (err) {
+          console.error(`[contentRequest.acceptDeadlineExtension] notify failed for request ${input.requestId}:`, err);
         }
         return { success: true };
       }),

@@ -1005,6 +1005,14 @@ function ContentRequestsModule({
     onError: (err) => toast.error(err.message),
   });
 
+  const acceptDeadlineExtension = trpc.contentRequest.acceptDeadlineExtension.useMutation({
+    onSuccess: () => {
+      toast.success("Deadline accepted — back in progress.");
+      utils.contentRequest.listForCoach.invalidate();
+    },
+    onError: (err: any) => toast.error(err.message),
+  });
+
   const openQuoteForm = (req: any) => {
     setDeclineId(null);
     setExpandedId(req.id);
@@ -1068,6 +1076,12 @@ function ContentRequestsModule({
         return (
           <Badge className="bg-emerald-600/20 text-emerald-400 border-emerald-600/40 rounded-sm text-xs">
             Delivered
+          </Badge>
+        );
+      case "overdue":
+        return (
+          <Badge className="bg-red-600/20 text-red-400 border-red-600/40 rounded-sm text-xs">
+            Overdue
           </Badge>
         );
       case "cancelled":
@@ -1205,7 +1219,7 @@ function ContentRequestsModule({
                         START WORK
                       </Button>
                     )}
-                    {req.status === "in_progress" && (
+                    {(req.status === "in_progress" || req.status === "overdue") && (
                       <Button
                         size="sm"
                         className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-sm text-xs h-7"
@@ -1213,6 +1227,16 @@ function ContentRequestsModule({
                         onClick={() => markDelivered.mutate({ requestId: req.id })}
                       >
                         MARK DELIVERED
+                      </Button>
+                    )}
+                    {req.status === "overdue" && (
+                      <Button
+                        size="sm"
+                        className="bg-amber-600 hover:bg-amber-700 text-white rounded-sm text-xs h-7"
+                        disabled={acceptDeadlineExtension.isPending}
+                        onClick={() => acceptDeadlineExtension.mutate({ requestId: req.id })}
+                      >
+                        ACCEPT NEW DEADLINE
                       </Button>
                     )}
                     {req.status === "delivered" && (
