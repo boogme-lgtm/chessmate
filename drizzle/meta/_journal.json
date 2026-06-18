@@ -183,6 +183,13 @@
       "when": 1781711495101,
       "tag": "0025_luxuriant_layla_miller",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "5",
+      "when": 1781814061033,
+      "tag": "0026_famous_blindfold",
+      "breakpoints": true
     }
   ]
 }
