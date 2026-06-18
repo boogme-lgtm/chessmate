@@ -30,6 +30,10 @@ import {
   ArrowLeft,
   X,
   BookOpen,
+  FileText,
+  FileBox,
+  Package,
+  Download,
 } from "lucide-react";
 import {
   format,
@@ -2034,7 +2038,33 @@ function MessagePreviewRow({
 // MODULE 4: Content Library (stub)
 // ─────────────────────────────────────────────────────────────────────────────
 
+const LIBRARY_KIND_ICONS: Record<string, typeof Video> = {
+  video: Video,
+  pdf: FileText,
+  pgn: FileBox,
+  course: Package,
+  bundle: Package,
+};
+
 function ContentLibraryModule() {
+  const utils = trpc.useUtils();
+  const { data: items, isLoading } = trpc.content.listOwned.useQuery();
+  const [downloadingId, setDownloadingId] = useState<number | null>(null);
+
+  const handleDownload = async (id: number) => {
+    setDownloadingId(id);
+    try {
+      const { url } = await utils.client.content.getDownloadUrl.query({ id });
+      window.open(url, "_blank");
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to get download link");
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
+  const library = (items as any[]) || [];
+
   return (
     <Card className="bg-ink-raised border-border/20 rounded-sm">
       <CardContent className="p-6">
@@ -2048,15 +2078,43 @@ function ContentLibraryModule() {
           </button>
         </div>
 
-        {/* TODO: wire to trpc.content.listOwned when content purchases ship */}
-        <div className="text-center py-12">
-          <BookOpen className="h-10 w-10 mx-auto mb-3 text-bone-muted/30" />
-          <p className="text-sm font-medium text-bone mb-1">Your library is empty</p>
-          <p className="text-xs text-bone-muted max-w-xs mx-auto">
-            Purchase content from your coach's storefront to build your personal
-            chess library.
-          </p>
-        </div>
+        {isLoading ? (
+          <div className="text-center py-12 text-sm text-bone-muted">Loading…</div>
+        ) : library.length === 0 ? (
+          <div className="text-center py-12">
+            <BookOpen className="h-10 w-10 mx-auto mb-3 text-bone-muted/30" />
+            <p className="text-sm font-medium text-bone mb-1">Your library is empty</p>
+            <p className="text-xs text-bone-muted max-w-xs mx-auto">
+              Purchase content from your coach's storefront to build your personal
+              chess library.
+            </p>
+          </div>
+        ) : (
+          <div className="divide-y divide-border/20 border border-border/20 rounded-sm">
+            {library.map((item) => {
+              const Icon = LIBRARY_KIND_ICONS[item.kind] || FileText;
+              return (
+                <div key={item.id} className="flex items-center gap-3 px-4 py-3">
+                  <Icon className="w-5 h-5 text-ember shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-bone truncate">{item.title}</p>
+                    <p className="text-xs text-bone-muted">
+                      from {item.coachName || "your coach"} · {item.kind}
+                    </p>
+                  </div>
+                  <button
+                    className="text-ember hover:text-ember/80 p-1 disabled:opacity-50"
+                    disabled={downloadingId === item.id}
+                    onClick={() => handleDownload(item.id)}
+                    title="Download"
+                  >
+                    <Download className="w-4 h-4" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </CardContent>
     </Card>
   );

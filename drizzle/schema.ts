@@ -757,6 +757,12 @@ export const contentItems = mysqlTable("content_items", {
   published: boolean("published").default(false).notNull(),
   publishedAt: timestamp("publishedAt"),
 
+  // S-STOREFRONT-1: audience / access control
+  accessType: mysqlEnum("accessType", ["public", "student_only", "request_fulfillment"])
+    .default("public")
+    .notNull(),
+  targetStudentId: int("targetStudentId"), // nullable — only set when accessType = "student_only"
+
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -780,7 +786,14 @@ export const contentPurchases = mysqlTable("content_purchases", {
   stripePaymentIntentId: varchar("stripePaymentIntentId", { length: 64 }).unique(),
 
   unlockedAt: timestamp("unlockedAt").defaultNow().notNull(),
-});
+}, (t) => ({
+  // S-STOREFRONT-1 / C1: one unlock per (item, user). Race-safe guard against
+  // concurrent storefront checkouts producing two distinct PaymentIntents for
+  // the same buyer+item (the checkout-time userHasContentAccess guard is TOCTOU).
+  // The second distinct PI hits this constraint -> recorded as a duplicate ->
+  // no double payout, and the redundant charge is refunded in the webhook.
+  uniqContentUser: unique("uniq_content_purchases_item_user").on(t.contentItemId, t.userId),
+}));
 
 export type ContentPurchase = typeof contentPurchases.$inferSelect;
 export type InsertContentPurchase = typeof contentPurchases.$inferInsert;

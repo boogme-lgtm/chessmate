@@ -7,11 +7,12 @@
 
 import { Request, Response } from 'express';
 import Stripe from 'stripe';
-import { constructWebhookEvent } from './stripe';
+import { constructWebhookEvent, createRefund } from './stripe';
 import * as db from './db';
 import { transferToCoach, getChargeIdForPaymentIntent } from './stripeConnect';
 import { sendEmail, getStudentBookingConfirmationEmail, getCoachBookingNotificationEmail } from './emailService';
 import { ENV } from './_core/env';
+import { getTierFeePercent, DEFAULT_PRICING_TIER } from '@shared/pricing';
 
 // Use the shared Stripe instance from stripe.ts — do not create a duplicate
 
@@ -96,6 +97,12 @@ async function handleCheckoutCompleted(event: Stripe.Event) {
   // S-CONTENT-2: content request checkout
   if (session.metadata?.type === 'content_request') {
     await handleContentRequestCheckoutCompleted(session);
+    return;
+  }
+
+  // S-STOREFRONT-1: storefront content purchase
+  if (session.metadata?.type === 'content_item') {
+    await handleContentItemCheckoutCompleted(session);
     return;
   }
 
@@ -449,5 +456,129 @@ async function handleContentRequestCheckoutCompleted(session: Stripe.Checkout.Se
     });
   } catch (err) {
     console.error(`[Webhook] content_request ${requestId}: notify coach failed`, err);
+  }
+}
+
+/**
+ * S-STOREFRONT-1: Handle checkout.session.completed for a storefront content
+ * purchase. Records the purchase (idempotent on the UNIQUE PaymentIntent),
+ * then transfers the coach's share via a charge-sourced transfer (Separate
+ * Charges and Transfers — mirrors the tip flow). Notifies the student.
+ */
+async function handleContentItemCheckoutCompleted(session: Stripe.Checkout.Session) {
+  const rawContentItemId = session.metadata?.contentItemId;
+  const rawBuyerId = session.metadata?.buyerId;
+  if (!rawContentItemId || !rawBuyerId) {
+    console.error('[Webhook] content_item checkout: missing contentItemId/buyerId in metadata');
+    return;
+  }
+  const contentItemId = parseInt(rawContentItemId, 10);
+  const buyerId = parseInt(rawBuyerId, 10);
+  if (isNaN(contentItemId) || contentItemId <= 0 || isNaN(buyerId) || buyerId <= 0) {
+    console.error('[Webhook] content_item checkout: invalid metadata ids');
+    return;
+  }
+
+  if (session.payment_status !== 'paid') {
+    console.log(`[Webhook] content_item ${contentItemId}: payment not completed (${session.payment_status})`);
+    return;
+  }
+
+  const paymentIntentId = session.payment_intent
+    ? (typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent.id)
+    : null;
+  if (!paymentIntentId) {
+    console.error(`[Webhook] content_item ${contentItemId}: no payment_intent in session`);
+    return;
+  }
+
+  const amountPaidCents = session.amount_total ?? 0;
+
+  // Record the purchase. Race-safe & idempotent:
+  //  - "duplicate_same_pi": a webhook retry — no-op, no payout, no refund.
+  //  - "duplicate_other_pi": the buyer already owns this item via a different
+  //    PaymentIntent (concurrent double-checkout) — refund THIS charge, no payout.
+  //  - "inserted": a genuine new purchase — proceed to pay the coach.
+  let result: db.RecordContentPurchaseResult;
+  try {
+    result = await db.recordContentPurchase({
+      contentItemId,
+      userId: buyerId,
+      amountPaidCents,
+      stripePaymentIntentId: paymentIntentId,
+    });
+  } catch (err) {
+    console.error(`[Webhook] content_item ${contentItemId}: failed to record purchase`, err);
+    return;
+  }
+
+  if (result === "duplicate_same_pi") {
+    console.log(`[Webhook] content_item ${contentItemId}: purchase already recorded for PI ${paymentIntentId} — no-op`);
+    return;
+  }
+
+  if (result === "duplicate_other_pi") {
+    // Buyer was charged a second time for content they already own. Do NOT pay
+    // the coach again; refund the redundant charge to the buyer.
+    console.warn(`[Webhook] content_item ${contentItemId}: buyer ${buyerId} double-purchased (PI ${paymentIntentId}) — refunding redundant charge`);
+    try {
+      await createRefund(paymentIntentId, undefined, "duplicate", `content_item_dup_refund_${paymentIntentId}`);
+      console.log(`[Webhook] content_item ${contentItemId}: refunded duplicate charge ${paymentIntentId}`);
+    } catch (refundErr) {
+      console.error(`[Webhook] content_item ${contentItemId}: failed to refund duplicate charge ${paymentIntentId}`, refundErr);
+    }
+    return;
+  }
+  console.log(`[Webhook] content_item ${contentItemId} purchased by buyer ${buyerId} (PI: ${paymentIntentId})`);
+
+  const item = await db.getContentItemById(contentItemId);
+  if (!item) {
+    console.error(`[Webhook] content_item ${contentItemId}: item not found after purchase`);
+    return;
+  }
+
+  // Transfer the coach's share (price minus platform fee) via a charge-sourced transfer.
+  const coach = await db.getUserById(item.coachId);
+  if (!coach?.stripeConnectAccountId) {
+    console.error(`[Webhook] content_item ${contentItemId}: coach ${item.coachId} has no Connect account — payout skipped`);
+  } else {
+    const coachProfile = await db.getCoachProfileByUserId(item.coachId);
+    const feePercent = getTierFeePercent(coachProfile?.pricingTier ?? DEFAULT_PRICING_TIER);
+    const platformFeeCents = Math.round((amountPaidCents * feePercent) / 100);
+    const coachPayoutCents = amountPaidCents - platformFeeCents;
+
+    if (coachPayoutCents > 0) {
+      const chargeId = await getChargeIdForPaymentIntent(paymentIntentId);
+      const result = await transferToCoach({
+        accountId: coach.stripeConnectAccountId,
+        amountCents: coachPayoutCents,
+        description: `Content sale: ${item.title}`,
+        metadata: {
+          contentItemId: contentItemId.toString(),
+          buyerId: buyerId.toString(),
+        },
+        idempotencyKey: `content_item_payout_${paymentIntentId}`,
+        sourceTransaction: chargeId,
+      });
+      if (result.success) {
+        console.log(`[Webhook] content_item ${contentItemId}: transferred ${coachPayoutCents} to coach ${item.coachId}`);
+      } else {
+        console.error(`[Webhook] content_item ${contentItemId}: transfer failed: ${result.error}`);
+      }
+    }
+  }
+
+  // Notify the student.
+  try {
+    await db.createNotification({
+      userId: buyerId,
+      type: "content_delivered",
+      title: "Your content is ready to download",
+      body: `"${item.title}" is now in your library.`,
+      relatedUserId: item.coachId,
+      recipientRole: "student",
+    });
+  } catch (err) {
+    console.error(`[Webhook] content_item ${contentItemId}: notify student failed`, err);
   }
 }
