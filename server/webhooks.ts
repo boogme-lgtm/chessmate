@@ -10,7 +10,7 @@ import Stripe from 'stripe';
 import { constructWebhookEvent, createRefund } from './stripe';
 import * as db from './db';
 import { transferToCoach, getChargeIdForPaymentIntent } from './stripeConnect';
-import { sendEmail, getStudentBookingConfirmationEmail, getCoachBookingNotificationEmail } from './emailService';
+import { sendEmail, getStudentBookingConfirmationEmail, getCoachBookingNotificationEmail, getStudentContentPurchaseReceiptEmail } from './emailService';
 import { ENV } from './_core/env';
 import { getTierFeePercent, DEFAULT_PRICING_TIER } from '@shared/pricing';
 
@@ -568,7 +568,10 @@ async function handleContentItemCheckoutCompleted(session: Stripe.Checkout.Sessi
     }
   }
 
-  // Notify the student.
+  // Fetch buyer details once for both notification and email.
+  const buyer = await db.getUserById(buyerId);
+
+  // Notify the student (in-app).
   try {
     await db.createNotification({
       userId: buyerId,
@@ -580,5 +583,42 @@ async function handleContentItemCheckoutCompleted(session: Stripe.Checkout.Sessi
     });
   } catch (err) {
     console.error(`[Webhook] content_item ${contentItemId}: notify student failed`, err);
+  }
+
+  // Notify the coach (in-app).
+  try {
+    await db.createNotification({
+      userId: item.coachId,
+      type: "new_content_sale",
+      title: "New content sale",
+      body: `${buyer?.name || "A student"} purchased "${item.title}" for $${(amountPaidCents / 100).toFixed(2)}`,
+      relatedUserId: buyerId,
+      recipientRole: "coach",
+    });
+  } catch (err) {
+    console.error(`[Webhook] content_item ${contentItemId}: notify coach failed`, err);
+  }
+
+  // Send receipt email to the student.
+  try {
+    if (buyer?.email) {
+      await sendEmail({
+        to: buyer.email,
+        subject: `Receipt: "${item.title}" — BooGMe`,
+        html: getStudentContentPurchaseReceiptEmail({
+          studentName: buyer.name || "Student",
+          itemTitle: item.title,
+          itemKind: item.kind || "content",
+          coachName: coach?.name || "Your coach",
+          amountPaidCents,
+          purchaseDate: new Date().toLocaleDateString("en-US", {
+            year: "numeric", month: "long", day: "numeric",
+          }),
+        }),
+      });
+      console.log(`[Webhook] content_item ${contentItemId}: receipt email sent to ${buyer.email}`);
+    }
+  } catch (emailErr) {
+    console.error(`[Webhook] content_item ${contentItemId}: receipt email failed`, emailErr);
   }
 }

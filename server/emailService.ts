@@ -1,6 +1,10 @@
 import { Resend } from 'resend';
 import { ENV } from './_core/env';
 
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
 // Initialize Resend client
 const resend = new Resend(ENV.resendApiKey);
 
@@ -1984,4 +1988,40 @@ export function getNewSubscriberEmail(params: {
     ${tierLine}
   </div>`;
   return disputeEmailShell('New Subscriber', body, `${frontendUrl}/dashboard`, 'View Your Channel');
+}
+
+export function getStudentContentPurchaseReceiptEmail(params: {
+  studentName: string;
+  itemTitle: string;
+  itemKind: string;
+  coachName: string;
+  amountPaidCents: number;
+  purchaseDate: string;
+}): string {
+  const { amountPaidCents, purchaseDate } = params;
+  const sName = escapeHtml(params.studentName);
+  const title = escapeHtml(params.itemTitle);
+  const kind = escapeHtml(params.itemKind);
+  const cName = escapeHtml(params.coachName);
+  const frontendUrl = process.env.VITE_FRONTEND_URL || 'http://localhost:3000';
+  const amount = `$${(amountPaidCents / 100).toFixed(2)}`;
+  const body = `
+  <p style="margin:0 0 20px;font-size:16px;line-height:1.6;color:#e0e0e0;">Hi ${sName},</p>
+  <p style="margin:0 0 20px;font-size:16px;line-height:1.6;color:#e0e0e0;">
+    Your purchase of <strong>&ldquo;${title}&rdquo;</strong> from <strong>${cName}</strong> was successful.
+    The content is now available in your Content Library.
+  </p>
+  <div style="background-color:#2a2a2a;padding:25px;margin:30px 0;border-radius:8px;border-left:4px solid #8b4513;">
+    <table width="100%" cellpadding="8" cellspacing="0">
+      ${detailRow("Item", title)}
+      ${detailRow("Type", kind)}
+      ${detailRow("Coach", cName)}
+      ${detailRow("Amount Paid", amount)}
+      ${detailRow("Date", purchaseDate)}
+    </table>
+  </div>
+  <p style="margin:0 0 20px;font-size:16px;line-height:1.6;color:#e0e0e0;">
+    You can download your content at any time from your Content Library.
+  </p>`;
+  return disputeEmailShell('Purchase Receipt', body, `${frontendUrl}/dashboard`, 'Go to Content Library');
 }

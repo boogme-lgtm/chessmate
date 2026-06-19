@@ -783,10 +783,10 @@ function EarningsModule({
           </div>
           <div>
             <div className="text-[10px] font-bold tracking-[0.2em] uppercase text-bone-muted mb-1">
-              Content
+              Content <span className="normal-case tracking-normal font-normal">(gross)</span>
             </div>
-            <div className="text-lg font-bold font-mono tabular-nums text-bone-muted">
-              $0
+            <div className="text-lg font-bold font-mono tabular-nums text-bone">
+              {formatCurrency(earnings?.contentEarningsCents || 0)}
             </div>
           </div>
         </div>

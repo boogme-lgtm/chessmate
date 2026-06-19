@@ -1027,6 +1027,7 @@ export const notifications = mysqlTable("notifications", {
     "content_request_overdue",
     "content_request_deadline_extended",
     "content_request_cancelled_overdue",
+    "new_content_sale",
   ]).notNull(),
   title: varchar("title", { length: 255 }).notNull(),
   body: text("body").notNull(),
