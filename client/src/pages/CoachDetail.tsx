@@ -15,6 +15,7 @@ import {
   Calendar,
   ExternalLink,
   Video,
+  ShoppingBag,
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -104,8 +105,15 @@ export default function CoachDetail() {
     setBookingModalOpen(true);
   };
 
+  const utils = trpc.useUtils();
+  const [checkoutPending, setCheckoutPending] = useState<number | null>(null);
+
   const { data: coach, isLoading } = trpc.coach.getById.useQuery({ id: coachId });
   const { data: reviews } = trpc.coach.getReviews.useQuery({ coachId, limit: 5 });
+  const { data: storeItems, isLoading: storeLoading } = trpc.content.list.useQuery(
+    { coachId, limit: 20 },
+    { enabled: coachId > 0 }
+  );
 
   const lichessUsername = coach?.profile?.lichessUsername;
   const { data: lichessProfile } = trpc.lichess.getProfile.useQuery(
@@ -506,6 +514,42 @@ export default function CoachDetail() {
               </Card>
             )}
 
+            {/* Store */}
+            {(storeLoading || (storeItems && storeItems.length > 0)) && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <ShoppingBag className="h-5 w-5" />
+                    Store
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {storeLoading ? (
+                    <div className="space-y-3">
+                      {[...Array(2)].map((_, i) => (
+                        <Skeleton key={i} className="h-16 w-full" />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {(storeItems || []).map((item: any) => (
+                        <StoreItemRow
+                          key={item.id}
+                          item={item}
+                          user={user}
+                          coachId={coachId}
+                          checkoutPending={checkoutPending}
+                          setCheckoutPending={setCheckoutPending}
+                          utils={utils}
+                          setLocation={setLocation}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
             {/* Reviews */}
             {reviews && reviews.length > 0 && (
               <Card>
@@ -698,6 +742,88 @@ function CoachDetailSkeleton() {
           <Skeleton className="h-96" />
         </div>
       </div>
+    </div>
+  );
+}
+
+const KIND_LABELS: Record<string, string> = {
+  video: "Video",
+  pdf: "PDF",
+  pgn: "PGN Pack",
+  course: "Course",
+  bundle: "Bundle",
+};
+
+function StoreItemRow({
+  item,
+  user,
+  coachId,
+  checkoutPending,
+  setCheckoutPending,
+  utils,
+  setLocation,
+}: {
+  item: any;
+  user: any;
+  coachId: number;
+  checkoutPending: number | null;
+  setCheckoutPending: (id: number | null) => void;
+  utils: any;
+  setLocation: (path: string) => void;
+}) {
+  const handleBuy = async () => {
+    if (!user) {
+      setLocation(`/sign-in?redirect=/coach/${coachId}`);
+      return;
+    }
+    setCheckoutPending(item.id);
+    try {
+      const { url } = await utils.client.content.createStorefrontCheckout.mutate({
+        contentItemId: item.id,
+      });
+      if (url) window.location.href = url;
+      else toast.error("Checkout URL unavailable");
+    } catch (err: any) {
+      toast.error(err?.message || "Could not start checkout");
+    } finally {
+      setCheckoutPending(null);
+    }
+  };
+
+  const price =
+    item.priceCents > 0
+      ? `$${(item.priceCents / 100).toFixed(2)}`
+      : "Free";
+
+  return (
+    <div className="flex items-center gap-3 p-3 rounded-lg border border-border/40 hover:border-border/70 transition-colors">
+      {item.thumbnailUrl ? (
+        <img
+          src={item.thumbnailUrl}
+          alt={item.title}
+          className="h-12 w-12 rounded object-cover shrink-0"
+        />
+      ) : (
+        <div className="h-12 w-12 rounded bg-muted flex items-center justify-center shrink-0">
+          <BookOpen className="h-5 w-5 text-muted-foreground" />
+        </div>
+      )}
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium truncate">{item.title}</p>
+        <p className="text-xs text-muted-foreground">
+          {KIND_LABELS[item.kind] ?? item.kind}
+          {item.description ? ` · ${item.description.slice(0, 60)}${item.description.length > 60 ? "..." : ""}` : ""}
+        </p>
+      </div>
+      <Button
+        size="sm"
+        variant={item.priceCents > 0 ? "default" : "outline"}
+        disabled={checkoutPending === item.id}
+        onClick={handleBuy}
+        className="shrink-0"
+      >
+        {checkoutPending === item.id ? "..." : price}
+      </Button>
     </div>
   );
 }

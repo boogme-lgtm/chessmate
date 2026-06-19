@@ -284,7 +284,7 @@ export function StudentDashboardContent({ user }: { user: any }) {
       {/* ── MODULE 5: CONTENT LIBRARY ──────────────────────────────────────── */}
       <section id="content-library">
         <span className="eyebrow mb-3 block">05 — Library</span>
-        <ContentLibraryModule />
+        <ContentLibraryModule coaches={studentCoaches} />
       </section>
 
       {/* ── MODULE 6: PROGRESS ─────────────────────────────────────────────── */}
@@ -2046,7 +2046,8 @@ const LIBRARY_KIND_ICONS: Record<string, typeof Video> = {
   bundle: Package,
 };
 
-function ContentLibraryModule() {
+function ContentLibraryModule({ coaches }: { coaches: { id: number; name: string }[] }) {
+  const [, setLocation] = useLocation();
   const utils = trpc.useUtils();
   const { data: items, isLoading } = trpc.content.listOwned.useQuery();
   const [downloadingId, setDownloadingId] = useState<number | null>(null);
@@ -2063,6 +2064,7 @@ function ContentLibraryModule() {
     }
   };
 
+  const primaryCoachId = coaches[0]?.id ?? null;
   const library = (items as any[]) || [];
 
   return (
@@ -2072,7 +2074,13 @@ function ContentLibraryModule() {
           <h3 className="text-base font-semibold text-bone">Content Library</h3>
           <button
             className="text-xs text-ember hover:text-ember/80 transition-colors"
-            onClick={() => toast.info("Store coming soon")}
+            onClick={() => {
+              if (primaryCoachId) {
+                setLocation(`/coach/${primaryCoachId}`);
+              } else {
+                setLocation("/coaches");
+              }
+            }}
           >
             Browse Store
           </button>
