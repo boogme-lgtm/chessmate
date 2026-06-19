@@ -2219,6 +2219,7 @@ export const appRouter = router({
                  priceCents, currency, previewContent, publishedAt
           FROM content_items
           WHERE published = 1
+            AND accessType = 'public'
             ${coachFilter}
             ${kindFilter}
           ORDER BY publishedAt DESC
@@ -2240,7 +2241,7 @@ export const appRouter = router({
         const { sql } = await import("drizzle-orm");
 
         const itemResult: any = await database.execute(sql`
-          SELECT * FROM content_items WHERE id = ${input.id} AND published = 1 LIMIT 1
+          SELECT * FROM content_items WHERE id = ${input.id} AND published = 1 AND accessType = 'public' LIMIT 1
         `);
         const item = itemResult[0]?.[0];
         if (!item) {
