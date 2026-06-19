@@ -36,6 +36,7 @@ import {
   InsertContentRequest,
   type ContentRequest,
   contentItems,
+  contentPurchases,
   type InsertContentItem,
   type ContentItem,
   coachSubscriptionSettings,
@@ -937,10 +938,27 @@ export async function hasCoachReachedPayoutThreshold(coachId: number, thresholdC
 /**
  * Get coach earnings summary
  */
+export async function getCoachContentEarnings(coachId: number): Promise<number> {
+  const database = await getDb();
+  if (!database) return 0;
+  const result = await database
+    .select({
+      total: sql<number>`COALESCE(SUM(${contentPurchases.amountPaidCents}), 0)`,
+    })
+    .from(contentPurchases)
+    .innerJoin(contentItems, eq(contentItems.id, contentPurchases.contentItemId))
+    .where(eq(contentItems.coachId, coachId));
+  return result[0]?.total || 0;
+}
+
 export async function getCoachEarningsSummary(coachId: number) {
   const totalEarnings = await getCoachTotalEarnings(coachId);
   const pendingEarnings = await getCoachPendingEarnings(coachId);
-  return buildCoachEarningsSummary(totalEarnings, pendingEarnings);
+  const contentEarnings = await getCoachContentEarnings(coachId);
+  return {
+    ...buildCoachEarningsSummary(totalEarnings, pendingEarnings),
+    contentEarningsCents: contentEarnings,
+  };
 }
 
 // ============ WAITLIST OPERATIONS ============
