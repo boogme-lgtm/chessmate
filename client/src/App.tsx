@@ -8,7 +8,6 @@ import { useAuth } from "./_core/hooks/useAuth";
 import { useInactivityLogout } from "./hooks/useInactivityLogout";
 import { toast } from "sonner";
 import Home from "./pages/Home";
-import Coaches from "./pages/Coaches";
 import CoachBrowse from "./pages/CoachBrowse";
 import CoachDashboard from "./pages/CoachDashboard";
 import AdminApplications from "./pages/AdminApplications";
@@ -32,6 +31,8 @@ import CoachOnboarding from "./pages/CoachOnboarding";
 import Dashboard from "./pages/Dashboard";
 import Settings from "./pages/Settings";
 import ReferralLanding from "./pages/ReferralLanding";
+import StudentLanding from "./pages/StudentLanding";
+import CoachLanding from "./pages/CoachLanding";
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
@@ -40,8 +41,9 @@ function Router() {
       <Route path={"/"} component={Home} />
       {/* /assessment is an alias that opens the assessment modal on the homepage. */}
       <Route path={"/assessment"} component={() => { window.location.replace("/?openAssessment=1"); return null; }} />
+      <Route path={"/for-students"} component={StudentLanding} />
       <Route path={"/coaches"} component={CoachBrowse} />
-      <Route path={"/for-coaches"} component={Coaches} />
+      <Route path={"/for-coaches"} component={CoachLanding} />
       {/* /coach/apply is deprecated — the canonical coach flow is /coach/onboarding.
           CoachApplicationPage.tsx is intentionally left in place so the route can
           be restored quickly if needed. */}
