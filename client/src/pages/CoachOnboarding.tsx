@@ -1059,7 +1059,7 @@ export default function CoachOnboarding() {
                   <CreditCard className="w-5 h-5 text-primary" />
                   <div>
                     <p className="font-medium text-sm">Stripe Connect</p>
-                    <p className="text-xs text-muted-foreground">Required to receive lesson payments</p>
+                    <p className="text-xs text-muted-foreground">Needed to withdraw your earnings</p>
                   </div>
                   {profileData?.user?.stripeConnectOnboarded ? (
                     <Badge className="ml-auto bg-safe/20 text-safe border-safe/30">Connected</Badge>
@@ -1068,15 +1068,22 @@ export default function CoachOnboarding() {
                   )}
                 </div>
                 {!profileData?.user?.stripeConnectOnboarded && (
-                  <Button
-                    onClick={handleStripeConnect}
-                    disabled={saving}
-                    variant="outline"
-                    className="w-full border-primary/50 text-primary hover:bg-primary/15"
-                  >
-                    <CreditCard className="w-4 h-4 mr-2" />
-                    Set Up Stripe Payments
-                  </Button>
+                  <>
+                    <Button
+                      onClick={handleStripeConnect}
+                      disabled={saving}
+                      variant="outline"
+                      className="w-full border-primary/50 text-primary hover:bg-primary/15"
+                    >
+                      <CreditCard className="w-4 h-4 mr-2" />
+                      Set Up Stripe Payments
+                    </Button>
+                    <p className="text-xs text-muted-foreground">
+                      You can go live now and start getting booked — just finish
+                      this before withdrawing your earnings. We'll remind you on
+                      your dashboard.
+                    </p>
+                  </>
                 )}
               </div>
 
