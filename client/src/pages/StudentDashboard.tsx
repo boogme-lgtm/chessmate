@@ -152,6 +152,12 @@ export function StudentDashboardContent({ user }: { user: any }) {
     { enabled: !!user },
   );
 
+  // ── Owned content (for the new-student gate) — dedup'd with the Library
+  // module's identical query by React Query, so no extra network request. ──────
+  const { data: ownedContent } = trpc.content.listOwned.useQuery(undefined, {
+    enabled: !!user,
+  });
+
   if (isLoading) {
     return <DashboardSkeleton />;
   }
@@ -219,8 +225,65 @@ export function StudentDashboardContent({ user }: { user: any }) {
   // ── Progress data — synthetic sparkline from student profile ──────────────
   const currentRating = (studentProfile as any)?.currentRating ?? null;
 
+  // Brand-new student: no lessons, no content requests, no subscriptions.
+  // Show one unified getting-started panel instead of fragmented empty cards.
+  // Gate on the secondary queries having resolved so the panel never flashes
+  // for a returning student while their data is still loading.
+  const isNewStudent =
+    contentRequests !== undefined &&
+    subscriptionCoaches !== undefined &&
+    ownedContent !== undefined &&
+    (lessons || []).length === 0 &&
+    contentRequests.length === 0 &&
+    subscriptionCoaches.length === 0 &&
+    (ownedContent as any[]).length === 0;
+
   return (
     <div className="space-y-8">
+      {/* ── GETTING STARTED (new students only) ───────────────────────────── */}
+      {isNewStudent && (
+        <section>
+          <Card className="bg-ink-raised border-ember/30 rounded-sm">
+            <CardContent className="p-6 sm:p-8">
+              <span className="eyebrow mb-3 block text-ember">Welcome to BooGMe</span>
+              <h2 className="text-xl font-semibold text-bone mb-2">
+                Let's find your coach
+              </h2>
+              <p className="text-sm text-bone-muted mb-6 max-w-lg">
+                You're all set up. Here's how to get started on your chess
+                journey:
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+                {[
+                  { n: "1", t: "Browse coaches", d: "Filter by rating, price, and specialty to find your match." },
+                  { n: "2", t: "Book a lesson", d: "Pick a time and pay securely — your payment is held in escrow until the lesson's done." },
+                  { n: "3", t: "Track progress", d: "Your lessons, content, and rating all live here on your dashboard." },
+                ].map((s) => (
+                  <div
+                    key={s.n}
+                    className="rounded-sm border border-border/20 bg-ink/40 p-4"
+                  >
+                    <div className="w-7 h-7 rounded-sm bg-ember/20 text-ember flex items-center justify-center text-sm font-bold mb-2">
+                      {s.n}
+                    </div>
+                    <p className="text-sm font-medium text-bone mb-1">{s.t}</p>
+                    <p className="text-xs text-bone-muted leading-relaxed">
+                      {s.d}
+                    </p>
+                  </div>
+                ))}
+              </div>
+              <Button
+                className="bg-ember hover:bg-ember/90 text-white rounded-sm"
+                onClick={() => setLocation("/coaches")}
+              >
+                Browse coaches
+              </Button>
+            </CardContent>
+          </Card>
+        </section>
+      )}
+
       {/* ── MODULE 1: YOUR NEXT LESSON ─────────────────────────────────────── */}
       <section id="overview">
         <span className="eyebrow mb-3 block">01 — Your next lesson</span>
@@ -238,7 +301,7 @@ export function StudentDashboardContent({ user }: { user: any }) {
               <CoachMessagePreview lesson={nextLesson} />
             </div>
           </div>
-        ) : (
+        ) : isNewStudent ? null : (
           <Card className="bg-ink-raised border-border/20 rounded-sm">
             <CardContent className="py-16 text-center">
               <Calendar className="h-12 w-12 mx-auto mb-4 text-bone-muted/30" />
@@ -1838,6 +1901,7 @@ const STATUS_LABELS: Record<string, { label: string; cls: string }> = {
 };
 
 function LessonHistorySection({ lessons }: { lessons: any[] }) {
+  const [, setLocation] = useLocation();
   const [showCancelled, setShowCancelled] = useState(false);
 
   const sorted = [...lessons].sort(
@@ -1850,9 +1914,18 @@ function LessonHistorySection({ lessons }: { lessons: any[] }) {
     <Card className="bg-ink-raised border-border/20 rounded-sm">
       <CardContent className="p-6">
         {sorted.length === 0 ? (
-          <p className="text-sm text-bone-muted">
-            No lessons yet. Book your first lesson to get started.
-          </p>
+          <div className="text-center py-8">
+            <p className="text-sm text-bone-muted mb-3">
+              No lessons yet. Book your first lesson to get started.
+            </p>
+            <Button
+              variant="outline"
+              className="border-ember/40 text-ember hover:bg-ember/10 rounded-sm"
+              onClick={() => setLocation("/coaches")}
+            >
+              Browse coaches
+            </Button>
+          </div>
         ) : (
           <>
             <div className="overflow-x-auto">
@@ -1912,6 +1985,7 @@ function MessagesModule({
   lessons: any[];
   unreadCounts: any;
 }) {
+  const [, setLocation] = useLocation();
   const [openLessonId, setOpenLessonId] = useState<number | null>(null);
   const [openCoachName, setOpenCoachName] = useState("");
   const [expanded, setExpanded] = useState(false);
@@ -1936,10 +2010,18 @@ function MessagesModule({
           </div>
 
           {previewLessons.length === 0 ? (
-            <p className="text-sm text-bone-muted">
-              No conversations yet. Messages will appear here when you book a
-              lesson.
-            </p>
+            <div>
+              <p className="text-sm text-bone-muted mb-3">
+                No conversations yet. Messages with your coach appear here once
+                you book a lesson.
+              </p>
+              <button
+                className="text-xs text-ember hover:text-ember/80 transition-colors"
+                onClick={() => setLocation("/coaches")}
+              >
+                Find a coach →
+              </button>
+            </div>
           ) : (
             <div className="divide-y divide-border/20">
               {previewLessons.map((lesson: any) => {
