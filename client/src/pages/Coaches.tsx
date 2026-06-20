@@ -653,9 +653,11 @@ function FAQSection() {
 
 // Waitlist Section
 function CoachWaitlistSection() {
+  const [, setLocation] = useLocation();
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [rating, setRating] = useState("");
+  const [submitted, setSubmitted] = useState(false);
 
   const addToWaitlist = trpc.waitlist.join.useMutation({
     onSuccess: () => {
@@ -663,6 +665,7 @@ function CoachWaitlistSection() {
       setEmail("");
       setName("");
       setRating("");
+      setSubmitted(true);
     },
     onError: (error) => {
       const errorMessage = error.message || "Something went wrong. Please try again.";
@@ -712,6 +715,35 @@ function CoachWaitlistSection() {
             </p>
           </motion.div>
 
+          {submitted ? (
+            <motion.div variants={fadeIn}>
+              <Card className="palantir-card p-8">
+                <CardContent className="p-0 space-y-6 text-center">
+                  <div className="w-14 h-14 rounded-full bg-primary/15 flex items-center justify-center mx-auto">
+                    <CheckCircle2 className="w-7 h-7 text-primary" />
+                  </div>
+                  <div className="space-y-2">
+                    <h3 className="text-2xl font-light tracking-tight">You're on the list!</h3>
+                    <p className="text-sm font-light text-muted-foreground">
+                      We'll be in touch soon. But you don't have to wait — you can
+                      set up your coach profile right now and start getting booked.
+                    </p>
+                  </div>
+                  <Button
+                    size="lg"
+                    className="w-full btn-primary"
+                    onClick={() => setLocation("/coach/onboarding")}
+                  >
+                    Set up your coach profile
+                    <ChevronRight className="w-4 h-4 ml-2" />
+                  </Button>
+                  <p className="text-xs text-muted-foreground">
+                    Takes about 8 minutes. No payment details required to start.
+                  </p>
+                </CardContent>
+              </Card>
+            </motion.div>
+          ) : (
           <motion.div variants={fadeIn}>
             <Card className="palantir-card p-8">
               <CardContent className="p-0">
@@ -784,6 +816,7 @@ function CoachWaitlistSection() {
               </CardContent>
             </Card>
           </motion.div>
+          )}
 
           <motion.div variants={fadeIn} className="pt-8">
             <div className="flex flex-wrap items-center justify-center gap-6 text-sm font-light text-muted-foreground">

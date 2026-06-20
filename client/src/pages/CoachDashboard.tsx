@@ -42,6 +42,7 @@ import {
   Pencil,
   Trash2,
   Download,
+  CreditCard,
 } from "lucide-react";
 import {
   Dialog,
@@ -310,6 +311,42 @@ export function CoachDashboardContent({ user }: { user: any }) {
                     <Timer className="w-4 h-4 animate-spin mr-2" />
                   )}
                   Set Up Payments
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Soft payout-setup nudge (live, but Stripe not connected yet, pre-threshold) ──
+          Earn-first design: coaches can receive bookings before connecting Stripe;
+          surface payout setup early so they're ready to withdraw, without blocking. */}
+      {earnings && !earnings.stripeOnboarded && !earnings.needsOnboarding && (
+        <Card className="bg-ink-raised border-border/30 rounded-sm">
+          <CardContent className="p-5">
+            <div className="flex items-start gap-4">
+              <div className="w-10 h-10 rounded-sm bg-bone/10 flex items-center justify-center shrink-0">
+                <CreditCard className="w-5 h-5 text-bone-muted" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-bone mb-1">
+                  Set up payouts to withdraw earnings
+                </h3>
+                <p className="text-sm text-bone-muted mb-4">
+                  Your profile is live and can receive bookings. Connect Stripe
+                  now so you're ready to withdraw your earnings — it only takes a
+                  few minutes.
+                </p>
+                <Button
+                  variant="outline"
+                  className="border-ember/40 text-ember hover:bg-ember/10 rounded-sm"
+                  onClick={() => startOnboarding.mutate()}
+                  disabled={startOnboarding.isPending}
+                >
+                  {startOnboarding.isPending && (
+                    <Timer className="w-4 h-4 animate-spin mr-2" />
+                  )}
+                  Set up payouts
                 </Button>
               </div>
             </div>
