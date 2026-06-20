@@ -13,11 +13,29 @@ export default function VerifyEmail() {
   
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
   const [message, setMessage] = useState("");
+  const [dest, setDest] = useState("/dashboard");
 
   const verifyMutation = trpc.auth.verifyEmail.useMutation({
     onSuccess: (data) => {
       setStatus("success");
       setMessage(data.message);
+      // The server creates a session + sets the auth cookie on verification, so
+      // the user is already logged in. Skip the re-login step: send them straight
+      // to their destination (a stored redirect, otherwise the dashboard).
+      const stored = localStorage.getItem("postLoginRedirect");
+      // Only honor safe, same-origin relative paths (guard against open redirect
+      // via a tampered localStorage value, since we navigate with window.location).
+      const target =
+        stored && stored.startsWith("/") && !stored.startsWith("//")
+          ? stored
+          : "/dashboard";
+      localStorage.removeItem("postLoginRedirect");
+      setDest(target);
+      // Brief confirmation, then hard-navigate so the app boots with the new
+      // session cookie applied.
+      setTimeout(() => {
+        window.location.href = target;
+      }, 1200);
     },
     onError: (err) => {
       setStatus("error");
@@ -83,7 +101,7 @@ export default function VerifyEmail() {
 
           {status === "success" && (
             <p className="text-sm text-muted-foreground text-center mt-4">
-              You can now sign in and start booking lessons with elite chess coaches.
+              You're all set — taking you to your dashboard…
             </p>
           )}
 
@@ -99,16 +117,10 @@ export default function VerifyEmail() {
             <Button
               className="w-full"
               onClick={() => {
-                // Check if there's a stored redirect URL
-                const storedRedirect = localStorage.getItem("postLoginRedirect");
-                if (storedRedirect) {
-                  setLocation(`/sign-in?redirect=${encodeURIComponent(storedRedirect)}`);
-                } else {
-                  setLocation("/sign-in");
-                }
+                window.location.href = dest;
               }}
             >
-              Sign In Now
+              Go to your dashboard
             </Button>
           )}
 
