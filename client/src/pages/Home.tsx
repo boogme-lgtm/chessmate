@@ -1411,6 +1411,14 @@ function Footer() {
    ═══════════════════════════════════════════════════════════════════ */
 export default function Home() {
   const [assessmentOpen, setAssessmentOpen] = useState(false);
+  const { user, loading: authLoading } = useAuth();
+
+  // Redirect authenticated users straight to their dashboard — no need to see the marketing page
+  React.useEffect(() => {
+    if (!authLoading && user) {
+      window.location.replace("/dashboard");
+    }
+  }, [user, authLoading]);
 
   React.useEffect(() => {
     if (typeof window === "undefined") return;
