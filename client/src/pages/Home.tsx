@@ -1420,7 +1420,9 @@ export default function Home() {
     }
   }, [user, authLoading]);
 
+  // Handle ?openAssessment=1 query param (must be declared before any early return)
   React.useEffect(() => {
+    if (authLoading || user) return; // don’t run if we’re about to redirect
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     if (params.get("openAssessment") === "1") {
@@ -1433,7 +1435,13 @@ export default function Home() {
         window.location.pathname + (cleanSearch ? `?${cleanSearch}` : "")
       );
     }
-  }, []);
+  }, [authLoading, user]);
+
+  // While auth is resolving, or if user is logged in (redirect pending), render nothing
+  // This eliminates the flash of the marketing page before the redirect fires
+  if (authLoading || user) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen">
