@@ -1,36 +1,30 @@
 /**
- * Coach pricing tiers — determines BooGMe's platform fee on every lesson.
- * Free is the default; Pro/Elite require a monthly subscription (billing
- * not yet implemented — TODO below).
+ * Coach pricing — determines BooGMe's platform fee on every lesson and
+ * content sale.
+ *
+ * One flat fee for all coaches: no subscription, no tiers, no upfront cost.
+ * The percentage covers AI matching, escrow, payment processing, and support.
  *
  * The Stripe processing fee is charged on top of the lesson price and
  * passed to the student so coaches receive their full take-home amount
  * minus only the platform fee.
+ *
+ * NOTE: PRICING_TIERS is kept as a keyed map (rather than a bare constant) so
+ * the fee logic stays uniform and any legacy `pricingTier` value stored on a
+ * coach profile resolves through getTierFeePercent() to the standard rate.
  */
 export const PRICING_TIERS = {
-  free: {
-    label: "Free",
+  standard: {
+    label: "Standard",
     monthlyFeeCents: 0,
     platformFeePercent: 12,
-    description: "No monthly fee. 12% platform fee per lesson.",
-  },
-  pro: {
-    label: "Pro",
-    monthlyFeeCents: 4900,
-    platformFeePercent: 8,
-    description: "$49/mo. 8% platform fee per lesson.",
-  },
-  elite: {
-    label: "Elite",
-    monthlyFeeCents: 9900,
-    platformFeePercent: 5,
-    description: "$99/mo. 5% platform fee per lesson — best for high volume.",
+    description: "Flat 12% on lessons and content. No subscription, no tiers.",
   },
 } as const;
 
 export type PricingTier = keyof typeof PRICING_TIERS;
 
-export const DEFAULT_PRICING_TIER: PricingTier = "free";
+export const DEFAULT_PRICING_TIER: PricingTier = "standard";
 
 // Stripe processing fee — added to the student's total at checkout.
 export const STRIPE_FEE_PERCENT = 2.9;

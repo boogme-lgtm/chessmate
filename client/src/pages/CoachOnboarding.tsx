@@ -137,7 +137,7 @@ export default function CoachOnboarding() {
   const [customLanguageInput, setCustomLanguageInput] = useState("");
 
   const [hourlyRate, setHourlyRate] = useState(50); // in dollars
-  const [pricingTier, setPricingTier] = useState<PricingTier>(DEFAULT_PRICING_TIER);
+  const [pricingTier] = useState<PricingTier>(DEFAULT_PRICING_TIER);
   const [lessonDurations, setLessonDurations] = useState<number[]>([30, 60]);
   const [packageDiscount, setPackageDiscount] = useState(false);
   const [packageDiscountPercent, setPackageDiscountPercent] = useState(10);
@@ -182,9 +182,7 @@ export default function CoachOnboarding() {
         try { setLanguages(JSON.parse(p.languages)); } catch {}
       }
       if (p.hourlyRateCents) setHourlyRate(p.hourlyRateCents / 100);
-      if (p.pricingTier && (p.pricingTier === "free" || p.pricingTier === "pro" || p.pricingTier === "elite")) {
-        setPricingTier(p.pricingTier);
-      }
+      // Pricing is a single flat tier for all coaches — nothing to restore.
       if (p.lessonDurations) {
         try { setLessonDurations(JSON.parse(p.lessonDurations)); } catch {}
       }
@@ -860,49 +858,27 @@ export default function CoachOnboarding() {
                 </p>
               </div>
 
-              {/* Pricing tier selector */}
+              {/* Flat platform fee — one rate for all coaches */}
               <div>
-                <Label className="text-foreground/80 mb-2 block">Pricing Tier</Label>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {(Object.keys(PRICING_TIERS) as PricingTier[]).map((tierKey) => {
-                    const tier = PRICING_TIERS[tierKey];
-                    const isSelected = pricingTier === tierKey;
-                    const monthly = tier.monthlyFeeCents === 0
-                      ? "Free"
-                      : `$${(tier.monthlyFeeCents / 100).toFixed(0)}/mo`;
-                    const takeHome = (hourlyRate * (1 - tier.platformFeePercent / 100)).toFixed(0);
-                    const isPaid = tier.monthlyFeeCents > 0;
-                    return (
-                      <button
-                        key={tierKey}
-                        type="button"
-                        onClick={() => setPricingTier(tierKey)}
-                        className={`p-4 rounded-xl text-left border transition-all ${
-                          isSelected
-                            ? "bg-primary/10 border-primary text-foreground"
-                            : "bg-muted border-border text-muted-foreground hover:border-primary/40"
-                        }`}
-                      >
-                        <div className="flex items-baseline justify-between mb-1">
-                          <p className="font-medium text-sm text-foreground">{tier.label}</p>
-                          <span className="text-xs text-muted-foreground">{monthly}</span>
-                        </div>
-                        <p className="text-2xl font-thin tracking-tighter text-foreground">
-                          {tier.platformFeePercent}%
-                        </p>
-                        <p className="text-xs text-muted-foreground mb-2">platform fee per lesson</p>
-                        <p className="text-xs">
-                          You receive{" "}
-                          <span className="text-safe font-medium">${takeHome}/hr</span>
-                        </p>
-                        {isPaid && (
-                          <p className="text-[10px] text-muted-foreground mt-2 leading-snug">
-                            Subscription billing coming soon — Free tier active for all coaches during beta.
-                          </p>
-                        )}
-                      </button>
-                    );
-                  })}
+                <Label className="text-foreground/80 mb-2 block">Platform Fee</Label>
+                <div className="p-5 rounded-xl border border-primary/30 bg-primary/5">
+                  <div className="flex items-baseline justify-between">
+                    <p className="text-3xl font-light tracking-tight text-foreground">
+                      {PRICING_TIERS[pricingTier].platformFeePercent}%
+                    </p>
+                    <span className="mono-label text-muted-foreground">flat · everything included</span>
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
+                    One simple fee on lessons and content sales — no subscription, no tiers, no upfront cost.
+                    It covers AI matching, escrow protection, payment processing, and support.
+                  </p>
+                  <p className="text-sm mt-3 text-foreground">
+                    On a ${hourlyRate}/hr lesson you take home{" "}
+                    <span className="text-safe font-medium">
+                      ${(hourlyRate * (1 - PRICING_TIERS[pricingTier].platformFeePercent / 100)).toFixed(0)}
+                    </span>
+                    .
+                  </p>
                 </div>
               </div>
               <div>
@@ -1094,7 +1070,7 @@ export default function CoachOnboarding() {
                   { label: "Name", value: name || user?.name },
                   { label: "Title", value: title !== "none" ? title : "No title" },
                   { label: "Rate", value: `$${hourlyRate}/hr` },
-                  { label: "Plan", value: `${PRICING_TIERS[pricingTier].label} (${PRICING_TIERS[pricingTier].platformFeePercent}% fee)` },
+                  { label: "Platform fee", value: `${PRICING_TIERS[pricingTier].platformFeePercent}% flat` },
                   { label: "Specialties", value: specialties.length > 0 ? `${specialties.length} selected` : "None" },
                   { label: "Schedule", value: `${Object.values(schedule).filter((d) => d.enabled).length} days/week` },
                 ].map(({ label, value }) => (
@@ -1118,7 +1094,7 @@ export default function CoachOnboarding() {
                   <a href="/terms" target="_blank" className="text-primary hover:underline">Coach Guidelines</a>
                   {" "}and{" "}
                   <a href="/terms" target="_blank" className="text-primary hover:underline">Terms of Service</a>.
-                  I understand that BooGMe takes a {PRICING_TIERS[pricingTier].platformFeePercent}% platform fee on all lessons ({PRICING_TIERS[pricingTier].label} plan).
+                  I understand that BooGMe takes a flat {PRICING_TIERS[pricingTier].platformFeePercent}% platform fee on all lessons and content sales.
                 </Label>
               </div>
 

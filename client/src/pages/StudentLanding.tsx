@@ -196,7 +196,7 @@ function Hero() {
               className="grid grid-cols-2 sm:grid-cols-4 gap-px mt-12 border-t border-b border-border"
             >
               {[
-                { value: "0%", label: "Platform fee until $100" },
+                { value: "library", label: "Courses & content on demand" },
                 { value: "1h", label: "Cancellation window" },
                 { value: "8min", label: "Match assessment" },
                 { value: "escrow", label: "Until you've learned" },
@@ -378,8 +378,8 @@ function HowItWorks() {
     {
       num: "03",
       icon: BookOpen,
-      title: "Your content library",
-      copy: "Purchase courses, videos, and PGN packs from your coach’s storefront. Download anytime.",
+      title: "Content made for you",
+      copy: "Courses, videos, and PGN packs from your coach’s storefront — plus custom analysis you commission for your own games. Buy on demand, download anytime.",
     },
     {
       num: "04",

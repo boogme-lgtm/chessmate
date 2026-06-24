@@ -185,14 +185,14 @@ function Hero() {
           {/* Left column */}
           <div className="space-y-8">
             <motion.div variants={fadeIn} className="space-y-6">
-              <span className="eyebrow">01 — keep more of what you earn</span>
+              <span className="eyebrow">01 — your whole business in one place</span>
               <h1 className="text-5xl md:text-6xl font-light tracking-tight text-foreground leading-[1.1]">
                 Coach chess.<br />
-                <span className="text-primary">Keep more of what you earn.</span>
+                <span className="text-primary">Build a business.</span>
               </h1>
               <p className="font-serif text-[19px] text-muted-foreground leading-relaxed max-w-md">
-                No payment details until you earn $100. AI-matched students.
-                Escrow protection for both sides. Go live in 8 minutes.
+                Lessons, courses, and made-to-order content — sold from one storefront,
+                protected by escrow. AI sends you matched students. Go live in 8 minutes.
               </p>
             </motion.div>
             {/* CTA */}
@@ -212,7 +212,7 @@ function Hero() {
               className="grid grid-cols-2 sm:grid-cols-4 gap-px mt-12 border-t border-b border-border"
             >
               {[
-                { value: "0%", label: "Fee until $100" },
+                { value: "storefront", label: "Sell courses & content" },
                 { value: "8min", label: "Profile setup" },
                 { value: "$38+", label: "Average lesson rate" },
                 { value: "escrow", label: "Payment protection" },
@@ -356,9 +356,9 @@ function EarningsCalculator() {
               {/* Fee callout */}
               <div className="bg-primary/10 border border-primary/20 rounded-lg p-4">
                 <p className="text-sm text-muted-foreground">
-                  These projections reflect a {fee}% platform fee ({PRICING_TIERS[DEFAULT_PRICING_TIER].label} tier),
-                  which covers AI matching, escrow protection, payment processing, and support.
-                  Pro and Elite tiers offer lower rates as you grow.
+                  These projections reflect BooGMe&rsquo;s flat {fee}% platform fee — no subscription,
+                  no tiers, no upfront cost. It covers AI matching, escrow protection, payment
+                  processing, and support. Content sales use the same flat rate.
                 </p>
               </div>
             </div>
@@ -376,8 +376,8 @@ function WhyCoachHere() {
   const reasons = [
     {
       icon: DollarSign,
-      title: "Set your rate, keep more",
-      body: "Minimal platform fee covers matching, escrow, and support. No hidden charges.",
+      title: "One flat fee, everything included",
+      body: "A flat 12% on lessons and content covers AI matching, escrow, processing, and support. No subscription, no tiers, no hidden charges.",
     },
     {
       icon: Shield,
@@ -593,7 +593,7 @@ function FAQ() {
     },
     {
       q: "What’s the platform fee?",
-      a: `The free tier is ${PRICING_TIERS.free.platformFeePercent}%. Pro and Elite tiers offer lower rates as you grow. The fee covers AI matching, escrow, payment processing, and support.`,
+      a: `A flat ${PRICING_TIERS[DEFAULT_PRICING_TIER].platformFeePercent}% on lessons and content sales — no subscription, no tiers. It covers AI matching, escrow, payment processing, and support.`,
     },
     {
       q: "How does the escrow system work?",
