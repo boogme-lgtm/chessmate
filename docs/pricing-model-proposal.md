@@ -1,8 +1,8 @@
 # BooGMe Pricing Model: Research & Proposal
 
 **Author:** Claude (deep market research, June 2026)
-**Status:** Proposal for founder review
-**Decision required:** Choose pricing model before copy fixes + coach recruitment
+**Status:** DECIDED — founder chose a **flat 12%** on all lessons and content (no subscription, no tiers). Implemented in `shared/pricing.ts` and reflected across onboarding, Home, and both landing pages.
+**Note:** This proposal recommended 10%; the founder selected 12%. Both sit inside the research-supported range (Sharetribe's top-performing marketplaces average 12.4%; Gurley's 10–15% sweet spot), and 12% remains well below every tutoring competitor (Preply 18–33%, Wyzant 25%+9%, iTalki 15–21%). The structural argument — flat, honest, no fee-increase trap — holds at either number.
 
 ---
 

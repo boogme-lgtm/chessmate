@@ -34,6 +34,7 @@ import QuizResultMockup from "@/components/hero/QuizResultMockup";
 import { BgMark } from "@/components/BgMark";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl } from "@/const";
+import { PRICING_TIERS, DEFAULT_PRICING_TIER } from "@shared/pricing";
 
 // Editorial motion tokens
 const fadeIn = {
@@ -239,7 +240,7 @@ function HeroV2({ onOpenAssessment }: { onOpenAssessment: () => void }) {
               className="grid grid-cols-2 sm:grid-cols-4 gap-px mt-12 border-t border-b border-border"
             >
               {[
-                { value: "0%", label: "Platform fee until $100" },
+                { value: "library", label: "Courses & content on demand" },
                 { value: "1h", label: "Cancellation window" },
                 { value: "8min", label: "Match assessment" },
                 { value: "20Q", label: "Style + goals + schedule" },
@@ -271,7 +272,7 @@ function SocialProofBar({ onOpenAssessment }: { onOpenAssessment: () => void }) 
         <div className="flex items-center gap-3">
           <span className="inline-block w-2 h-2 rounded-full bg-primary animate-pulse" />
           <span className="mono-label">
-            Founding-coach beta — First 20 coaches pay 0% platform fee for 3 months
+            Founding-coach program — Run lessons, courses & content from one storefront
           </span>
         </div>
         <button
@@ -1201,50 +1202,14 @@ function WaitlistSection() {
    PRICING TABLE
    ═══════════════════════════════════════════════════════════════════ */
 function PricingTable() {
-  const tiers = [
-    {
-      name: "Free",
-      price: "$0",
-      fee: "Minimal platform fee",
-      features: [
-        "First 3 months free for founding coaches",
-        "Escrow-protected payments",
-        "AI student matching",
-        "In-app messaging",
-      ],
-      cta: "Get started \u2192",
-      ctaStyle: "ghost" as const,
-      href: "/coach/onboarding",
-    },
-    {
-      name: "Pro",
-      price: "$19",
-      fee: "Lower platform fee",
-      features: [
-        "Priority in search results",
-        "Analytics dashboard",
-        "Custom availability rules",
-        "PPV content storefront",
-      ],
-      cta: "Apply as founding coach \u2192",
-      ctaStyle: "primary" as const,
-      href: "/coach/onboarding",
-      highlighted: true,
-    },
-    {
-      name: "Elite",
-      price: "$49",
-      fee: "Lowest platform fee",
-      features: [
-        "Featured placement",
-        "Custom profile URL",
-        "Dedicated support",
-        "Advanced analytics & reporting",
-      ],
-      cta: "Contact us \u2192",
-      ctaStyle: "ghost" as const,
-      href: "mailto:hello@boogme.com",
-    },
+  const feePercent = PRICING_TIERS[DEFAULT_PRICING_TIER].platformFeePercent;
+  const included = [
+    "Escrow-protected payments",
+    "AI student matching",
+    "Your content storefront",
+    "Scheduling & availability",
+    "Built-in payouts via Stripe",
+    "In-app messaging & progress notes",
   ];
 
   return (
@@ -1257,45 +1222,51 @@ function PricingTable() {
           variants={staggerContainer}
           className="space-y-16"
         >
-          <motion.div variants={fadeIn} className="space-y-5">
-            <span className="eyebrow">09 — Simple, transparent pricing</span>
-            <h2>Start free. Grow with us.</h2>
+          <motion.div
+            variants={fadeIn}
+            className="grid md:grid-cols-[1fr_380px] gap-8 md:gap-12 items-end"
+          >
+            <div className="space-y-5">
+              <span className="eyebrow">09 — One simple fee</span>
+              <h2 className="text-balance">
+                One fee.<br />
+                Everything included.
+              </h2>
+            </div>
+            <p className="lede text-muted-foreground md:text-right">
+              No subscription. No tiers. No upfront cost. You only pay when you earn.
+            </p>
           </motion.div>
 
-          <motion.div variants={fadeIn} className="grid grid-cols-1 md:grid-cols-3 gap-px bg-border">
-            {tiers.map((tier) => (
-              <div
-                key={tier.name}
-                className={`bg-background p-8 md:p-10 space-y-6 ${tier.highlighted ? "ring-1 ring-primary" : ""}`}
-              >
-                <div className="space-y-4">
-                  <span className="eyebrow text-primary">{tier.name}</span>
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-4xl font-light text-foreground">{tier.price}</span>
-                    <span className="text-muted-foreground text-base">/mo</span>
+          <motion.div variants={fadeIn} className="grid grid-cols-1 lg:grid-cols-[auto_1fr] gap-px bg-border border border-border">
+            {/* The fee */}
+            <div className="bg-background p-8 md:p-12 flex flex-col justify-center lg:min-w-[320px]">
+              <span className="stat-number text-6xl md:text-7xl font-light text-foreground">{feePercent}%</span>
+              <div className="mono-label text-muted-foreground mt-3">Flat — on lessons &amp; content sales</div>
+              <p className="text-sm text-muted-foreground leading-relaxed mt-6 max-w-xs">
+                It covers AI matching, escrow, payment processing, and support. The same rate
+                applies whether you teach a lesson or sell a course.
+              </p>
+            </div>
+            {/* What's included */}
+            <div className="bg-background p-8 md:p-12 space-y-6">
+              <span className="mono-label text-muted-foreground">Every coach gets</span>
+              <div className="grid sm:grid-cols-2 gap-x-8 gap-y-3">
+                {included.map((feature) => (
+                  <div key={feature} className="flex items-start gap-2 text-sm text-foreground">
+                    <Check className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                    {feature}
                   </div>
-                  <div className="mono-label text-muted-foreground">{tier.fee}</div>
-                </div>
-                <div className="border-t border-border pt-6 space-y-3">
-                  {tier.features.map((feature) => (
-                    <div key={feature} className="flex items-start gap-2 text-sm text-muted-foreground">
-                      <Check className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-                      {feature}
-                    </div>
-                  ))}
-                </div>
-                <a
-                  href={tier.href}
-                  className={
-                    tier.ctaStyle === "primary"
-                      ? "btn-editorial-primary w-full text-center block"
-                      : "btn-editorial-ghost w-full text-center block"
-                  }
-                >
-                  {tier.cta}
-                </a>
+                ))}
               </div>
-            ))}
+              <div className="pt-4">
+                <a href="/coach/onboarding" className="btn-editorial-primary inline-flex items-center gap-2 group">
+                  Apply as a founding coach
+                  <ChevronRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+                </a>
+                <p className="mono-label mt-4">$0 upfront · No subscription · Connect payouts when you withdraw</p>
+              </div>
+            </div>
           </motion.div>
         </motion.div>
       </div>

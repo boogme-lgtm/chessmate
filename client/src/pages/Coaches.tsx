@@ -253,9 +253,8 @@ function EarningsCalculator() {
   const monthlyEarnings = weeklyEarnings * 4;
   const yearlyEarnings = monthlyEarnings * 12;
 
-  // Show Free-tier economics in the marketing calculator (worst-case for the
-  // coach; Pro/Elite take home more). Sourced from the shared pricing module
-  // so all tier changes flow through automatically.
+  // Flat platform fee for all coaches, sourced from the shared pricing module
+  // so any rate change flows through automatically.
   const platformFee = PRICING_TIERS[DEFAULT_PRICING_TIER].platformFeePercent / 100;
   const takeHome = {
     weekly: weeklyEarnings * (1 - platformFee),
