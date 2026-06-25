@@ -136,13 +136,28 @@ function scoreCredential(importance: string | null, coachTitle: string | null): 
   return 0;
 }
 
+function parseScheduleSlots(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed;
+    const slots: string[] = [];
+    for (const day of Object.values(parsed)) {
+      const d = day as any;
+      if (d?.enabled && Array.isArray(d?.slots)) slots.push(...d.slots);
+      if (d?.enabled && typeof d?.start === "string") slots.push(`${d.start}-${d.end}`);
+    }
+    return slots;
+  } catch { return []; }
+}
+
 function scoreSchedule(assessment: Partial<AssessmentData> | null, coachSchedule: string | null): number {
   if (!assessment?.availability?.length || !coachSchedule) return WEIGHTS.schedule * 0.7;
-  const schedule = parseJsonArray(coachSchedule);
-  if (schedule.length === 0) return WEIGHTS.schedule * 0.7;
+  const coachSlots = parseScheduleSlots(coachSchedule);
+  if (coachSlots.length === 0) return WEIGHTS.schedule * 0.7;
   const studentSlots = assessment.availability;
   const hasOverlap = studentSlots.some(slot =>
-    JSON.stringify(schedule).toLowerCase().includes(slot.toLowerCase())
+    coachSlots.some(cs => cs.toLowerCase().includes(slot.toLowerCase()) || slot.toLowerCase().includes(cs.toLowerCase()))
   );
   return hasOverlap ? WEIGHTS.schedule : WEIGHTS.schedule * 0.3;
 }

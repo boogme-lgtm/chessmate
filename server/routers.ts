@@ -1038,7 +1038,10 @@ export const appRouter = router({
     // Create/update student profile from quiz
     saveQuizResults: protectedProcedure
       .input(z.object({
-        assessmentData: z.record(z.string(), z.unknown()),
+        assessmentData: z.record(z.string(), z.unknown()).refine(
+          obj => JSON.stringify(obj).length < 50000,
+          { message: "Assessment data too large" }
+        ),
       }))
       .mutation(async ({ ctx, input }) => {
         const { mapAssessmentToProfile } = await import("@shared/assessmentMapping");
@@ -1180,19 +1183,19 @@ export const appRouter = router({
 
       const coaches = await db.getActiveCoaches();
       const coachesForMatching = coaches.map((c: any) => ({
-        userId: c.userId,
-        name: c.name || "Coach",
-        title: c.title,
-        fideRating: c.fideRating,
-        specialties: c.specialties,
-        teachingStyle: c.teachingStyle,
-        hourlyRateCents: c.hourlyRateCents,
-        availabilitySchedule: c.availabilitySchedule,
-        averageRating: c.averageRating,
-        totalLessons: c.totalLessons,
-        totalStudents: c.totalStudents,
-        totalReviews: c.totalReviews,
-        profilePhotoUrl: c.profilePhotoUrl,
+        userId: c.coach_profiles?.userId ?? c.userId ?? 0,
+        name: c.users?.name ?? c.name ?? "Coach",
+        title: c.coach_profiles?.title ?? c.title ?? null,
+        fideRating: c.coach_profiles?.fideRating ?? c.fideRating ?? null,
+        specialties: c.coach_profiles?.specialties ?? c.specialties ?? null,
+        teachingStyle: c.coach_profiles?.teachingStyle ?? c.teachingStyle ?? null,
+        hourlyRateCents: c.coach_profiles?.hourlyRateCents ?? c.hourlyRateCents ?? null,
+        availabilitySchedule: c.coach_profiles?.availabilitySchedule ?? c.availabilitySchedule ?? null,
+        averageRating: c.coach_profiles?.averageRating ?? c.averageRating ?? null,
+        totalLessons: c.coach_profiles?.totalLessons ?? c.totalLessons ?? null,
+        totalStudents: c.coach_profiles?.totalStudents ?? c.totalStudents ?? null,
+        totalReviews: c.coach_profiles?.totalReviews ?? c.totalReviews ?? null,
+        profilePhotoUrl: c.coach_profiles?.profilePhotoUrl ?? c.profilePhotoUrl ?? null,
       }));
 
       const ranked = rankCoachesForStudent(coachesForMatching, {
@@ -1208,7 +1211,7 @@ export const appRouter = router({
 
       for (const match of ranked.slice(0, 3)) {
         try {
-          await db.createCoachMatch({
+          await db.upsertCoachMatch({
             studentId: ctx.user.id,
             coachId: match.coachUserId,
             overallScore: match.score,
@@ -1232,26 +1235,31 @@ export const appRouter = router({
     }),
 
     getMatchedCoachesAnon: publicProcedure
-      .input(z.object({ assessmentData: z.record(z.string(), z.unknown()) }))
+      .input(z.object({
+        assessmentData: z.record(z.string(), z.unknown()).refine(
+          obj => JSON.stringify(obj).length < 50000,
+          { message: "Assessment data too large" }
+        ),
+      }))
       .query(async ({ input }) => {
         const { mapAssessmentToProfile } = await import("@shared/assessmentMapping");
         const { rankCoachesForStudent } = await import("@shared/coachMatching");
         const mapped = mapAssessmentToProfile(input.assessmentData as any);
         const coaches = await db.getActiveCoaches();
         const coachesForMatching = coaches.map((c: any) => ({
-          userId: c.userId,
-          name: c.name || "Coach",
-          title: c.title,
-          fideRating: c.fideRating,
-          specialties: c.specialties,
-          teachingStyle: c.teachingStyle,
-          hourlyRateCents: c.hourlyRateCents,
-          availabilitySchedule: c.availabilitySchedule,
-          averageRating: c.averageRating,
-          totalLessons: c.totalLessons,
-          totalStudents: c.totalStudents,
-          totalReviews: c.totalReviews,
-          profilePhotoUrl: c.profilePhotoUrl,
+          userId: c.coach_profiles?.userId ?? c.userId ?? 0,
+          name: c.users?.name ?? c.name ?? "Coach",
+          title: c.coach_profiles?.title ?? c.title ?? null,
+          fideRating: c.coach_profiles?.fideRating ?? c.fideRating ?? null,
+          specialties: c.coach_profiles?.specialties ?? c.specialties ?? null,
+          teachingStyle: c.coach_profiles?.teachingStyle ?? c.teachingStyle ?? null,
+          hourlyRateCents: c.coach_profiles?.hourlyRateCents ?? c.hourlyRateCents ?? null,
+          availabilitySchedule: c.coach_profiles?.availabilitySchedule ?? c.availabilitySchedule ?? null,
+          averageRating: c.coach_profiles?.averageRating ?? c.averageRating ?? null,
+          totalLessons: c.coach_profiles?.totalLessons ?? c.totalLessons ?? null,
+          totalStudents: c.coach_profiles?.totalStudents ?? c.totalStudents ?? null,
+          totalReviews: c.coach_profiles?.totalReviews ?? c.totalReviews ?? null,
+          profilePhotoUrl: c.coach_profiles?.profilePhotoUrl ?? c.profilePhotoUrl ?? null,
         }));
 
         return rankCoachesForStudent(coachesForMatching, {
