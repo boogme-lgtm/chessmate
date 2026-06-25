@@ -158,7 +158,16 @@ export const studentProfiles = mysqlTable("student_profiles", {
   currentLevel: int("currentLevel").default(1),
   currentStreak: int("currentStreak").default(0),
   longestStreak: int("longestStreak").default(0),
-  
+
+  // Assessment capture — raw signal + queryable dimensions
+  assessmentData: text("assessmentData"),
+  assessmentCompletedAt: timestamp("assessmentCompletedAt"),
+  assessmentVersion: int("assessmentVersion").default(1),
+  budgetMinCents: int("budgetMinCents"),
+  budgetMaxCents: int("budgetMaxCents"),
+  credentialImportance: mysqlEnum("credentialImportance", ["gm", "titled", "somewhat", "teaching", "notimportant"]),
+  improvementAreas: text("improvementAreas"),
+
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -358,10 +367,15 @@ export const coachMatches = mysqlTable("coach_matches", {
   goalScore: int("goalScore"),
   scheduleScore: int("scheduleScore"),
   communicationScore: int("communicationScore"),
-  
-  // Quiz answers snapshot
-  quizAnswers: text("quizAnswers"), // JSON
-  
+  budgetScore: int("budgetScore"),
+  ratingScore: int("ratingScore"),
+  credentialScore: int("credentialScore"),
+  experienceScore: int("experienceScore"),
+
+  // Match context
+  matchReasons: text("matchReasons"),
+  quizAnswers: text("quizAnswers"),
+
   status: mysqlEnum("status", ["suggested", "contacted", "active", "inactive"]).default("suggested"),
   
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -380,7 +394,8 @@ export const waitlist = mysqlTable("waitlist", {
   
   userType: mysqlEnum("userType", ["student", "coach", "both"]).default("student"),
   referralSource: varchar("referralSource", { length: 128 }),
-  
+  assessmentData: text("assessmentData"),
+
   // Email nurture sequence tracking
   confirmationEmailSent: boolean("confirmationEmailSent").default(false),
   nurtureEmail1Sent: boolean("nurtureEmail1Sent").default(false),

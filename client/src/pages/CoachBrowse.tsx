@@ -1,4 +1,6 @@
 import { trpc } from "@/lib/trpc";
+import { useAuth } from "@/_core/hooks/useAuth";
+import { rankCoachesForStudent, type CoachForMatching, type StudentForMatching } from "@shared/coachMatching";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -55,7 +57,7 @@ function completenessScore(c: ProfileCompleteness): number {
 const FILTER_OPTIONS = ["All", "GM/IM", "Under $100", "Openings", "Endgames", "Tactics"] as const;
 type FilterKey = (typeof FILTER_OPTIONS)[number];
 
-const SORT_OPTIONS = ["Top Rated", "Price: Low to High", "Most Lessons", "Newest"] as const;
+const SORT_OPTIONS = ["Best Match", "Top Rated", "Price: Low to High", "Most Lessons", "Newest"] as const;
 type SortKey = (typeof SORT_OPTIONS)[number];
 
 function matchesFilter(coach: any, filter: FilterKey): boolean {
@@ -68,7 +70,42 @@ function matchesFilter(coach: any, filter: FilterKey): boolean {
   return specs.some((s: string) => s.includes(term));
 }
 
-function sortCoaches(arr: any[], sort: SortKey): any[] {
+function sortCoaches(arr: any[], sort: SortKey, studentProfile?: any): any[] {
+  if (sort === "Best Match" && studentProfile) {
+    const coachesForMatching: CoachForMatching[] = arr.map((c: any) => ({
+      userId: c.users?.id ?? c.coach_profiles?.userId ?? 0,
+      name: c.users?.name ?? "Coach",
+      title: c.coach_profiles?.title ?? null,
+      fideRating: c.coach_profiles?.fideRating ?? null,
+      specialties: c.coach_profiles?.specialties ?? null,
+      teachingStyle: c.coach_profiles?.teachingStyle ?? null,
+      hourlyRateCents: c.coach_profiles?.hourlyRateCents ?? null,
+      availabilitySchedule: c.coach_profiles?.availabilitySchedule ?? null,
+      averageRating: c.coach_profiles?.averageRating ?? null,
+      totalLessons: c.coach_profiles?.totalLessons ?? null,
+      totalStudents: c.coach_profiles?.totalStudents ?? null,
+      totalReviews: c.coach_profiles?.totalReviews ?? null,
+      profilePhotoUrl: c.coach_profiles?.profilePhotoUrl ?? null,
+    }));
+    const student: StudentForMatching = {
+      learningStyle: studentProfile.learningStyle,
+      improvementAreas: studentProfile.improvementAreas,
+      budgetMinCents: studentProfile.budgetMinCents,
+      budgetMaxCents: studentProfile.budgetMaxCents,
+      currentRating: studentProfile.currentRating,
+      credentialImportance: studentProfile.credentialImportance,
+      playingStyle: studentProfile.playingStyle,
+      assessmentData: studentProfile.assessmentData,
+    };
+    const ranked = rankCoachesForStudent(coachesForMatching, student);
+    const scoreMap = new Map(ranked.map(r => [r.coachUserId, r.score]));
+    return [...arr].sort((a, b) => {
+      const idA = a.users?.id ?? a.coach_profiles?.userId ?? 0;
+      const idB = b.users?.id ?? b.coach_profiles?.userId ?? 0;
+      return (scoreMap.get(idB) ?? 0) - (scoreMap.get(idA) ?? 0);
+    });
+  }
+
   return [...arr].sort((a, b) => {
     const pa = a.coach_profiles;
     const pb = b.coach_profiles;
@@ -97,13 +134,18 @@ export default function CoachBrowse() {
   const [sort, setSort] = useState<SortKey>("Top Rated");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
 
+  const { user } = useAuth();
   const { data: coaches, isLoading } = trpc.coach.listActive.useQuery();
+  const { data: studentProfile } = trpc.student.getProfile.useQuery(undefined, {
+    enabled: !!user,
+  });
 
   const filtered = useMemo(() => {
     if (!coaches) return [];
     const matched = coaches.filter((c: any) => matchesFilter(c, filter));
-    return sortCoaches(matched, sort);
-  }, [coaches, filter, sort]);
+    const effectiveSort = sort === "Best Match" && !studentProfile ? "Top Rated" as SortKey : sort;
+    return sortCoaches(matched, effectiveSort, studentProfile ?? undefined);
+  }, [coaches, filter, sort, studentProfile]);
 
   if (isLoading) return <BrowseSkeleton />;
 

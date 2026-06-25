@@ -136,6 +136,23 @@ export const authRouter = router({
         if (user) {
           const sessionToken = await createSessionToken(user);
           setSessionCookie(ctx.res, sessionToken);
+
+          // Migrate assessment data from waitlist → student profile
+          try {
+            const waitlistEntry = await db.getWaitlistEntryByEmail(user.email);
+            if (waitlistEntry?.assessmentData) {
+              const { mapAssessmentToProfile } = await import("@shared/assessmentMapping");
+              const mapped = mapAssessmentToProfile(JSON.parse(waitlistEntry.assessmentData));
+              const existing = await db.getStudentProfileByUserId(user.id);
+              if (existing) {
+                await db.updateStudentProfile(user.id, mapped);
+              } else {
+                await db.createStudentProfile({ userId: user.id, ...mapped });
+              }
+            }
+          } catch (e) {
+            console.error("[verifyEmail] assessment migration failed:", e);
+          }
         }
       }
 
