@@ -881,6 +881,26 @@ export async function createCoachMatch(match: InsertCoachMatch) {
   return await db.insert(coachMatches).values(match);
 }
 
+export async function upsertCoachMatch(match: InsertCoachMatch) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const existing = await db.select({ id: coachMatches.id })
+    .from(coachMatches)
+    .where(and(
+      eq(coachMatches.studentId, match.studentId),
+      eq(coachMatches.coachId, match.coachId),
+    ))
+    .limit(1);
+
+  if (existing.length > 0) {
+    await db.update(coachMatches).set(match).where(eq(coachMatches.id, existing[0].id));
+    return;
+  }
+
+  await db.insert(coachMatches).values(match);
+}
+
 export async function getMatchesForStudent(studentId: number) {
   const db = await getDb();
   if (!db) return [];
