@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
+import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -75,7 +76,22 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
   const [email, setEmail] = useState("");
   const [isSubmittingWaitlist, setIsSubmittingWaitlist] = useState(false);
 
+  const { user } = useAuth();
   const addToWaitlistMutation = trpc.waitlist.join.useMutation();
+  const saveQuizMutation = trpc.student.saveQuizResults.useMutation();
+  const [matchResults, setMatchResults] = useState<any[] | null>(null);
+  const [shouldFetchMatches, setShouldFetchMatches] = useState(false);
+
+  const matchQuery = trpc.match.getMatchedCoaches.useQuery(undefined, {
+    enabled: !!user && shouldFetchMatches,
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (matchQuery.data && matchQuery.data.length > 0) {
+      setMatchResults(matchQuery.data);
+    }
+  }, [matchQuery.data]);
 
   const [data, setData] = useState<Partial<AssessmentData>>({
     rating: 1200,
@@ -138,9 +154,22 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
       "Preparing your personalized recommendations...",
     ];
 
-    for (let i = 0; i < steps.length; i++) {
-      setProcessingStep(i);
-      await new Promise((resolve) => setTimeout(resolve, 1200));
+    try {
+      if (user) {
+        setProcessingStep(0);
+        await saveQuizMutation.mutateAsync({ assessmentData: data as Record<string, unknown> });
+      }
+
+      for (let i = user ? 1 : 0; i < steps.length; i++) {
+        setProcessingStep(i);
+        await new Promise((resolve) => setTimeout(resolve, 800));
+      }
+
+      if (user) {
+        setShouldFetchMatches(true);
+      }
+    } catch (e) {
+      console.error("[assessment] save failed:", e);
     }
 
     setIsProcessing(false);
@@ -1338,6 +1367,7 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
           </div>
 
           <div className="space-y-6">
+            {/* Profile summary */}
             <Card className="bg-neutral-900 border-neutral-800">
               <CardContent className="p-6">
                 <h3 className="text-xl font-thin mb-4">Your Profile Summary</h3>
@@ -1348,98 +1378,130 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
                   </div>
                   <div>
                     <div className="text-sm text-neutral-400">Goal</div>
-                    <div className="text-lg font-medium capitalize">
-                      {data.primaryGoal}
-                    </div>
+                    <div className="text-lg font-medium capitalize">{data.primaryGoal}</div>
                   </div>
                   <div>
                     <div className="text-sm text-neutral-400">Style</div>
-                    <div className="text-lg font-medium capitalize">
-                      {data.teachingArchetype}
-                    </div>
+                    <div className="text-lg font-medium capitalize">{data.teachingArchetype}</div>
                   </div>
                   <div>
                     <div className="text-sm text-neutral-400">Budget</div>
-                    <div className="text-lg font-medium">
-                      ${data.budgetMin}-${data.budgetMax}
+                    <div className="text-lg font-medium">${data.budgetMin}-${data.budgetMax}</div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Real match results */}
+            {matchResults && matchResults.length > 0 ? (
+              <div className="space-y-4">
+                <h3 className="text-lg font-thin text-neutral-300">Your top matches</h3>
+                {matchResults.slice(0, 3).map((match: any, i: number) => (
+                  <Card key={match.coachUserId} className="bg-neutral-900 border-neutral-800">
+                    <CardContent className="p-6">
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-mono font-bold text-sm">
+                            {i + 1}
+                          </div>
+                          <div>
+                            <div className="font-medium text-foreground">{match.coachName}</div>
+                            <div className="text-xs text-neutral-400">Match score</div>
+                          </div>
+                        </div>
+                        <div className="text-2xl font-mono font-bold text-primary">{match.score}%</div>
+                      </div>
+                      <div className="flex flex-wrap gap-2 mb-4">
+                        {match.reasons.map((reason: string) => (
+                          <Badge key={reason} variant="secondary" className="text-xs bg-neutral-800 text-neutral-300">
+                            {reason}
+                          </Badge>
+                        ))}
+                      </div>
+                      <a
+                        href={`/coach/${match.coachUserId}`}
+                        className="btn-editorial-primary inline-flex items-center gap-2 text-sm"
+                      >
+                        View profile
+                        <ChevronRight className="w-3 h-3" />
+                      </a>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              /* Waitlist fallback — no coaches available yet */
+              <Card className="bg-neutral-900 border-neutral-800">
+                <CardContent className="p-8">
+                  <div className="text-center mb-6">
+                    <p className="text-neutral-400 mb-2">
+                      {user
+                        ? "Your profile is saved. We'll match you with coaches as they join."
+                        : "We're currently building our coach network."}
+                    </p>
+                    {!user && (
+                      <p className="text-neutral-300 mb-6">
+                        Join the waitlist to be notified when coaches matching your profile are available.
+                      </p>
+                    )}
+                  </div>
+
+                  {!user && (
+                    <div className="max-w-md mx-auto space-y-4">
+                      <div>
+                        <Label htmlFor="waitlist-email" className="text-sm text-neutral-300 mb-2 block">
+                          Email address
+                        </Label>
+                        <input
+                          id="waitlist-email"
+                          type="email"
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          placeholder="your@email.com"
+                          className="w-full px-4 py-3 bg-transparent border border-border rounded-md text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary transition-colors"
+                        />
+                      </div>
+                      <Button
+                        size="lg"
+                        className="w-full bg-primary hover:opacity-90 text-primary-foreground"
+                        disabled={!email || isSubmittingWaitlist}
+                        onClick={async () => {
+                          if (!email) { toast.error("Please enter your email address"); return; }
+                          setIsSubmittingWaitlist(true);
+                          try {
+                            await addToWaitlistMutation.mutateAsync({
+                              email: email.trim(),
+                              userType: "student",
+                              referralSource: "student-quiz",
+                              assessmentData: JSON.stringify(data),
+                            });
+                            toast.success("You're on the list. Check your email for confirmation.");
+                            onClose();
+                          } catch (error: any) {
+                            if (error.message?.toLowerCase().includes("already") || error.message?.toLowerCase().includes("duplicate") || error.message?.toLowerCase().includes("exists") || error.message?.toLowerCase().includes("waitlist")) {
+                              toast.info("You're already on the list. We'll be in touch soon.");
+                              onClose();
+                            } else {
+                              toast.error("Failed to join waitlist. Please try again.");
+                            }
+                          } finally { setIsSubmittingWaitlist(false); }
+                        }}
+                      >
+                        {isSubmittingWaitlist ? "Joining..." : "Join waitlist"}
+                      </Button>
                     </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                  )}
 
-            <Card className="bg-neutral-900 border-neutral-800">
-              <CardContent className="p-8">
-                <div className="text-center mb-6">
-                  <p className="text-neutral-400 mb-2">
-                    We're currently in stealth mode building our coach network.
-                  </p>
-                  <p className="text-neutral-300 mb-6">
-                    Join the waitlist to be notified when coaches matching your
-                    profile are available.
-                  </p>
-                </div>
-
-                <div className="max-w-md mx-auto space-y-4">
-                  <div>
-                    <Label htmlFor="waitlist-email" className="text-sm text-neutral-300 mb-2 block">
-                      Email Address
-                    </Label>
-                    <input
-                      id="waitlist-email"
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="your@email.com"
-                      className="w-full px-4 py-3 bg-transparent border border-border rounded-md text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary transition-colors"
-                    />
-                  </div>
-
-                  <Button
-                    size="lg"
-                    className="w-full bg-primary hover:opacity-90 text-primary-foreground"
-                    disabled={!email || isSubmittingWaitlist}
-                    onClick={async () => {
-                      if (!email) {
-                        toast.error("Please enter your email address");
-                        return;
-                      }
-
-                      setIsSubmittingWaitlist(true);
-                      try {
-                        await addToWaitlistMutation.mutateAsync({
-                          email: email.trim(),
-                          userType: "student",
-                          referralSource: "student-quiz",
-                        });
-                        toast.success(
-                          "🎉 You're on the list! Check your email for confirmation."
-                        );
-                        onClose();
-                      } catch (error: any) {
-                        if (
-                          error.message?.toLowerCase().includes("already") ||
-                          error.message?.toLowerCase().includes("duplicate") ||
-                          error.message?.toLowerCase().includes("exists") ||
-                          error.message?.toLowerCase().includes("waitlist")
-                        ) {
-                          toast.info("You're already on the list! We'll be in touch soon.");
-                          onClose();
-                        } else {
-                          toast.error(
-                            "Failed to join waitlist. Please try again."
-                          );
-                        }
-                      } finally {
-                        setIsSubmittingWaitlist(false);
-                      }
-                    }}
-                  >
-                    {isSubmittingWaitlist ? "Joining..." : "Join Waitlist"}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+                  {user && (
+                    <div className="text-center">
+                      <Button onClick={onClose} className="btn-editorial-primary">
+                        Go to dashboard
+                      </Button>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
           </div>
         </div>
       </div>

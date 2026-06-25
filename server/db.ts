@@ -363,6 +363,22 @@ export async function getStudentProfileByUserId(userId: number) {
   return result.length > 0 ? result[0] : undefined;
 }
 
+export async function updateStudentProfile(
+  userId: number,
+  data: Partial<InsertStudentProfile>
+) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(studentProfiles).set(data).where(eq(studentProfiles.userId, userId));
+}
+
+export async function getWaitlistEntryByEmail(email: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(waitlist).where(eq(waitlist.email, email)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
 export async function updateStudentChessProfiles(
   userId: number,
   data: { chesscomUsername?: string; lichessUsername?: string; fideId?: string }

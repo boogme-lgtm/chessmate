@@ -358,6 +358,7 @@ export const appRouter = router({
         name: z.string().optional(),
         userType: z.enum(["student", "coach", "both"]).default("student"),
         referralSource: z.string().optional(),
+        assessmentData: z.string().optional(),
       }))
       .mutation(async ({ input }) => {
         const result = await db.addToWaitlist(input);
@@ -1037,26 +1038,21 @@ export const appRouter = router({
     // Create/update student profile from quiz
     saveQuizResults: protectedProcedure
       .input(z.object({
-        skillLevel: z.enum(["beginner", "intermediate", "advanced", "expert"]),
-        currentRating: z.number().optional(),
-        targetRating: z.number().optional(),
-        primaryGoal: z.enum(["rating_improvement", "tournament_prep", "openings", "tactics", "endgames", "general"]),
-        playingStyle: z.enum(["aggressive", "positional", "balanced", "defensive"]),
-        learningStyle: z.enum(["visual", "interactive", "analytical", "competitive"]),
-        practiceSchedule: z.enum(["casual", "regular", "serious", "intensive"]),
+        assessmentData: z.record(z.string(), z.unknown()),
       }))
       .mutation(async ({ ctx, input }) => {
+        const { mapAssessmentToProfile } = await import("@shared/assessmentMapping");
+        const mapped = mapAssessmentToProfile(input.assessmentData as any);
         const existing = await db.getStudentProfileByUserId(ctx.user.id);
-        
+
         if (existing) {
-          // Update existing profile
-          // For now, we'll create a new one - in production, implement update
+          await db.updateStudentProfile(ctx.user.id, mapped);
           return { success: true, profileId: existing.id };
         }
 
         await db.createStudentProfile({
           userId: ctx.user.id,
-          ...input,
+          ...mapped,
         });
 
         return { success: true };
@@ -1173,6 +1169,102 @@ export const appRouter = router({
     getMatches: protectedProcedure.query(async ({ ctx }) => {
       return await db.getMatchesForStudent(ctx.user.id);
     }),
+  }),
+
+  // ============ MATCHING OPERATIONS ============
+  match: router({
+    getMatchedCoaches: protectedProcedure.query(async ({ ctx }) => {
+      const { rankCoachesForStudent } = await import("@shared/coachMatching");
+      const profile = await db.getStudentProfileByUserId(ctx.user.id);
+      if (!profile) return [];
+
+      const coaches = await db.getActiveCoaches();
+      const coachesForMatching = coaches.map((c: any) => ({
+        userId: c.userId,
+        name: c.name || "Coach",
+        title: c.title,
+        fideRating: c.fideRating,
+        specialties: c.specialties,
+        teachingStyle: c.teachingStyle,
+        hourlyRateCents: c.hourlyRateCents,
+        availabilitySchedule: c.availabilitySchedule,
+        averageRating: c.averageRating,
+        totalLessons: c.totalLessons,
+        totalStudents: c.totalStudents,
+        totalReviews: c.totalReviews,
+        profilePhotoUrl: c.profilePhotoUrl,
+      }));
+
+      const ranked = rankCoachesForStudent(coachesForMatching, {
+        learningStyle: profile.learningStyle,
+        improvementAreas: profile.improvementAreas,
+        budgetMinCents: profile.budgetMinCents,
+        budgetMaxCents: profile.budgetMaxCents,
+        currentRating: profile.currentRating,
+        credentialImportance: profile.credentialImportance,
+        playingStyle: profile.playingStyle,
+        assessmentData: profile.assessmentData,
+      });
+
+      for (const match of ranked.slice(0, 3)) {
+        try {
+          await db.createCoachMatch({
+            studentId: ctx.user.id,
+            coachId: match.coachUserId,
+            overallScore: match.score,
+            styleScore: match.breakdown.style,
+            goalScore: match.breakdown.specialties,
+            scheduleScore: match.breakdown.schedule,
+            communicationScore: match.breakdown.styleAlignment,
+            budgetScore: match.breakdown.budget,
+            ratingScore: match.breakdown.ratingGap,
+            credentialScore: match.breakdown.credential,
+            experienceScore: match.breakdown.experience,
+            matchReasons: JSON.stringify(match.reasons),
+            quizAnswers: profile.assessmentData,
+          });
+        } catch {
+          // Duplicate match entries are fine — skip silently
+        }
+      }
+
+      return ranked;
+    }),
+
+    getMatchedCoachesAnon: publicProcedure
+      .input(z.object({ assessmentData: z.record(z.string(), z.unknown()) }))
+      .query(async ({ input }) => {
+        const { mapAssessmentToProfile } = await import("@shared/assessmentMapping");
+        const { rankCoachesForStudent } = await import("@shared/coachMatching");
+        const mapped = mapAssessmentToProfile(input.assessmentData as any);
+        const coaches = await db.getActiveCoaches();
+        const coachesForMatching = coaches.map((c: any) => ({
+          userId: c.userId,
+          name: c.name || "Coach",
+          title: c.title,
+          fideRating: c.fideRating,
+          specialties: c.specialties,
+          teachingStyle: c.teachingStyle,
+          hourlyRateCents: c.hourlyRateCents,
+          availabilitySchedule: c.availabilitySchedule,
+          averageRating: c.averageRating,
+          totalLessons: c.totalLessons,
+          totalStudents: c.totalStudents,
+          totalReviews: c.totalReviews,
+          profilePhotoUrl: c.profilePhotoUrl,
+        }));
+
+        return rankCoachesForStudent(coachesForMatching, {
+          learningStyle: mapped.learningStyle,
+          improvementAreas: mapped.improvementAreas,
+          budgetMinCents: mapped.budgetMinCents,
+          budgetMaxCents: mapped.budgetMaxCents,
+          currentRating: mapped.currentRating,
+          credentialImportance: mapped.credentialImportance,
+          playingStyle: mapped.playingStyle,
+          assessmentData: mapped.assessmentData,
+        });
+      }),
   }),
 
   // ============ LESSON OPERATIONS ============
