@@ -158,6 +158,31 @@ describe("scoreCoachForStudent", () => {
       });
       expect(result.breakdown.schedule).toBe(10);
     });
+
+    it("also handles the legacy FLAT schedule shape { day: [{start,end}] }", () => {
+      const flatCoach: CoachForMatching = {
+        ...BASE_COACH,
+        availabilitySchedule: JSON.stringify({ monday: [{ start: "09:00", end: "12:00" }] }),
+      };
+      const result = scoreCoachForStudent(flatCoach, {
+        ...BASE_STUDENT,
+        assessmentData: JSON.stringify({ availability: ["Morning (9am-12pm)"], ratingSystem: "fide" }),
+      });
+      expect(result.breakdown.schedule).toBe(10);
+    });
+
+    it("ignores out-of-range times in a slot", () => {
+      const badCoach: CoachForMatching = {
+        ...BASE_COACH,
+        availabilitySchedule: JSON.stringify({ monday: { enabled: true, slots: [{ start: "25:00", end: "99:00" }] } }),
+      };
+      const result = scoreCoachForStudent(badCoach, {
+        ...BASE_STUDENT,
+        assessmentData: JSON.stringify({ availability: ["Morning (9am-12pm)"], ratingSystem: "fide" }),
+      });
+      // No valid slot → neutral (no overlap claimed)
+      expect(result.breakdown.schedule).toBe(7);
+    });
   });
 
   describe("rating normalization across systems", () => {

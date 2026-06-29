@@ -145,7 +145,9 @@ const SPECIALTY_KEYWORDS: [RegExp, string[]][] = [
   [/classical/i, ["classical"]],
   [/begin|kid/i, ["beginners"]],
   [/psych|mental/i, ["psychology"]],
-  [/analys/i, ["analysis", "calculation"]],
+  // "Game analysis" is its own slug — do NOT inject "calculation" (over-the-board
+  // calculation is a distinct skill, and conflating them double-counts overlap).
+  [/analys/i, ["analysis"]],
 ];
 
 function canonicalizeArea(value: string): string[] {
@@ -202,8 +204,11 @@ const WEEKEND_DAYS = new Set(["saturday", "sunday", "sat", "sun"]);
 function hhmmToHour(value: string): number | null {
   const m = /^(\d{1,2}):(\d{2})$/.exec(value.trim());
   if (!m) return null;
-  const h = Number(m[1]) + Number(m[2]) / 60;
-  return Number.isFinite(h) ? h : null;
+  const hh = Number(m[1]);
+  const mm = Number(m[2]);
+  // Reject out-of-range times (parity with BookingCalendar.parseHHMM).
+  if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return null;
+  return hh + mm / 60;
 }
 
 interface CoachAvailability {
@@ -225,8 +230,17 @@ function parseCoachAvailability(raw: string | null): CoachAvailability {
 
   for (const [day, value] of Object.entries(parsed)) {
     const d = value as any;
-    if (!d?.enabled) continue;
-    const slots: any[] = Array.isArray(d.slots) ? d.slots : [];
+    // Handle BOTH stored shapes, mirroring BookingCalendar.parseSchedule:
+    //   - flat (legacy):     { monday: [{ start, end }] }
+    //   - nested (onboarding): { monday: { enabled, slots: [{ start, end }] } }
+    let slots: any[];
+    if (Array.isArray(d)) {
+      slots = d;
+    } else if (d?.enabled && Array.isArray(d.slots)) {
+      slots = d.slots;
+    } else {
+      continue;
+    }
     for (const slot of slots) {
       // Slots are { start, end } objects; tolerate a bare "HH:MM-HH:MM" string too.
       let start: number | null = null;
@@ -413,7 +427,7 @@ export function scoreCoachForStudent(coach: CoachForMatching, student: StudentFo
   const coachSpecialties = parseJsonArray(coach.specialties);
   const studentAreas = parseJsonArray(student.improvementAreas);
   const studentFide =
-    student.currentRating == null
+    student.currentRating == null || student.currentRating <= 0
       ? null
       : normalizeToFide(student.currentRating, assessment?.ratingSystem);
 
@@ -449,10 +463,10 @@ export function scoreCoachForStudent(coach: CoachForMatching, student: StudentFo
     experience: dims.experience.real,
   };
 
-  // Sum the raw (unrounded) scores, then clamp — avoids per-dimension rounding
-  // pushing the displayed total above 100.
-  const rawTotal = Object.values(dims).reduce((sum, d) => sum + d.score, 0);
-  const score = Math.min(100, Math.max(0, Math.round(rawTotal)));
+  // Sum the ROUNDED breakdown values so the headline score always equals the
+  // sum of the per-dimension numbers shown to the user (no off-by-one between
+  // the badge and the breakdown). Clamp guards the rare rounding overshoot.
+  const score = Math.min(100, Math.max(0, Object.values(breakdown).reduce((sum, v) => sum + v, 0)));
   const reasons = topReasons(breakdown, real);
 
   return {
