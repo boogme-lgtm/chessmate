@@ -377,9 +377,12 @@ export const coachMatches = mysqlTable("coach_matches", {
   quizAnswers: text("quizAnswers"),
 
   status: mysqlEnum("status", ["suggested", "contacted", "active", "inactive"]).default("suggested"),
-  
+
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (t) => ({
+  // One match row per (student, coach) — makes upsertCoachMatch race-safe.
+  studentCoachUnique: unique("uniq_coach_matches_student_coach").on(t.studentId, t.coachId),
+}));
 
 export type CoachMatch = typeof coachMatches.$inferSelect;
 export type InsertCoachMatch = typeof coachMatches.$inferInsert;

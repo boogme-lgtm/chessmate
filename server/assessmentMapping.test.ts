@@ -100,4 +100,55 @@ describe("mapAssessmentToProfile", () => {
     expect(result.budgetMaxCents).toBe(10000);
     expect(result.credentialImportance).toBe("somewhat");
   });
+
+  describe("numeric coercion and clamping (defends the waitlist migration path)", () => {
+    it("coerces string numerics instead of concatenating", () => {
+      const result = mapAssessmentToProfile({ rating: "1450", targetImprovement: "200" } as any);
+      expect(result.currentRating).toBe(1450);
+      expect(result.targetRating).toBe(1650); // numeric addition, NOT "1450200"
+    });
+
+    it("falls back to defaults for non-numeric garbage", () => {
+      const result = mapAssessmentToProfile({ rating: "abc", budgetMin: "lots" } as any);
+      expect(result.currentRating).toBe(1200);
+      expect(result.budgetMinCents).toBe(5000);
+    });
+
+    it("clamps a negative targetImprovement to 0", () => {
+      const result = mapAssessmentToProfile({ rating: 1500, targetImprovement: -500 } as any);
+      expect(result.targetRating).toBe(1500);
+    });
+
+    it("clamps an absurd targetImprovement to the cap", () => {
+      const result = mapAssessmentToProfile({ rating: 1500, targetImprovement: 99999 } as any);
+      expect(result.targetRating).toBe(3500); // 1500 + 2000 cap
+    });
+
+    it("drops a non-array improvementAreas without crashing", () => {
+      const result = mapAssessmentToProfile({ improvementAreas: "tactics" } as any);
+      expect(JSON.parse(result.improvementAreas)).toEqual([]);
+    });
+  });
+});
+
+describe("assessmentDataSchema", () => {
+  it("strips unknown keys and bounds the blob", async () => {
+    const { assessmentDataSchema } = await import("@shared/assessmentMapping");
+    const parsed = assessmentDataSchema.parse({ rating: 1500, sneaky: "x".repeat(100000) } as any);
+    expect((parsed as any).sneaky).toBeUndefined();
+    expect(parsed.rating).toBe(1500);
+  });
+
+  it("coerces numeric strings at the boundary", async () => {
+    const { assessmentDataSchema } = await import("@shared/assessmentMapping");
+    const parsed = assessmentDataSchema.parse({ rating: "1600", budgetMin: "40" } as any);
+    expect(parsed.rating).toBe(1600);
+    expect(parsed.budgetMin).toBe(40);
+  });
+
+  it("rejects an over-long improvementAreas array", async () => {
+    const { assessmentDataSchema } = await import("@shared/assessmentMapping");
+    const result = assessmentDataSchema.safeParse({ improvementAreas: Array(50).fill("x") });
+    expect(result.success).toBe(false);
+  });
 });

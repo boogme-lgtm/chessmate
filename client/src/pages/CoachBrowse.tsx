@@ -1,6 +1,6 @@
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { rankCoachesForStudent, type CoachForMatching, type StudentForMatching } from "@shared/coachMatching";
+import { rankCoachesForStudent, toCoachForMatching, parseJsonArray, type StudentForMatching } from "@shared/coachMatching";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -19,16 +19,6 @@ import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useState, useMemo } from "react";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-function parseJsonArray(val: unknown): string[] {
-  if (!val) return [];
-  try {
-    const parsed = JSON.parse(val as string);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
 
 function getInitials(name: string | null | undefined): string {
   if (!name) return "?";
@@ -70,40 +60,29 @@ function matchesFilter(coach: any, filter: FilterKey): boolean {
   return specs.some((s: string) => s.includes(term));
 }
 
-function sortCoaches(arr: any[], sort: SortKey, studentProfile?: any): any[] {
-  if (sort === "Best Match" && studentProfile) {
-    const coachesForMatching: CoachForMatching[] = arr.map((c: any) => ({
-      userId: c.users?.id ?? c.coach_profiles?.userId ?? 0,
-      name: c.users?.name ?? "Coach",
-      title: c.coach_profiles?.title ?? null,
-      fideRating: c.coach_profiles?.fideRating ?? null,
-      specialties: c.coach_profiles?.specialties ?? null,
-      teachingStyle: c.coach_profiles?.teachingStyle ?? null,
-      hourlyRateCents: c.coach_profiles?.hourlyRateCents ?? null,
-      availabilitySchedule: c.coach_profiles?.availabilitySchedule ?? null,
-      averageRating: c.coach_profiles?.averageRating ?? null,
-      totalLessons: c.coach_profiles?.totalLessons ?? null,
-      totalStudents: c.coach_profiles?.totalStudents ?? null,
-      totalReviews: c.coach_profiles?.totalReviews ?? null,
-      profilePhotoUrl: c.coach_profiles?.profilePhotoUrl ?? null,
-    }));
-    const student: StudentForMatching = {
-      learningStyle: studentProfile.learningStyle,
-      improvementAreas: studentProfile.improvementAreas,
-      budgetMinCents: studentProfile.budgetMinCents,
-      budgetMaxCents: studentProfile.budgetMaxCents,
-      currentRating: studentProfile.currentRating,
-      credentialImportance: studentProfile.credentialImportance,
-      playingStyle: studentProfile.playingStyle,
-      assessmentData: studentProfile.assessmentData,
-    };
-    const ranked = rankCoachesForStudent(coachesForMatching, student);
-    const scoreMap = new Map(ranked.map(r => [r.coachUserId, r.score]));
-    return [...arr].sort((a, b) => {
-      const idA = a.users?.id ?? a.coach_profiles?.userId ?? 0;
-      const idB = b.users?.id ?? b.coach_profiles?.userId ?? 0;
-      return (scoreMap.get(idB) ?? 0) - (scoreMap.get(idA) ?? 0);
-    });
+function coachId(c: any): number {
+  return c.users?.id ?? c.coach_profiles?.userId ?? 0;
+}
+
+function profileToStudent(studentProfile: any): StudentForMatching {
+  return {
+    learningStyle: studentProfile.learningStyle,
+    improvementAreas: studentProfile.improvementAreas,
+    budgetMinCents: studentProfile.budgetMinCents,
+    budgetMaxCents: studentProfile.budgetMaxCents,
+    currentRating: studentProfile.currentRating,
+    credentialImportance: studentProfile.credentialImportance,
+    playingStyle: studentProfile.playingStyle,
+    assessmentData: studentProfile.assessmentData,
+  };
+}
+
+function sortCoaches(arr: any[], sort: SortKey, matchScores?: Map<number, number> | null): any[] {
+  // "Best Match" sorts by the precomputed score map (computed once in the
+  // component so the same scores can label the cards). Falls through to the
+  // default comparator when no scores are available (no profile).
+  if (sort === "Best Match" && matchScores) {
+    return [...arr].sort((a, b) => (matchScores.get(coachId(b)) ?? 0) - (matchScores.get(coachId(a)) ?? 0));
   }
 
   return [...arr].sort((a, b) => {
@@ -140,12 +119,19 @@ export default function CoachBrowse() {
     enabled: !!user,
   });
 
+  // Score every coach once when "Best Match" is active — reused for both the
+  // sort order and the per-card match badge (no wasted re-scoring).
+  const matchScores = useMemo(() => {
+    if (sort !== "Best Match" || !studentProfile || !coaches) return null;
+    const ranked = rankCoachesForStudent(coaches.map(toCoachForMatching), profileToStudent(studentProfile));
+    return new Map(ranked.map((r) => [r.coachUserId, r.score]));
+  }, [sort, studentProfile, coaches]);
+
   const filtered = useMemo(() => {
     if (!coaches) return [];
     const matched = coaches.filter((c: any) => matchesFilter(c, filter));
-    const effectiveSort = sort === "Best Match" && !studentProfile ? "Top Rated" as SortKey : sort;
-    return sortCoaches(matched, effectiveSort, studentProfile ?? undefined);
-  }, [coaches, filter, sort, studentProfile]);
+    return sortCoaches(matched, sort, matchScores);
+  }, [coaches, filter, sort, matchScores]);
 
   if (isLoading) return <BrowseSkeleton />;
 
@@ -263,7 +249,12 @@ export default function CoachBrowse() {
             }
           >
             {filtered.map((coach: any) => (
-              <CoachCard key={coach.users.id} coach={coach} viewMode={viewMode} />
+              <CoachCard
+                key={coach.users.id}
+                coach={coach}
+                viewMode={viewMode}
+                matchScore={matchScores?.get(coach.users.id) ?? null}
+              />
             ))}
           </div>
         )}
@@ -276,7 +267,7 @@ export default function CoachBrowse() {
 
 // ── Coach Card ───────────────────────────────────────────────────────────────
 
-function CoachCard({ coach, viewMode }: { coach: any; viewMode: "grid" | "list" }) {
+function CoachCard({ coach, viewMode, matchScore }: { coach: any; viewMode: "grid" | "list"; matchScore?: number | null }) {
   const [, setLocation] = useLocation();
   const user = coach.users;
   const profile = coach.coach_profiles;
@@ -308,6 +299,12 @@ function CoachCard({ coach, viewMode }: { coach: any; viewMode: "grid" | "list" 
     >
       {/* Left panel — photo / initials */}
       <div className={`relative shrink-0 ${viewMode === "list" ? "w-40" : "w-36"} bg-[#0d0d0d]`}>
+        {/* Match-score badge — only in Best Match mode */}
+        {matchScore != null && (
+          <div className="absolute top-0 left-0 z-10 bg-orange-600 text-white text-xs font-bold px-2 py-1 rounded-br-sm">
+            {matchScore}% match
+          </div>
+        )}
         {photoUrl ? (
           <img src={photoUrl} alt={user.name} className="h-full w-full object-cover" />
         ) : (

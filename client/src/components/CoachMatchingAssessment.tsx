@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -79,19 +79,11 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
   const { user } = useAuth();
   const addToWaitlistMutation = trpc.waitlist.join.useMutation();
   const saveQuizMutation = trpc.student.saveQuizResults.useMutation();
+  // Persistence + ranking is a mutation (awaited once), not a query — so it
+  // can't re-fire on window refocus and there's no render-before-data race.
+  const generateMatchesMutation = trpc.match.generateMatches.useMutation();
   const [matchResults, setMatchResults] = useState<any[] | null>(null);
-  const [shouldFetchMatches, setShouldFetchMatches] = useState(false);
-
-  const matchQuery = trpc.match.getMatchedCoaches.useQuery(undefined, {
-    enabled: !!user && shouldFetchMatches,
-    retry: false,
-  });
-
-  useEffect(() => {
-    if (matchQuery.data && matchQuery.data.length > 0) {
-      setMatchResults(matchQuery.data);
-    }
-  }, [matchQuery.data]);
+  const [matchError, setMatchError] = useState(false);
 
   const [data, setData] = useState<Partial<AssessmentData>>({
     rating: 1200,
@@ -157,7 +149,7 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
     try {
       if (user) {
         setProcessingStep(0);
-        await saveQuizMutation.mutateAsync({ assessmentData: data as Record<string, unknown> });
+        await saveQuizMutation.mutateAsync({ assessmentData: data as any });
       }
 
       for (let i = user ? 1 : 0; i < steps.length; i++) {
@@ -165,11 +157,20 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
         await new Promise((resolve) => setTimeout(resolve, 800));
       }
 
+      // Rank + persist matches (authenticated only). Awaited here, so the
+      // results screen never renders before this resolves.
       if (user) {
-        setShouldFetchMatches(true);
+        try {
+          const matches = await generateMatchesMutation.mutateAsync();
+          if (matches && matches.length > 0) setMatchResults(matches);
+        } catch (e) {
+          console.error("[assessment] match generation failed:", e);
+          setMatchError(true);
+        }
       }
     } catch (e) {
       console.error("[assessment] save failed:", e);
+      setMatchError(true);
     }
 
     setIsProcessing(false);
@@ -1436,7 +1437,9 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
                   <div className="text-center mb-6">
                     <p className="text-neutral-400 mb-2">
                       {user
-                        ? "Your profile is saved. We'll match you with coaches as they join."
+                        ? matchError
+                          ? "Your profile is saved, but we couldn't load your matches right now. Please try again from your dashboard."
+                          : "Your profile is saved. We'll match you with coaches as they join."
                         : "We're currently building our coach network."}
                     </p>
                     {!user && (

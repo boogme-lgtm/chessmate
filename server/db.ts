@@ -874,31 +874,15 @@ export async function grantAchievement(userId: number, achievementId: number) {
 
 // ============ COACH MATCH OPERATIONS ============
 
-export async function createCoachMatch(match: InsertCoachMatch) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  return await db.insert(coachMatches).values(match);
-}
-
 export async function upsertCoachMatch(match: InsertCoachMatch) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  const existing = await db.select({ id: coachMatches.id })
-    .from(coachMatches)
-    .where(and(
-      eq(coachMatches.studentId, match.studentId),
-      eq(coachMatches.coachId, match.coachId),
-    ))
-    .limit(1);
-
-  if (existing.length > 0) {
-    await db.update(coachMatches).set(match).where(eq(coachMatches.id, existing[0].id));
-    return;
-  }
-
-  await db.insert(coachMatches).values(match);
+  // Atomic upsert keyed on the (studentId, coachId) unique constraint —
+  // race-safe under concurrent calls (no check-then-act window). `id`, `studentId`
+  // and `coachId` are intentionally excluded from the update set.
+  const { studentId, coachId, ...mutable } = match;
+  await db.insert(coachMatches).values(match).onDuplicateKeyUpdate({ set: mutable });
 }
 
 export async function getMatchesForStudent(studentId: number) {
