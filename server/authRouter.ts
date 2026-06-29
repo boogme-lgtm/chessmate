@@ -137,17 +137,22 @@ export const authRouter = router({
           const sessionToken = await createSessionToken(user);
           setSessionCookie(ctx.res, sessionToken);
 
-          // Migrate assessment data from waitlist → student profile
+          // Migrate assessment data from waitlist → student profile.
+          // Validate against the bounded schema before mapping — legacy waitlist
+          // rows predate write-time sanitization and may be malformed.
           try {
             const waitlistEntry = await db.getWaitlistEntryByEmail(user.email);
             if (waitlistEntry?.assessmentData) {
-              const { mapAssessmentToProfile } = await import("@shared/assessmentMapping");
-              const mapped = mapAssessmentToProfile(JSON.parse(waitlistEntry.assessmentData));
-              const existing = await db.getStudentProfileByUserId(user.id);
-              if (existing) {
-                await db.updateStudentProfile(user.id, mapped);
-              } else {
-                await db.createStudentProfile({ userId: user.id, ...mapped });
+              const { mapAssessmentToProfile, assessmentDataSchema } = await import("@shared/assessmentMapping");
+              const validated = assessmentDataSchema.safeParse(JSON.parse(waitlistEntry.assessmentData));
+              if (validated.success) {
+                const mapped = mapAssessmentToProfile(validated.data);
+                const existing = await db.getStudentProfileByUserId(user.id);
+                if (existing) {
+                  await db.updateStudentProfile(user.id, mapped);
+                } else {
+                  await db.createStudentProfile({ userId: user.id, ...mapped });
+                }
               }
             }
           } catch (e) {

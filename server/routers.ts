@@ -13,6 +13,7 @@ import { retrieveCheckoutSession, createContentRequestCheckoutSession, createCon
 import { ENV } from "./_core/env";
 import { PRICING_TIERS, type PricingTier, calculateLessonBreakdown, getTierFeePercent, DEFAULT_PRICING_TIER } from "@shared/pricing";
 import { toCountryCode } from "@shared/countries";
+import { assessmentDataSchema } from "@shared/assessmentMapping";
 import {
   sendEmail,
   getWaitlistConfirmationEmail,
@@ -109,9 +110,27 @@ async function sendCancellationEmails(
   }
 }
 
+/**
+ * Project a student_profiles row onto the StudentForMatching shape the
+ * scoring engine consumes. Single source of truth so the match query and the
+ * generate mutation can never drift.
+ */
+function profileToStudentForMatching(profile: any) {
+  return {
+    learningStyle: profile.learningStyle,
+    improvementAreas: profile.improvementAreas,
+    budgetMinCents: profile.budgetMinCents,
+    budgetMaxCents: profile.budgetMaxCents,
+    currentRating: profile.currentRating,
+    credentialImportance: profile.credentialImportance,
+    playingStyle: profile.playingStyle,
+    assessmentData: profile.assessmentData,
+  };
+}
+
 export const appRouter = router({
   system: systemRouter,
-  
+
   auth: authRouter,
 
   // Sprint 50: student PGN self-analysis sessions
@@ -358,10 +377,23 @@ export const appRouter = router({
         name: z.string().optional(),
         userType: z.enum(["student", "coach", "both"]).default("student"),
         referralSource: z.string().optional(),
-        assessmentData: z.string().optional(),
+        assessmentData: z.string().max(20000).optional(),
       }))
       .mutation(async ({ input }) => {
-        const result = await db.addToWaitlist(input);
+        // Sanitize the assessment blob before persisting: parse, validate
+        // against the bounded schema (strips unknown keys / oversized fields),
+        // and re-serialize. Anything malformed is dropped rather than stored raw.
+        let cleanedAssessment: string | undefined;
+        if (input.assessmentData) {
+          try {
+            const parsed = JSON.parse(input.assessmentData);
+            const validated = assessmentDataSchema.safeParse(parsed);
+            if (validated.success) cleanedAssessment = JSON.stringify(validated.data);
+          } catch {
+            // Not valid JSON — drop it silently.
+          }
+        }
+        const result = await db.addToWaitlist({ ...input, assessmentData: cleanedAssessment });
         if (!result.success) {
           throw new TRPCError({
             code: "CONFLICT",
@@ -1038,14 +1070,11 @@ export const appRouter = router({
     // Create/update student profile from quiz
     saveQuizResults: protectedProcedure
       .input(z.object({
-        assessmentData: z.record(z.string(), z.unknown()).refine(
-          obj => JSON.stringify(obj).length < 50000,
-          { message: "Assessment data too large" }
-        ),
+        assessmentData: assessmentDataSchema,
       }))
       .mutation(async ({ ctx, input }) => {
         const { mapAssessmentToProfile } = await import("@shared/assessmentMapping");
-        const mapped = mapAssessmentToProfile(input.assessmentData as any);
+        const mapped = mapAssessmentToProfile(input.assessmentData);
         const existing = await db.getStudentProfileByUserId(ctx.user.id);
 
         if (existing) {
@@ -1176,38 +1205,29 @@ export const appRouter = router({
 
   // ============ MATCHING OPERATIONS ============
   match: router({
+    // Pure read: rank active coaches against the student's saved profile.
+    // No writes here — persistence lives in generateMatches (a mutation) so
+    // React Query refetches can never re-fire database writes.
     getMatchedCoaches: protectedProcedure.query(async ({ ctx }) => {
-      const { rankCoachesForStudent } = await import("@shared/coachMatching");
+      const { rankCoachesForStudent, toCoachForMatching } = await import("@shared/coachMatching");
       const profile = await db.getStudentProfileByUserId(ctx.user.id);
       if (!profile) return [];
 
-      const coaches = await db.getActiveCoaches();
-      const coachesForMatching = coaches.map((c: any) => ({
-        userId: c.coach_profiles?.userId ?? c.userId ?? 0,
-        name: c.users?.name ?? c.name ?? "Coach",
-        title: c.coach_profiles?.title ?? c.title ?? null,
-        fideRating: c.coach_profiles?.fideRating ?? c.fideRating ?? null,
-        specialties: c.coach_profiles?.specialties ?? c.specialties ?? null,
-        teachingStyle: c.coach_profiles?.teachingStyle ?? c.teachingStyle ?? null,
-        hourlyRateCents: c.coach_profiles?.hourlyRateCents ?? c.hourlyRateCents ?? null,
-        availabilitySchedule: c.coach_profiles?.availabilitySchedule ?? c.availabilitySchedule ?? null,
-        averageRating: c.coach_profiles?.averageRating ?? c.averageRating ?? null,
-        totalLessons: c.coach_profiles?.totalLessons ?? c.totalLessons ?? null,
-        totalStudents: c.coach_profiles?.totalStudents ?? c.totalStudents ?? null,
-        totalReviews: c.coach_profiles?.totalReviews ?? c.totalReviews ?? null,
-        profilePhotoUrl: c.coach_profiles?.profilePhotoUrl ?? c.profilePhotoUrl ?? null,
-      }));
+      const coaches = await db.getActiveCoaches(500);
+      const coachesForMatching = coaches.map(toCoachForMatching);
+      return rankCoachesForStudent(coachesForMatching, profileToStudentForMatching(profile));
+    }),
 
-      const ranked = rankCoachesForStudent(coachesForMatching, {
-        learningStyle: profile.learningStyle,
-        improvementAreas: profile.improvementAreas,
-        budgetMinCents: profile.budgetMinCents,
-        budgetMaxCents: profile.budgetMaxCents,
-        currentRating: profile.currentRating,
-        credentialImportance: profile.credentialImportance,
-        playingStyle: profile.playingStyle,
-        assessmentData: profile.assessmentData,
-      });
+    // Mutation: rank AND persist the top 3 matches. Called once when the
+    // student completes the assessment. Writes belong in a mutation, not a query.
+    generateMatches: protectedProcedure.mutation(async ({ ctx }) => {
+      const { rankCoachesForStudent, toCoachForMatching } = await import("@shared/coachMatching");
+      const profile = await db.getStudentProfileByUserId(ctx.user.id);
+      if (!profile) return [];
+
+      const coaches = await db.getActiveCoaches(500);
+      const coachesForMatching = coaches.map(toCoachForMatching);
+      const ranked = rankCoachesForStudent(coachesForMatching, profileToStudentForMatching(profile));
 
       for (const match of ranked.slice(0, 3)) {
         try {
@@ -1218,7 +1238,6 @@ export const appRouter = router({
             styleScore: match.breakdown.style,
             goalScore: match.breakdown.specialties,
             scheduleScore: match.breakdown.schedule,
-            communicationScore: match.breakdown.styleAlignment,
             budgetScore: match.breakdown.budget,
             ratingScore: match.breakdown.ratingGap,
             credentialScore: match.breakdown.credential,
@@ -1226,53 +1245,13 @@ export const appRouter = router({
             matchReasons: JSON.stringify(match.reasons),
             quizAnswers: profile.assessmentData,
           });
-        } catch {
-          // Duplicate match entries are fine — skip silently
+        } catch (e) {
+          console.error("[generateMatches] upsert failed for coach", match.coachUserId, e);
         }
       }
 
       return ranked;
     }),
-
-    getMatchedCoachesAnon: publicProcedure
-      .input(z.object({
-        assessmentData: z.record(z.string(), z.unknown()).refine(
-          obj => JSON.stringify(obj).length < 50000,
-          { message: "Assessment data too large" }
-        ),
-      }))
-      .query(async ({ input }) => {
-        const { mapAssessmentToProfile } = await import("@shared/assessmentMapping");
-        const { rankCoachesForStudent } = await import("@shared/coachMatching");
-        const mapped = mapAssessmentToProfile(input.assessmentData as any);
-        const coaches = await db.getActiveCoaches();
-        const coachesForMatching = coaches.map((c: any) => ({
-          userId: c.coach_profiles?.userId ?? c.userId ?? 0,
-          name: c.users?.name ?? c.name ?? "Coach",
-          title: c.coach_profiles?.title ?? c.title ?? null,
-          fideRating: c.coach_profiles?.fideRating ?? c.fideRating ?? null,
-          specialties: c.coach_profiles?.specialties ?? c.specialties ?? null,
-          teachingStyle: c.coach_profiles?.teachingStyle ?? c.teachingStyle ?? null,
-          hourlyRateCents: c.coach_profiles?.hourlyRateCents ?? c.hourlyRateCents ?? null,
-          availabilitySchedule: c.coach_profiles?.availabilitySchedule ?? c.availabilitySchedule ?? null,
-          averageRating: c.coach_profiles?.averageRating ?? c.averageRating ?? null,
-          totalLessons: c.coach_profiles?.totalLessons ?? c.totalLessons ?? null,
-          totalStudents: c.coach_profiles?.totalStudents ?? c.totalStudents ?? null,
-          totalReviews: c.coach_profiles?.totalReviews ?? c.totalReviews ?? null,
-          profilePhotoUrl: c.coach_profiles?.profilePhotoUrl ?? c.profilePhotoUrl ?? null,
-        }));
-
-        return rankCoachesForStudent(coachesForMatching, {
-          learningStyle: mapped.learningStyle,
-          improvementAreas: mapped.improvementAreas,
-          budgetMinCents: mapped.budgetMinCents,
-          budgetMaxCents: mapped.budgetMaxCents,
-          currentRating: mapped.currentRating,
-          credentialImportance: mapped.credentialImportance,
-          playingStyle: mapped.playingStyle,
-          assessmentData: mapped.assessmentData,
-        });
-      }),
   }),
 
   // ============ LESSON OPERATIONS ============
