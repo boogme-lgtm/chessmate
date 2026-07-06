@@ -83,4 +83,17 @@ describe("webhook orphaned-payment refund", () => {
     await handleStripeWebhook(req, res);
     expect(createRefund).not.toHaveBeenCalled();
   });
+
+  it("returns a non-2xx when the orphan refund fails, so Stripe retries", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue({
+      id: 42, status: "cancelled", stripePaymentIntentId: null, studentId: 1, coachId: 2,
+    } as any);
+    vi.mocked(createRefund).mockRejectedValueOnce(new Error("Stripe down"));
+    const status = vi.fn().mockReturnThis();
+    const req = { headers: { "stripe-signature": "sig_test" }, body: paidEvent(42, "pi_orphan_1") } as any;
+    const res = { json: () => res, status } as any;
+    await handleStripeWebhook(req, res);
+    expect(createRefund).toHaveBeenCalled();
+    expect(status).toHaveBeenCalledWith(400);
+  });
 });
