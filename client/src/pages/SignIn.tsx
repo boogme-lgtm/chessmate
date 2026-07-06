@@ -32,8 +32,17 @@ export default function SignIn() {
     },
     onError: (err) => {
       setError(err.message);
+      setResendSent(false);
     },
   });
+
+  // Recovery path for the "please verify your email" lockout — offer to re-send
+  // the verification link (enumeration-safe endpoint, always resolves success).
+  const [resendSent, setResendSent] = useState(false);
+  const resendVerification = trpc.auth.resendVerification.useMutation({
+    onSuccess: () => setResendSent(true),
+  });
+  const needsVerification = /verify your email/i.test(error);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -68,6 +77,21 @@ export default function SignIn() {
               role="alert"
             >
               {error}
+              {needsVerification && !resendSent && (
+                <button
+                  type="button"
+                  onClick={() => resendVerification.mutate({ email })}
+                  disabled={resendVerification.isPending || !email}
+                  className="mt-2 block underline underline-offset-2 text-[12px] text-primary disabled:opacity-60"
+                >
+                  {resendVerification.isPending ? "Sending…" : "Resend verification email"}
+                </button>
+              )}
+              {resendSent && (
+                <p className="mt-2 text-[12px] text-muted-foreground">
+                  Verification email sent — check your inbox (and spam).
+                </p>
+              )}
             </div>
           )}
 
