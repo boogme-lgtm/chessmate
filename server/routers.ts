@@ -1277,6 +1277,35 @@ export const appRouter = router({
           throw new TRPCError({ code: "NOT_FOUND", message: "Coach not found" });
         }
 
+        // Server-side booking-window enforcement (timezone-independent: absolute
+        // instants). Prevents booking sooner/further out than the coach allows.
+        const leadMs = input.scheduledAt.getTime() - Date.now();
+        const minAdvanceMs = (coachProfile.minAdvanceHours ?? 24) * 60 * 60 * 1000;
+        const maxAdvanceMs = (coachProfile.maxAdvanceDays ?? 30) * 24 * 60 * 60 * 1000;
+        if (leadMs < minAdvanceMs) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `This coach requires booking at least ${coachProfile.minAdvanceHours ?? 24} hours in advance.`,
+          });
+        }
+        if (leadMs > maxAdvanceMs) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `This coach only accepts bookings up to ${coachProfile.maxAdvanceDays ?? 30} days ahead.`,
+          });
+        }
+
+        // Server-side double-booking guard — never trust the client. Rejects a
+        // slot that overlaps an existing (non-abandoned) lesson for this coach.
+        const { isTimeSlotAvailable } = await import("./bookingService");
+        const slotFree = await isTimeSlotAvailable(input.coachId, input.scheduledAt, input.durationMinutes);
+        if (!slotFree) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "That time slot is no longer available. Please choose another.",
+          });
+        }
+
         // Calculate pricing using coach's tier (Free=12%, Pro=8%, Elite=5%).
         const hourlyRate = coachProfile.hourlyRateCents || 5000;
         const amountCents = Math.round((hourlyRate * input.durationMinutes) / 60);

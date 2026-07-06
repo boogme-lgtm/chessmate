@@ -53,6 +53,11 @@ export async function calculateLessonPricing(coachId: number, durationMinutes: n
 /**
  * Check if a time slot is available for a coach
  */
+// An unpaid pending_payment lesson is a soft "hold" on the slot while the student
+// completes Stripe checkout. After this window the hold is treated as abandoned so
+// it can no longer block the slot (prevents the "slot booked forever" dead end).
+export const PENDING_HOLD_MS = 15 * 60 * 1000; // 15 minutes
+
 export async function isTimeSlotAvailable(
   coachId: number,
   scheduledAt: Date,
@@ -62,7 +67,7 @@ export async function isTimeSlotAvailable(
 
   const db = await getDb();
   if (!db) throw new Error("Database not initialized");
-  
+
   // Check for overlapping lessons (exclude cancelled and refunded)
   const overlapping = await db
     .select()
@@ -74,8 +79,20 @@ export async function isTimeSlotAvailable(
       )
     );
 
+  const holdCutoff = Date.now() - PENDING_HOLD_MS;
+
   // Check each lesson for time overlap
   for (const lesson of overlapping) {
+    // Skip abandoned checkout holds — an unpaid pending_payment older than the
+    // hold window no longer reserves the slot.
+    if (
+      lesson.status === "pending_payment" &&
+      lesson.createdAt &&
+      new Date(lesson.createdAt).getTime() < holdCutoff
+    ) {
+      continue;
+    }
+
     const lessonStart = new Date(lesson.scheduledAt);
     const lessonEnd = new Date(lessonStart.getTime() + (lesson.durationMinutes || 60) * 60000);
 
