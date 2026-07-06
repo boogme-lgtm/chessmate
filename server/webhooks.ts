@@ -13,6 +13,7 @@ import { transferToCoach, getChargeIdForPaymentIntent } from './stripeConnect';
 import { sendEmail, getStudentBookingConfirmationEmail, getCoachBookingNotificationEmail, getStudentContentPurchaseReceiptEmail } from './emailService';
 import { ENV } from './_core/env';
 import { getTierFeePercent, DEFAULT_PRICING_TIER } from '@shared/pricing';
+import { notifyOwner } from './_core/notification';
 
 // Use the shared Stripe instance from stripe.ts — do not create a duplicate
 
@@ -327,6 +328,31 @@ async function handleTipCheckoutCompleted(session: Stripe.Checkout.Session) {
 }
 
 /**
+ * Surface a content-sale coach payout that couldn't be sent (no payout account,
+ * or a failed transfer). The buyer owns the content and the coach's share is
+ * held in the platform balance — alert the owner so it's paid manually rather
+ * than silently lost. Best-effort: never throws out of the webhook.
+ */
+async function alertOwedContentPayout(
+  contentItemId: number,
+  coachId: number,
+  owedCents: number,
+  paymentIntentId: string,
+  reason: string
+) {
+  try {
+    await notifyOwner({
+      title: "Content payout failed — coach owed money",
+      content:
+        `Content item ${contentItemId}: coach ${coachId} is owed ${owedCents} cents from a sale (payment intent ${paymentIntentId}) but the payout ${reason}. ` +
+        `The funds are held in the platform Stripe balance. Re-trigger the transfer manually — idempotency key content_item_payout_${paymentIntentId} makes a retry safe (no double pay).`,
+    });
+  } catch (e) {
+    console.error(`[Webhook] content_item ${contentItemId}: could not alert owner of the owed payout (PI ${paymentIntentId})`, e);
+  }
+}
+
+/**
  * Refund a tip the student paid for but which can't be delivered to the coach
  * (no payout account, or a failed transfer). Idempotency-keyed so a webhook
  * retry can't double-refund. Best-effort: on refund failure we log loudly for
@@ -601,6 +627,10 @@ async function handleContentItemCheckoutCompleted(session: Stripe.Checkout.Sessi
   const coach = await db.getUserById(item.coachId);
   if (!coach?.stripeConnectAccountId) {
     console.error(`[Webhook] content_item ${contentItemId}: coach ${item.coachId} has no Connect account — payout skipped`);
+    // The buyer owns the content; the coach's share is held in the platform
+    // balance. Surface it so it isn't silently lost (see follow-up: durable
+    // payout-status + automated retry needs a content_purchases migration).
+    await alertOwedContentPayout(contentItemId, item.coachId, amountPaidCents, paymentIntentId, "coach has no payout account");
   } else {
     const coachProfile = await db.getCoachProfileByUserId(item.coachId);
     const feePercent = getTierFeePercent(coachProfile?.pricingTier ?? DEFAULT_PRICING_TIER);
@@ -624,6 +654,9 @@ async function handleContentItemCheckoutCompleted(session: Stripe.Checkout.Sessi
         console.log(`[Webhook] content_item ${contentItemId}: transferred ${coachPayoutCents} to coach ${item.coachId}`);
       } else {
         console.error(`[Webhook] content_item ${contentItemId}: transfer failed: ${result.error}`);
+        // Don't swallow: the coach is owed money held in the platform balance.
+        // The transfer's idempotency key means a manual re-trigger can't double-pay.
+        await alertOwedContentPayout(contentItemId, item.coachId, coachPayoutCents, paymentIntentId, `transfer failed: ${result.error}`);
       }
     }
   }
