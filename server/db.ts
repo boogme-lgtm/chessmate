@@ -248,11 +248,21 @@ export async function updateUserType(userId: number, userType: "student" | "coac
     .where(eq(users.id, userId));
 }
 
+// Fields that must NEVER appear in any public/cross-user read path. The guard
+// test in security-userleak.test.ts asserts publicUserColumns is disjoint from
+// this set, so adding a secret column to the projection fails CI.
+export const SENSITIVE_USER_FIELDS = [
+  "password", "openId", "email", "emailVerificationToken", "emailVerificationExpires",
+  "passwordResetToken", "passwordResetExpires", "loginMethod",
+  "stripeCustomerId", "stripeConnectAccountId", "stripeConnectOnboarded",
+  "notificationPreferences", "deletedAt",
+] as const;
+
 // Public-safe projection of the users table. NEVER expose password, verification
 // or reset tokens, email, login method, Stripe identifiers, or notification prefs
 // through any public/coach read path. Selecting an explicit column set (rather
 // than .select() on the join) makes leaking a secret column impossible by default.
-const publicUserColumns = {
+export const publicUserColumns = {
   id: users.id,
   name: users.name,
   role: users.role,
