@@ -53,56 +53,85 @@ export async function calculateLessonPricing(coachId: number, durationMinutes: n
 /**
  * Check if a time slot is available for a coach
  */
-// An unpaid pending_payment lesson is a soft "hold" on the slot while the student
-// completes Stripe checkout. After this window the hold is treated as abandoned so
-// it can no longer block the slot (prevents the "slot booked forever" dead end).
+// A never-started checkout hold (pending_payment with no Stripe session) is
+// treated as abandoned after this short window.
 export const PENDING_HOLD_MS = 15 * 60 * 1000; // 15 minutes
+// A started-but-unpaid hold (has a Stripe checkout session) keeps the slot until
+// the Stripe session itself would have expired — so a student who is mid-checkout
+// (even slowly, minutes later) never loses their slot to another booking, which
+// would otherwise let BOTH pay for the same slot.
+export const STRIPE_SESSION_MAX_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+// Statuses that free the slot: terminal-refunded (cancelled/refunded/declined) and
+// cancel_pending (always finalizes to cancelled). decline_pending is intentionally
+// NOT here — a failed decline refund bounces the lesson back to payment_collected,
+// so freeing it mid-flight could double-book the slot.
+export const SLOT_FREE_STATUSES = ["cancelled", "refunded", "declined", "cancel_pending"] as const;
+
+interface SlotLessonRow {
+  status: string;
+  scheduledAt: Date | string;
+  durationMinutes: number | null;
+  createdAt: Date | string | null;
+  stripeCheckoutSessionId: string | null;
+}
+
+/**
+ * Pure slot-conflict decision (no DB) — unit-testable. Returns true if the
+ * proposed [scheduledAt, scheduledAt+duration) window overlaps any existing
+ * lesson that still holds the slot. Abandoned pending_payment holds are ignored.
+ */
+export function slotHasConflict(
+  existing: SlotLessonRow[],
+  scheduledAt: Date,
+  durationMinutes: number,
+  now: number
+): boolean {
+  const endTime = new Date(scheduledAt.getTime() + durationMinutes * 60000);
+  const shortCutoff = now - PENDING_HOLD_MS;
+  const sessionCutoff = now - STRIPE_SESSION_MAX_MS;
+
+  for (const lesson of existing) {
+    if ((SLOT_FREE_STATUSES as readonly string[]).includes(lesson.status)) continue;
+
+    if (lesson.status === "pending_payment") {
+      const created = lesson.createdAt ? new Date(lesson.createdAt).getTime() : 0;
+      // With a live checkout session the hold survives until the session expires;
+      // without one it's an abandonment after the short window.
+      const abandoned = lesson.stripeCheckoutSessionId
+        ? created < sessionCutoff
+        : created < shortCutoff;
+      if (abandoned) continue;
+    }
+
+    const lessonStart = new Date(lesson.scheduledAt);
+    const lessonEnd = new Date(lessonStart.getTime() + (lesson.durationMinutes || 60) * 60000);
+    if (scheduledAt < lessonEnd && endTime > lessonStart) {
+      return true; // overlap with a slot-holding lesson
+    }
+  }
+  return false;
+}
 
 export async function isTimeSlotAvailable(
   coachId: number,
   scheduledAt: Date,
   durationMinutes: number
 ): Promise<boolean> {
-  const endTime = new Date(scheduledAt.getTime() + durationMinutes * 60000);
-
   const db = await getDb();
   if (!db) throw new Error("Database not initialized");
 
-  // Check for overlapping lessons (exclude cancelled and refunded)
-  const overlapping = await db
+  const existing = await db
     .select()
     .from(lessons)
     .where(
       and(
         eq(lessons.coachId, coachId),
-        notInArray(lessons.status, ["cancelled", "refunded"])
+        notInArray(lessons.status, [...SLOT_FREE_STATUSES])
       )
     );
 
-  const holdCutoff = Date.now() - PENDING_HOLD_MS;
-
-  // Check each lesson for time overlap
-  for (const lesson of overlapping) {
-    // Skip abandoned checkout holds — an unpaid pending_payment older than the
-    // hold window no longer reserves the slot.
-    if (
-      lesson.status === "pending_payment" &&
-      lesson.createdAt &&
-      new Date(lesson.createdAt).getTime() < holdCutoff
-    ) {
-      continue;
-    }
-
-    const lessonStart = new Date(lesson.scheduledAt);
-    const lessonEnd = new Date(lessonStart.getTime() + (lesson.durationMinutes || 60) * 60000);
-
-    // Check if times overlap
-    if (scheduledAt < lessonEnd && endTime > lessonStart) {
-      return false; // Slot is taken
-    }
-  }
-
-  return true; // Slot is available
+  return !slotHasConflict(existing as any, scheduledAt, durationMinutes, Date.now());
 }
 
 /**
