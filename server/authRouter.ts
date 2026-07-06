@@ -6,6 +6,7 @@ import {
   loginUser,
   requestPasswordReset,
   resetPassword,
+  resendVerificationEmail,
 } from "./auth";
 import { TRPCError } from "@trpc/server";
 import { SignJWT } from "jose";
@@ -228,6 +229,26 @@ export const authRouter = router({
         success: true,
         message:
           "If an account exists with this email, you will receive a password reset link.",
+      };
+    }),
+
+  /**
+   * Resend the email-verification link — recovery path for unverified accounts
+   * that can't log in and can't re-register. Enumeration-safe generic response.
+   */
+  resendVerification: publicProcedure
+    .input(
+      z.object({
+        email: z.string().email("Invalid email address"),
+      })
+    )
+    .mutation(async ({ input }) => {
+      await resendVerificationEmail(input.email);
+
+      return {
+        success: true,
+        message:
+          "If an unverified account exists with this email, a new verification link is on its way.",
       };
     }),
 

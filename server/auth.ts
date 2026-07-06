@@ -105,6 +105,56 @@ export async function registerUser(params: {
 }
 
 /**
+ * Resend the email-verification link for an unverified account. This is the
+ * recovery path for the permanent-lockout hole: an unverified user can't log in
+ * (blocked) and can't re-register (email exists), so without this they were stuck.
+ *
+ * Enumeration-safe: always resolves { success: true } regardless of whether the
+ * email exists or is already verified — never reveal account state to the caller.
+ */
+export async function resendVerificationEmail(
+  email: string
+): Promise<{ success: boolean }> {
+  const db = await getDb();
+  if (!db) return { success: true };
+
+  const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+
+  // Silently no-op for unknown emails, already-verified accounts, and OAuth
+  // accounts (no password / email verification flow).
+  if (!user || user.emailVerified || user.loginMethod !== "email") {
+    return { success: true };
+  }
+
+  const verificationToken = generateToken();
+  const verificationExpires = getTokenExpiry();
+  await db
+    .update(users)
+    .set({ emailVerificationToken: verificationToken, emailVerificationExpires: verificationExpires })
+    .where(eq(users.id, user.id));
+
+  const verificationUrl = `${ENV.frontendUrl}/verify-email?token=${verificationToken}`;
+  try {
+    await sendEmail({
+      to: email,
+      subject: "Verify your BooGMe account",
+      html: `
+      <h1>Verify your email</h1>
+      <p>Hi ${user.name ?? "there"},</p>
+      <p>Here's a fresh link to verify your BooGMe account:</p>
+      <p><a href="${verificationUrl}">Verify Email</a></p>
+      <p>This link will expire in 24 hours.</p>
+      <p>If you didn't request this, you can ignore this email.</p>
+    `,
+    });
+  } catch (e) {
+    console.error("[resendVerificationEmail] send failed:", e);
+  }
+
+  return { success: true };
+}
+
+/**
  * Verify email with token
  */
 export async function verifyEmail(token: string): Promise<{
@@ -187,6 +237,11 @@ export async function loginUser(params: {
     .limit(1);
 
   if (!user) {
+    return { success: false, error: "Invalid email or password" };
+  }
+
+  // Soft-deleted accounts cannot log in (generic error — don't reveal deletion).
+  if (user.deletedAt) {
     return { success: false, error: "Invalid email or password" };
   }
 

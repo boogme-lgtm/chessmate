@@ -326,6 +326,12 @@ class SDKServer {
       throw ForbiddenError("User not found");
     }
 
+    // Soft-deleted accounts cannot authenticate — reject the session so a
+    // "deleted" user's existing cookie stops working everywhere.
+    if ((user as any).deletedAt) {
+      throw ForbiddenError("Account is no longer active");
+    }
+
     // Use synthetic openId for email/password users (openId is null in DB)
     const effectiveOpenId = user.openId || `local_${user.id}`;
     await db.upsertUser({
