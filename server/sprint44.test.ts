@@ -16,8 +16,10 @@ vi.mock("./emailService");
 vi.mock("./nurtureEmailScheduler");
 vi.mock("./resendWelcomeEmails");
 vi.mock("./stripe", () => ({ constructWebhookEvent: vi.fn() }));
+vi.mock("./bookingService");
 
 import * as db from "./db";
+import * as bookingService from "./bookingService";
 import * as emailService from "./emailService";
 import { constructWebhookEvent } from "./stripe";
 import { appRouter } from "./routers";
@@ -51,9 +53,13 @@ describe("Sprint 44 — S44-6: lesson.book emails the student to complete paymen
       userId: 2,
       hourlyRateCents: 6000,
       pricingTier: "free",
+      minAdvanceHours: 24,
+      maxAdvanceDays: 30,
     } as any);
     vi.mocked(db.createLesson).mockResolvedValue({ id: 99, status: "pending_payment" } as any);
     vi.mocked(db.updateUserType).mockResolvedValue(undefined as any);
+    // Slot is free by default — the double-booking guard is tested separately.
+    vi.mocked(bookingService.isTimeSlotAvailable).mockResolvedValue(true);
   });
 
   it("S44-6a: sends a booking-reserved email to the student", async () => {
