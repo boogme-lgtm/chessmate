@@ -134,11 +134,13 @@ export async function resendVerificationEmail(
     .where(eq(users.id, user.id));
 
   const verificationUrl = `${ENV.frontendUrl}/verify-email?token=${verificationToken}`;
-  try {
-    await sendEmail({
-      to: email,
-      subject: "Verify your BooGMe account",
-      html: `
+  // Fire-and-forget so the response latency doesn't differ between a real
+  // unverified account (which sends mail) and the no-op cases — closes the
+  // timing side-channel that would otherwise leak account existence.
+  void sendEmail({
+    to: email,
+    subject: "Verify your BooGMe account",
+    html: `
       <h1>Verify your email</h1>
       <p>Hi ${user.name ?? "there"},</p>
       <p>Here's a fresh link to verify your BooGMe account:</p>
@@ -146,10 +148,7 @@ export async function resendVerificationEmail(
       <p>This link will expire in 24 hours.</p>
       <p>If you didn't request this, you can ignore this email.</p>
     `,
-    });
-  } catch (e) {
-    console.error("[resendVerificationEmail] send failed:", e);
-  }
+  }).catch((e) => console.error("[resendVerificationEmail] send failed:", e));
 
   return { success: true };
 }
@@ -175,6 +174,12 @@ export async function verifyEmail(token: string): Promise<{
     .limit(1);
 
   if (!user) {
+    return { success: false, error: "Invalid verification token" };
+  }
+
+  // Defense-in-depth: a soft-deleted account must not complete verification and
+  // receive a session. Generic error — don't reveal the account was deleted.
+  if (user.deletedAt) {
     return { success: false, error: "Invalid verification token" };
   }
 

@@ -102,11 +102,14 @@ async function startServer() {
     },
   });
 
-  // Apply strict limiter to auth procedures
+  // Apply strict limiter to auth procedures. Every email-sending auth endpoint
+  // MUST be here — otherwise it's an email-bomb vector at 200/min (the general
+  // limit). register/requestPasswordReset/resendVerification all send mail.
   app.use("/api/trpc/auth.login", authLimiter);
   app.use("/api/trpc/auth.register", authLimiter);
   app.use("/api/trpc/auth.requestPasswordReset", authLimiter);
   app.use("/api/trpc/auth.resetPassword", authLimiter);
+  app.use("/api/trpc/auth.resendVerification", authLimiter);
 
   // General rate limit on all tRPC
   app.use("/api/trpc", generalLimiter);
