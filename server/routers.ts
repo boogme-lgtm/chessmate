@@ -14,6 +14,7 @@ import { ENV } from "./_core/env";
 import { PRICING_TIERS, type PricingTier, calculateLessonBreakdown, getTierFeePercent, DEFAULT_PRICING_TIER } from "@shared/pricing";
 import { toCountryCode } from "@shared/countries";
 import { assessmentDataSchema } from "@shared/assessmentMapping";
+import { generateToken, hashPassword } from "./auth";
 import {
   sendEmail,
   getWaitlistConfirmationEmail,
@@ -126,6 +127,61 @@ function profileToStudentForMatching(profile: any) {
     playingStyle: profile.playingStyle,
     assessmentData: profile.assessmentData,
   };
+}
+
+/**
+ * Approve a coach application end-to-end: provision the account + profile, mark
+ * the application approved, and email the coach a welcome + set-password link.
+ * Shared by both the auto-approve (coach.apply) and admin-approve paths.
+ * Idempotent — a re-run on an already-provisioned application is a no-op beyond
+ * re-affirming the status (no duplicate account, no duplicate email).
+ */
+export async function approveCoachApplication(
+  applicationId: number,
+  reviewedByUserId?: number,
+  reviewNotes?: string
+): Promise<{ success: true; alreadyProvisioned: boolean }> {
+  const application = await db.getCoachApplicationById(applicationId);
+  if (!application) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "Application not found" });
+  }
+
+  // Already provisioned (coachProfileId stamped): re-affirm status, don't create
+  // a duplicate account or re-send the welcome email.
+  if (application.coachProfileId) {
+    await db.updateCoachApplicationStatus(applicationId, "approved", reviewedByUserId, reviewNotes);
+    return { success: true, alreadyProvisioned: true };
+  }
+
+  const resetToken = generateToken();
+  const resetExpires = new Date(Date.now() + 72 * 60 * 60 * 1000); // 72h — time to act on the welcome email
+  const hashedPassword = await hashPassword(generateToken()); // random placeholder; coach sets it via the reset link
+
+  await db.provisionCoachFromApplication(application, { hashedPassword, resetToken, resetExpires });
+
+  await db.updateCoachApplicationStatus(applicationId, "approved", reviewedByUserId, reviewNotes);
+
+  const setPasswordUrl = `${ENV.frontendUrl}/reset-password?token=${resetToken}`;
+  // Best-effort: the account exists regardless — a mail failure is logged, not fatal.
+  try {
+    await sendEmail({
+      to: application.email,
+      subject: "You're approved — set up your BooGMe coaching profile",
+      html: `
+    <h1>Welcome to BooGMe, ${application.fullName}!</h1>
+    <p>Your application has been approved. You're now a verified BooGMe coach.</p>
+    <p><strong>Next step:</strong> set your password and complete your profile:</p>
+    <p><a href="${setPasswordUrl}" style="background:#e85d04;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;">Set up my coaching profile →</a></p>
+    <p>This link expires in 72 hours. After setting your password you'll complete a short onboarding wizard (Stripe Connect, availability, profile photo) before your profile goes live.</p>
+    <p>Questions? Just reply to this email.</p>
+    <p>— The BooGMe team</p>
+      `,
+    });
+  } catch (e) {
+    console.error(`[approveCoachApplication] welcome email failed for application ${applicationId}:`, e);
+  }
+
+  return { success: true, alreadyProvisioned: false };
 }
 
 export const appRouter = router({
@@ -581,9 +637,17 @@ export const appRouter = router({
           humanReviewReason: vettingResult.humanReviewReason,
         });
 
-        // TODO: If auto-approved, create coach profile
-        // TODO: Send appropriate email based on status
-        // TODO: If under_review, notify admin team
+        // Auto-approved → provision the coach account/profile + send the
+        // welcome email. Best-effort: a provisioning failure must not break the
+        // applicant's submission response — it's logged, and an admin can
+        // re-approve (idempotent) to retry.
+        if (vettingResult.approved) {
+          try {
+            await approveCoachApplication(application.id);
+          } catch (e) {
+            console.error(`[coach.apply] auto-approval provisioning failed for application ${application.id}:`, e);
+          }
+        }
 
         let message: string;
         if (vettingResult.approved) {
@@ -3588,17 +3652,9 @@ export const appRouter = router({
             });
           }
 
-          // TODO: Create user account if doesn't exist
-          // TODO: Create coach profile
-          // TODO: Send approval email
-
-          // Update application status
-          await db.updateCoachApplicationStatus(
-            input.id,
-            "approved",
-            ctx.user.id,
-            input.reviewNotes
-          );
+          // Provision the account + profile, mark approved, and email the coach.
+          // approveCoachApplication updates the status itself — no separate call.
+          await approveCoachApplication(input.id, ctx.user.id, input.reviewNotes);
 
           return { success: true };
         }),
