@@ -205,6 +205,128 @@ export async function createCoachProfile(profile: InsertCoachProfile) {
   return result;
 }
 
+export async function getUserByEmail(email: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(users).where(eq(users.email, email)).limit(1);
+  return rows.length > 0 ? rows[0] : undefined;
+}
+
+const VALID_CHESS_TITLES = ["CM", "FM", "IM", "GM", "WCM", "WFM", "WIM", "WGM"] as const;
+type ChessTitle = "none" | (typeof VALID_CHESS_TITLES)[number];
+
+function mapChessTitle(raw: string | null | undefined): ChessTitle {
+  const upper = (raw ?? "").toUpperCase();
+  return (VALID_CHESS_TITLES as readonly string[]).includes(upper) ? (upper as ChessTitle) : "none";
+}
+
+function parseYearsExperience(raw: string | null | undefined): number {
+  const n = parseInt(raw ?? "", 10);
+  return Number.isNaN(n) ? 0 : n;
+}
+
+/**
+ * Fields from a coach application needed to provision the account + profile.
+ */
+export interface ApplicationForProvisioning {
+  id: number;
+  email: string;
+  fullName: string;
+  country: string | null;
+  timezone: string | null;
+  chessTitle: string;
+  currentRating: number;
+  hourlyRateCents: number;
+  specializations: string;
+  languages: string;
+  lessonFormats: string;
+  availability: string;
+  yearsExperience: string;
+  profilePhotoUrl: string | null;
+  videoIntroUrl: string | null;
+}
+
+/**
+ * Provision a coach account + profile from an approved application:
+ *   - find-or-create the user (pre-verified; upgraded to a coach userType),
+ *   - create an INACTIVE coach profile (they must still finish onboarding),
+ *   - stamp the profile id back onto the application.
+ * The coach profile's userId is unique, so an existing profile is reused rather
+ * than duplicated. Returns the ids + whether a brand-new user was created.
+ */
+export async function provisionCoachFromApplication(
+  application: ApplicationForProvisioning,
+  creds: { hashedPassword: string; resetToken: string; resetExpires: Date }
+): Promise<{ userId: number; coachProfileId: number; isNewUser: boolean }> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const [existingUser] = await db.select().from(users).where(eq(users.email, application.email)).limit(1);
+
+  let userId: number;
+  let isNewUser: boolean;
+  if (existingUser) {
+    isNewUser = false;
+    userId = existingUser.id;
+    // Upgrade to a coach-capable type without clobbering an existing coach.
+    const newType = existingUser.userType === "coach" ? "coach" : "both";
+    await db.update(users).set({
+      userType: newType,
+      passwordResetToken: creds.resetToken,
+      passwordResetExpires: creds.resetExpires,
+    }).where(eq(users.id, userId));
+  } else {
+    isNewUser = true;
+    const [inserted] = await db.insert(users).values({
+      email: application.email,
+      name: application.fullName,
+      password: creds.hashedPassword,
+      loginMethod: "email",
+      emailVerified: true, // vetted at approval — no verification link needed
+      userType: "coach",
+      role: "user",
+      country: application.country ?? null,
+      timezone: application.timezone ?? null,
+      passwordResetToken: creds.resetToken,
+      passwordResetExpires: creds.resetExpires,
+    });
+    userId = inserted.insertId;
+  }
+
+  // A user has at most one coach profile (userId is unique) — reuse if present.
+  const [existingProfile] = await db.select().from(coachProfiles).where(eq(coachProfiles.userId, userId)).limit(1);
+  let coachProfileId: number;
+  if (existingProfile) {
+    coachProfileId = existingProfile.id;
+  } else {
+    const [profile] = await db.insert(coachProfiles).values({
+      userId,
+      title: mapChessTitle(application.chessTitle),
+      fideRating: application.currentRating,
+      hourlyRateCents: application.hourlyRateCents,
+      specialties: application.specializations,
+      languages: application.languages,
+      lessonFormats: application.lessonFormats,
+      availabilitySchedule: application.availability,
+      experienceYears: parseYearsExperience(application.yearsExperience),
+      profilePhotoUrl: application.profilePhotoUrl ?? null,
+      videoIntroUrl: application.videoIntroUrl ?? null,
+      isVerified: true,
+      verifiedAt: new Date(),
+      profileActive: false, // must complete onboarding before going live
+      onboardingStep: 1,
+      onboardingCompleted: false,
+      pricingTier: "free",
+      commissionRate: 12,
+    });
+    coachProfileId = profile.insertId;
+  }
+
+  await db.update(coachApplications).set({ coachProfileId }).where(eq(coachApplications.id, application.id));
+
+  return { userId, coachProfileId, isNewUser };
+}
+
 export async function updateCoachProfile(userId: number, data: Partial<InsertCoachProfile>) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
