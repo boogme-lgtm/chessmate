@@ -210,7 +210,7 @@ export default function CoachDetail() {
                 {photoUrl ? (
                   <img
                     src={photoUrl}
-                    alt={coach.name}
+                    alt={coach.name ?? "Coach"}
                     className="h-24 w-24 rounded-full object-cover border border-border/60 shrink-0"
                   />
                 ) : (

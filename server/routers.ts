@@ -658,16 +658,14 @@ export const appRouter = router({
     getById: publicProcedure
       .input(z.object({ id: z.number() }))
       .query(async ({ input }) => {
-        const coach = await db.getUserById(input.id);
+        // Allowlist projection — never a denylist (a denylist silently leaks any
+        // new sensitive column). getPublicUserById returns only public fields.
+        const coach = await db.getPublicUserById(input.id);
         if (!coach) {
           return null;
         }
         const profile = await db.getCoachProfileByUserId(input.id);
-        // Only return public fields — never expose password, tokens, or Stripe IDs
-        const { password, emailVerificationToken, emailVerificationExpires,
-          passwordResetToken, passwordResetExpires, stripeCustomerId,
-          stripeConnectAccountId, ...publicCoach } = coach as any;
-        return { ...publicCoach, profile };
+        return { ...coach, profile };
       }),
 
     // Get coach availability (public)
