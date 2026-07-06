@@ -907,12 +907,24 @@ export async function getMatchesForStudent(studentId: number) {
   if (!db) return [];
 
   return await db
-    .select()
+    .select({ coach_matches: coachMatches, coach_profiles: coachProfiles, users: publicUserColumns })
     .from(coachMatches)
     .innerJoin(coachProfiles, eq(coachMatches.coachId, coachProfiles.userId))
     .innerJoin(users, eq(coachProfiles.userId, users.id))
     .where(eq(coachMatches.studentId, studentId))
     .orderBy(desc(coachMatches.overallScore));
+}
+
+/**
+ * Fetch a user's public-safe fields by id. Use this anywhere a public/
+ * cross-user endpoint needs user info — never getUserById + a denylist,
+ * which silently leaks any new sensitive column added later.
+ */
+export async function getPublicUserById(userId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select(publicUserColumns).from(users).where(eq(users.id, userId)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
 }
 
 // ============ COACH EARNINGS OPERATIONS ============

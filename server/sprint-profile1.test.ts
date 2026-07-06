@@ -72,9 +72,10 @@ describe("S-PROFILE-1 — coach.getReviews", () => {
 
 describe("S-PROFILE-1 — coach.getById", () => {
   it("5: returns profilePhotoUrl and videoIntroUrl in profile", async () => {
-    vi.mocked(db.getUserById).mockResolvedValue({
-      id: 42, name: "Coach", email: "c@e.com", bio: "Hi", avatarUrl: "a.png",
-      password: "secret", stripeCustomerId: "cus_x",
+    // coach.getById now uses the allowlist getPublicUserById — it never selects
+    // password/email/tokens/stripe, so a leak is impossible by construction.
+    vi.mocked(db.getPublicUserById).mockResolvedValue({
+      id: 42, name: "Coach", bio: "Hi", avatarUrl: "a.png",
     } as any);
     vi.mocked(db.getCoachProfileByUserId).mockResolvedValue({
       userId: 42,
@@ -89,8 +90,11 @@ describe("S-PROFILE-1 — coach.getById", () => {
       profilePhotoUrl: "https://s3/photo.png",
       videoIntroUrl: "https://youtu.be/abc",
     });
-    // Sensitive fields must not leak.
+    // Sensitive fields must not leak (allowlist projection).
     expect(res).not.toHaveProperty("password");
     expect(res).not.toHaveProperty("stripeCustomerId");
+    expect(res).not.toHaveProperty("email");
+    expect(res).not.toHaveProperty("openId");
+    expect(res).not.toHaveProperty("passwordResetToken");
   });
 });
