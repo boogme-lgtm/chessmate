@@ -75,4 +75,15 @@ describe("failed-tip refund", () => {
     expect(createRefund).not.toHaveBeenCalled();
     expect(db.updateTipStatus).toHaveBeenCalledWith(5, "transferred", expect.anything());
   });
+
+  it("does NOT mark 'failed' if the refund itself fails — leaves it non-re-tippable (no double-charge)", async () => {
+    vi.mocked(db.getUserById).mockResolvedValue({ id: 2, stripeConnectAccountId: "acct_ok" } as any);
+    vi.mocked(transferToCoach).mockResolvedValue({ success: false, error: "insufficient funds" } as any);
+    vi.mocked(createRefund).mockRejectedValueOnce(new Error("Stripe down"));
+    const { req, res } = makeReqRes(tipEvent("pi_tip_4"));
+    await handleStripeWebhook(req, res);
+    expect(createRefund).toHaveBeenCalled();
+    // 'paid' was set earlier; 'failed' must NOT be — 'failed' is re-tippable.
+    expect(db.updateTipStatus).not.toHaveBeenCalledWith(5, "failed");
+  });
 });

@@ -295,9 +295,12 @@ async function handleTipCheckoutCompleted(session: Stripe.Checkout.Session) {
   if (!coach?.stripeConnectAccountId) {
     console.error(`[Webhook] Coach ${tipRecord.coachId} has no Connect account — tip ${tipRecord.id} cannot be transferred`);
     // Student was charged but the tip can't reach the coach — refund it rather
-    // than stranding the money (and leaving a re-tip open to a double charge).
-    await refundUndeliverableTip(session, tipRecord.id, "coach has no payout account");
-    await db.updateTipStatus(tipRecord.id, 'failed');
+    // than stranding the money. Only mark 'failed' if the refund actually
+    // succeeded: 'failed' is re-tippable, so a FAILED refund left as 'failed'
+    // would reopen the double charge. If the refund failed, leave it 'paid'
+    // (a non-re-tippable state) for manual resolution.
+    const refunded = await refundUndeliverableTip(session, tipRecord.id, "coach has no payout account");
+    if (refunded) await db.updateTipStatus(tipRecord.id, 'failed');
     return;
   }
 
@@ -319,11 +322,12 @@ async function handleTipCheckoutCompleted(session: Stripe.Checkout.Session) {
     });
     console.log(`[Webhook] Tip ${tipRecord.id} transferred to coach ${tipRecord.coachId}`);
   } else {
-    // Transfer failed after the student was charged — refund so the money isn't
-    // stranded in a terminal 'failed' state with no recovery.
-    await refundUndeliverableTip(session, tipRecord.id, `coach transfer failed: ${result.error}`);
-    await db.updateTipStatus(tipRecord.id, 'failed');
     console.error(`[Webhook] Tip ${tipRecord.id} transfer failed: ${result.error}`);
+    // Refund so the money isn't stranded. Only mark 'failed' if the refund
+    // succeeded — a failed refund left as 're-tippable' would reopen the double
+    // charge; leaving it 'paid' blocks a re-tip while it's resolved manually.
+    const refunded = await refundUndeliverableTip(session, tipRecord.id, `coach transfer failed: ${result.error}`);
+    if (refunded) await db.updateTipStatus(tipRecord.id, 'failed');
   }
 }
 
@@ -355,26 +359,29 @@ async function alertOwedContentPayout(
 /**
  * Refund a tip the student paid for but which can't be delivered to the coach
  * (no payout account, or a failed transfer). Idempotency-keyed so a webhook
- * retry can't double-refund. Best-effort: on refund failure we log loudly for
- * manual follow-up rather than throw (the tip is still marked failed).
+ * retry can't double-refund. Returns true only if the money was actually
+ * returned — the caller must NOT mark the tip 'failed' otherwise, because
+ * 'failed' is re-tippable and would reopen the double charge.
  */
 async function refundUndeliverableTip(
   session: Stripe.Checkout.Session,
   tipId: number,
   reason: string
-) {
+): Promise<boolean> {
   const pi = session.payment_intent
     ? (typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent.id)
     : null;
   if (!pi) {
     console.error(`[Webhook] Tip ${tipId} (${reason}) had no payment_intent on the session — cannot auto-refund, needs manual refund`);
-    return;
+    return false;
   }
   try {
     await createRefund(pi, undefined, "requested_by_customer", `tip_refund_${tipId}`);
     console.error(`[Webhook] Tip ${tipId} (${reason}) — auto-refunded student payment ${pi}`);
+    return true;
   } catch (e) {
-    console.error(`[Webhook] Tip ${tipId} (${reason}) AND refund FAILED for ${pi} — needs manual refund:`, e);
+    console.error(`[Webhook] Tip ${tipId} (${reason}) AND refund FAILED for ${pi} — left non-re-tippable for manual refund:`, e);
+    return false;
   }
 }
 
