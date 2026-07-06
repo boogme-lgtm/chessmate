@@ -293,6 +293,9 @@ async function handleTipCheckoutCompleted(session: Stripe.Checkout.Session) {
   const coach = await db.getUserById(tipRecord.coachId);
   if (!coach?.stripeConnectAccountId) {
     console.error(`[Webhook] Coach ${tipRecord.coachId} has no Connect account — tip ${tipRecord.id} cannot be transferred`);
+    // Student was charged but the tip can't reach the coach — refund it rather
+    // than stranding the money (and leaving a re-tip open to a double charge).
+    await refundUndeliverableTip(session, tipRecord.id, "coach has no payout account");
     await db.updateTipStatus(tipRecord.id, 'failed');
     return;
   }
@@ -315,8 +318,37 @@ async function handleTipCheckoutCompleted(session: Stripe.Checkout.Session) {
     });
     console.log(`[Webhook] Tip ${tipRecord.id} transferred to coach ${tipRecord.coachId}`);
   } else {
+    // Transfer failed after the student was charged — refund so the money isn't
+    // stranded in a terminal 'failed' state with no recovery.
+    await refundUndeliverableTip(session, tipRecord.id, `coach transfer failed: ${result.error}`);
     await db.updateTipStatus(tipRecord.id, 'failed');
     console.error(`[Webhook] Tip ${tipRecord.id} transfer failed: ${result.error}`);
+  }
+}
+
+/**
+ * Refund a tip the student paid for but which can't be delivered to the coach
+ * (no payout account, or a failed transfer). Idempotency-keyed so a webhook
+ * retry can't double-refund. Best-effort: on refund failure we log loudly for
+ * manual follow-up rather than throw (the tip is still marked failed).
+ */
+async function refundUndeliverableTip(
+  session: Stripe.Checkout.Session,
+  tipId: number,
+  reason: string
+) {
+  const pi = session.payment_intent
+    ? (typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent.id)
+    : null;
+  if (!pi) {
+    console.error(`[Webhook] Tip ${tipId} (${reason}) had no payment_intent on the session — cannot auto-refund, needs manual refund`);
+    return;
+  }
+  try {
+    await createRefund(pi, undefined, "requested_by_customer", `tip_refund_${tipId}`);
+    console.error(`[Webhook] Tip ${tipId} (${reason}) — auto-refunded student payment ${pi}`);
+  } catch (e) {
+    console.error(`[Webhook] Tip ${tipId} (${reason}) AND refund FAILED for ${pi} — needs manual refund:`, e);
   }
 }
 
