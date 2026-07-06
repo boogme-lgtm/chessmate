@@ -134,7 +134,35 @@ async function handleCheckoutCompleted(event: Stripe.Event) {
     // The student has paid upfront; now the coach is notified about the booking request.
     // Idempotent: if already past pending_payment, this is a no-op (webhook retry safe).
     if (currentLesson.status !== 'pending_payment') {
-      console.log(`[Webhook] Lesson ${lessonId} is in state '${currentLesson.status}', not 'pending_payment'. No-op.`);
+      // Orphaned-payment guard. If the lesson was cancelled/declined while the
+      // student's Stripe checkout was still open, the payment lands here for a
+      // lesson that no longer exists. When we never recorded a payment intent
+      // for it (so no refund was ever issued), the money is orphaned — refund
+      // it immediately. A lesson that already has a payment intent was handled
+      // normally, so this is just a webhook retry → no-op.
+      const isOrphanedPayment =
+        (currentLesson.status === 'cancelled' || currentLesson.status === 'declined') &&
+        !currentLesson.stripePaymentIntentId;
+
+      if (isOrphanedPayment) {
+        const orphanPI = session.payment_intent
+          ? (typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent.id)
+          : null;
+        if (orphanPI) {
+          try {
+            // The idempotency key makes a webhook retry return the same refund —
+            // this can never double-refund.
+            await createRefund(orphanPI, undefined, "requested_by_customer", `orphan_refund_lesson_${lessonId}_${orphanPI}`);
+            console.error(`[Webhook] Auto-refunded ORPHANED payment ${orphanPI} for '${currentLesson.status}' lesson ${lessonId} (student paid after the lesson was cancelled)`);
+          } catch (e) {
+            console.error(`[Webhook] CRITICAL: failed to auto-refund orphaned payment ${orphanPI} for lesson ${lessonId} — needs manual refund:`, e);
+          }
+        } else {
+          console.error(`[Webhook] Orphaned paid '${currentLesson.status}' lesson ${lessonId} had no payment_intent on the session — needs manual refund`);
+        }
+      } else {
+        console.log(`[Webhook] Lesson ${lessonId} is in state '${currentLesson.status}', not 'pending_payment'. No-op.`);
+      }
       return;
     }
 
