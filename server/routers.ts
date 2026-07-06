@@ -1064,7 +1064,7 @@ export const appRouter = router({
 
     // Get student profile
     getProfile: protectedProcedure.query(async ({ ctx }) => {
-      return await db.getStudentProfileByUserId(ctx.user.id);
+      return (await db.getStudentProfileByUserId(ctx.user.id)) ?? null;
     }),
 
     // Set/update the student's current chess rating (S-DASH-2)
