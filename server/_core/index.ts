@@ -31,7 +31,12 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 async function startServer() {
   const app = express();
   const server = createServer(app);
-  
+
+  // Trust exactly ONE proxy hop (the platform's reverse proxy) so req.ip reflects
+  // the real client from X-Forwarded-For. Use 1, not `true`: `true` trusts the
+  // entire chain and lets clients spoof X-Forwarded-For to evade the rate limiter.
+  app.set("trust proxy", 1);
+
   // Force HTTPS redirect in production
   if (process.env.NODE_ENV === "production") {
     app.use((req, res, next) => {
