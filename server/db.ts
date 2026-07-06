@@ -248,6 +248,23 @@ export async function updateUserType(userId: number, userType: "student" | "coac
     .where(eq(users.id, userId));
 }
 
+// Public-safe projection of the users table. NEVER expose password, verification
+// or reset tokens, email, login method, Stripe identifiers, or notification prefs
+// through any public/coach read path. Selecting an explicit column set (rather
+// than .select() on the join) makes leaking a secret column impossible by default.
+const publicUserColumns = {
+  id: users.id,
+  name: users.name,
+  role: users.role,
+  userType: users.userType,
+  avatarUrl: users.avatarUrl,
+  bio: users.bio,
+  country: users.country,
+  timezone: users.timezone,
+  emailVerified: users.emailVerified,
+  createdAt: users.createdAt,
+};
+
 export async function getCoachProfileByUserId(userId: number) {
   const db = await getDb();
   if (!db) return undefined;
@@ -261,7 +278,7 @@ export async function getCoachWithUser(coachProfileId: number) {
   if (!db) return undefined;
 
   const result = await db
-    .select()
+    .select({ coach_profiles: coachProfiles, users: publicUserColumns })
     .from(coachProfiles)
     .innerJoin(users, eq(coachProfiles.userId, users.id))
     .where(eq(coachProfiles.id, coachProfileId))
@@ -275,7 +292,7 @@ export async function getAvailableCoaches(limit: number = 20) {
   if (!db) return [];
 
   const result = await db
-    .select()
+    .select({ coach_profiles: coachProfiles, users: publicUserColumns })
     .from(coachProfiles)
     .innerJoin(users, eq(coachProfiles.userId, users.id))
     .where(eq(coachProfiles.isAvailable, true))
@@ -290,7 +307,7 @@ export async function getActiveCoaches(limit: number = 20, offset: number = 0) {
   if (!db) return [];
 
   const result = await db
-    .select()
+    .select({ coach_profiles: coachProfiles, users: publicUserColumns })
     .from(coachProfiles)
     .innerJoin(users, eq(coachProfiles.userId, users.id))
     .where(and(
