@@ -26,7 +26,6 @@ import SignIn from "./pages/SignIn";
 import VerifyEmail from "./pages/VerifyEmail";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
-import DevDashboard from "./pages/DevDashboard";
 import CoachOnboarding from "./pages/CoachOnboarding";
 import Dashboard from "./pages/Dashboard";
 import Settings from "./pages/Settings";
@@ -68,7 +67,6 @@ function Router() {
       <Route path={"/admin/waitlist"} component={AdminWaitlist} />
       <Route path={"/admin/disputes"} component={AdminDisputesPanel} />
       <Route path={"/admin/system"} component={AdminSystem} />
-      <Route path={"/dev-dashboard"} component={DevDashboard} />
       <Route path={"/unsubscribe"} component={Unsubscribe} />
       <Route path={"/privacy"} component={Privacy} />
       <Route path={"/terms"} component={Terms} />
