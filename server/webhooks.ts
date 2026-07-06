@@ -156,7 +156,12 @@ async function handleCheckoutCompleted(event: Stripe.Event) {
             await createRefund(orphanPI, undefined, "requested_by_customer", `orphan_refund_lesson_${lessonId}_${orphanPI}`);
             console.error(`[Webhook] Auto-refunded ORPHANED payment ${orphanPI} for '${currentLesson.status}' lesson ${lessonId} (student paid after the lesson was cancelled)`);
           } catch (e) {
-            console.error(`[Webhook] CRITICAL: failed to auto-refund orphaned payment ${orphanPI} for lesson ${lessonId} — needs manual refund:`, e);
+            // Rethrow so handleStripeWebhook returns a non-2xx and Stripe
+            // redelivers the event — the idempotency key makes the retried
+            // refund safe. Swallowing here would strand the orphaned payment
+            // with no retry (Stripe only redelivers on failure responses).
+            console.error(`[Webhook] Failed to auto-refund orphaned payment ${orphanPI} for lesson ${lessonId} — signalling retry:`, e);
+            throw e;
           }
         } else {
           console.error(`[Webhook] Orphaned paid '${currentLesson.status}' lesson ${lessonId} had no payment_intent on the session — needs manual refund`);
