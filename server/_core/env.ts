@@ -28,4 +28,7 @@ export const ENV = {
 
   // Resend (Email Service)
   resendApiKey: optionalEnv("RESEND_API_KEY"),
+
+  // Admin notification recipient (new coach applications, etc.)
+  adminEmail: optionalEnv("ADMIN_EMAIL", "cchirila@saintlouischessclub.org"),
 };
