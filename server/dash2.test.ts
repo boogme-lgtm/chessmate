@@ -92,4 +92,27 @@ describe("S-DASH-2 — coach.updateProfile", () => {
     expect(db.updateUserProfile).toHaveBeenCalledWith(42, expect.objectContaining({ bio: "Experienced endgame coach" }));
     expect(db.updateCoachProfile).toHaveBeenCalled();
   });
+
+  it("does not overwrite the account name with a blank/whitespace name (Bug 1)", async () => {
+    // z.string().min(2) blocks "" at the boundary, but a whitespace-only name
+    // ("  ", length 2) slips through — the handler guard must still not blank it.
+    const caller = appRouter.createCaller(ctx(coach));
+    await caller.coach.updateProfile({ name: "  ", bio: "hi" });
+    expect(db.updateUserProfile).toHaveBeenCalledWith(42, expect.objectContaining({ name: undefined, bio: "hi" }));
+  });
+
+  it("blocks going live without a Stripe Connect account (Bug 3)", async () => {
+    vi.mocked(db.getUserById).mockResolvedValue({ ...coach, stripeConnectAccountId: null } as any);
+    vi.mocked(db.getCoachProfileByUserId).mockResolvedValue({ hourlyRateCents: 5000, lessonDurations: JSON.stringify([60]) } as any);
+    const caller = appRouter.createCaller(ctx(coach));
+    await expect(caller.coach.updateProfile({ onboardingCompleted: true })).rejects.toThrow(/stripe/i);
+  });
+
+  it("allows going live once Stripe Connect is set", async () => {
+    vi.mocked(db.getUserById).mockResolvedValue({ ...coach, stripeConnectAccountId: "acct_x" } as any);
+    vi.mocked(db.getCoachProfileByUserId).mockResolvedValue({ hourlyRateCents: 5000, lessonDurations: JSON.stringify([60]) } as any);
+    const caller = appRouter.createCaller(ctx(coach));
+    const res = await caller.coach.updateProfile({ onboardingCompleted: true });
+    expect(res).toBeTruthy();
+  });
 });

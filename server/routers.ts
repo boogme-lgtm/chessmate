@@ -595,7 +595,10 @@ export const appRouter = router({
           videoIntroUrl: input.videoIntroUrl,
           backgroundCheckConsent: input.backgroundCheckConsent,
           termsAgreed: input.termsAgreed,
-          status: "pending_confirmation",
+          // Must be a valid coachApplications.status enum value — MySQL silently
+          // inserts '' for invalid enum inputs, making the row invisible to every
+          // status-filtered admin query ("pending_confirmation" was not valid).
+          status: "pending",
         };
 
         // Run AI vetting (exclude availability as it's not needed for vetting)
@@ -636,6 +639,22 @@ export const appRouter = router({
           autoApproved: vettingResult.approved,
           humanReviewReason: vettingResult.humanReviewReason,
         });
+
+        // Admin notification — fire-and-forget Resend email for every new
+        // application, regardless of vetting outcome (complements notifyOwner).
+        sendEmail({
+          to: ENV.adminEmail,
+          subject: `New Coach Application: ${input.fullName}`,
+          html: `
+    <h2>New Coach Application Received</h2>
+    <p><strong>Name:</strong> ${input.fullName}</p>
+    <p><strong>Email:</strong> ${input.email}</p>
+    <p><strong>Chess Title:</strong> ${input.chessTitle || "None"}</p>
+    <p><strong>FIDE Rating:</strong> ${input.currentRating || "N/A"}</p>
+    <p><strong>AI Vetting:</strong> ${finalStatus} (score: ${vettingResult.confidenceScore})</p>
+    <p><a href="${ENV.frontendUrl}/admin/applications">Review in Admin Panel →</a></p>
+          `,
+        }).catch((err) => console.error("[coach.apply] admin notification email failed:", err));
 
         // Auto-approved → provision the coach account/profile + send the
         // welcome email. Best-effort: a provisioning failure must not break the
@@ -989,9 +1008,12 @@ export const appRouter = router({
       .mutation(async ({ ctx, input }) => {
         const { name, bio, avatarUrl, country, timezone, specialties, languages, lessonDurations, availabilitySchedule, ...coachFields } = input;
 
-        // Update user-level fields — check !== undefined (not falsy) so empty strings can clear values
-        if (name !== undefined || bio !== undefined || avatarUrl !== undefined || country !== undefined || timezone !== undefined) {
-          await db.updateUserProfile(ctx.user.id, { name, bio, avatarUrl, country, timezone });
+        // Update user-level fields — check !== undefined (not falsy) so empty strings
+        // can clear values. EXCEPTION: a name must never be blanked — an empty-string
+        // name (e.g. an unpopulated form field) would erase the account name.
+        const safeName = name !== undefined && name.trim().length === 0 ? undefined : name;
+        if (safeName !== undefined || bio !== undefined || avatarUrl !== undefined || country !== undefined || timezone !== undefined) {
+          await db.updateUserProfile(ctx.user.id, { name: safeName, bio, avatarUrl, country, timezone });
         }
 
         // Server-side validation when going live
@@ -1007,6 +1029,16 @@ export const appRouter = router({
           const durations = profile?.lessonDurations ? JSON.parse(profile.lessonDurations) : [];
           if (!Array.isArray(durations) || durations.length === 0) {
             throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Please select at least one lesson duration" });
+          }
+          // Require Stripe Connect before going live — a live coach without a
+          // payout account strands student payments (audit HIGH CoachOnboarding:1057).
+          // NOTE: the Connect account lives on the users row (stripeConnectAccountId),
+          // not on coach_profiles.
+          if (!user.stripeConnectAccountId) {
+            throw new TRPCError({
+              code: "PRECONDITION_FAILED",
+              message: "Please connect your Stripe account to receive payments before going live",
+            });
           }
 
           // Promote userType — if the student has ever booked a lesson, they've

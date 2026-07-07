@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/sidebar";
 import { getLoginUrl } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import { LayoutDashboard, LogOut, PanelLeft, Users, Home, Settings } from "lucide-react";
+import { LayoutDashboard, LogOut, PanelLeft, Users, Home, Settings, GraduationCap } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
@@ -200,6 +200,22 @@ function DashboardLayoutContent({
                 );
               })}
             </SidebarMenu>
+
+            {/* Subtle secondary link — only for students who aren't yet coaches. */}
+            {user?.userType === "student" && (
+              <SidebarMenu className="px-2 mt-auto pb-2">
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    onClick={() => setLocation("/coach/onboarding")}
+                    tooltip="Become a Coach"
+                    className="h-9 font-normal text-muted-foreground hover:text-foreground"
+                  >
+                    <GraduationCap className="h-4 w-4" />
+                    <span>Become a Coach</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            )}
           </SidebarContent>
 
           <SidebarFooter className="p-3">

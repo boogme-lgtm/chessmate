@@ -251,7 +251,10 @@ export default function CoachOnboarding() {
       const payload: Record<string, unknown> = { onboardingStep: step + 1 };
 
       if (step === 2) {
-        Object.assign(payload, { name, bio, avatarUrl: avatarUrl || undefined, country, timezone });
+        // Only send name if the user actually typed one — sending the initial ""
+        // would overwrite the existing account name (e.g. the one set at approval).
+        if (name.trim()) payload.name = name;
+        Object.assign(payload, { bio, avatarUrl: avatarUrl || undefined, country, timezone });
       } else if (step === 3) {
         Object.assign(payload, {
           title,
