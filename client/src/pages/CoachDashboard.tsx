@@ -1028,14 +1028,6 @@ function ContentRequestsModule({
   // Inline decline note state
   const [declineNote, setDeclineNote] = useState("");
 
-  const updateStatus = trpc.contentRequest.updateStatus.useMutation({
-    onSuccess: () => {
-      toast.success("Request updated.");
-      utils.contentRequest.listForCoach.invalidate();
-    },
-    onError: (err) => toast.error(err.message),
-  });
-
   const quote = trpc.contentRequest.quote.useMutation({
     onSuccess: () => {
       toast.success("Quote sent to student.");

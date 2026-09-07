@@ -3,6 +3,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { authRouter } from "./authRouter";
 import { analysisRouter } from "./analysisRouter";
+import { assertLessonParticipant, toAccountUser } from "./accessControl";
 import { router, publicProcedure, protectedProcedure, coachProcedure, adminProcedure } from "./_core/trpc";
 import { vetCoachApplication } from "./aiVettingService";
 import { z } from "zod";
@@ -966,7 +967,7 @@ export const appRouter = router({
     getMyProfile: protectedProcedure.query(async ({ ctx }) => {
       const profile = await db.getCoachProfileByUserId(ctx.user.id);
       const user = await db.getUserById(ctx.user.id);
-      return { profile, user };
+      return { profile, user: user ? toAccountUser(user) : null };
     }),
 
     // Update coach profile (used by onboarding wizard)
@@ -2127,17 +2128,7 @@ export const appRouter = router({
         if (!lesson) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
         }
-        // S-DASH-3: subscription_dm lessons allow subscribed users
-        if (lesson.status === 'subscription_dm') {
-          const isSubscribed = await db.isUserSubscribedToCoach(ctx.user.id, lesson.coachId);
-          if (lesson.studentId !== ctx.user.id && lesson.coachId !== ctx.user.id && !isSubscribed) {
-            throw new TRPCError({ code: "FORBIDDEN", message: "Not your lesson" });
-          }
-        } else {
-          if (lesson.studentId !== ctx.user.id && lesson.coachId !== ctx.user.id) {
-            throw new TRPCError({ code: "FORBIDDEN", message: "Not your lesson" });
-          }
-        }
+        assertLessonParticipant(lesson, ctx.user.id);
         const msg = await db.createMessage({
           lessonId: input.lessonId,
           senderId: ctx.user.id,
@@ -2200,10 +2191,8 @@ export const appRouter = router({
         if (!lesson) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
         }
-        if (lesson.studentId !== ctx.user.id && lesson.coachId !== ctx.user.id) {
-          throw new TRPCError({ code: "FORBIDDEN", message: "Not your lesson" });
-        }
-        // Fire-and-forget read marker — don't block the response on it.
+        assertLessonParticipant(lesson, ctx.user.id);
+        // Fire-and-forget read marker; do not block the response on it.
         db.markLessonMessagesRead(input.lessonId, ctx.user.id).catch(err =>
           console.error("[messages.getForLesson] markRead failed:", err)
         );
@@ -2220,9 +2209,7 @@ export const appRouter = router({
         if (!lesson) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
         }
-        if (lesson.studentId !== ctx.user.id && lesson.coachId !== ctx.user.id) {
-          throw new TRPCError({ code: "FORBIDDEN", message: "Not your lesson" });
-        }
+        assertLessonParticipant(lesson, ctx.user.id);
         await db.markLessonMessagesRead(input.lessonId, ctx.user.id);
         return { success: true };
       }),
@@ -3131,27 +3118,6 @@ export const appRouter = router({
       return await db.getContentRequestsByCoach(ctx.user.id);
     }),
 
-    updateStatus: coachProcedure
-      .input(z.object({
-        requestId: z.number(),
-        status: z.enum(["in_progress", "delivered", "cancelled"]),
-        contentItemId: z.number().optional(),
-      }))
-      .mutation(async ({ ctx, input }) => {
-        const request = await db.getContentRequestById(input.requestId);
-        if (!request) {
-          throw new TRPCError({ code: "NOT_FOUND", message: "Content request not found" });
-        }
-        if (request.coachId !== ctx.user.id) {
-          throw new TRPCError({ code: "FORBIDDEN", message: "Not your content request" });
-        }
-        await db.updateContentRequestStatus(input.requestId, input.status, {
-          ...(input.status === "delivered" ? { deliveredAt: new Date() } : {}),
-          ...(input.contentItemId ? { contentItemId: input.contentItemId } : {}),
-        });
-        return { success: true };
-      }),
-
     // S-CONTENT-2: coach.quote now sets status to "quoted"
     quote: coachProcedure
       .input(z.object({
@@ -3326,6 +3292,12 @@ export const appRouter = router({
         if (request.coachId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN", message: "Not your content request" });
         if (request.status !== "in_progress" && request.status !== "overdue") {
           throw new TRPCError({ code: "BAD_REQUEST", message: "Can only mark in-progress or overdue requests as delivered" });
+        }
+        const item = request.contentItemId
+          ? await db.getContentItemById(request.contentItemId)
+          : null;
+        if (!item || item.coachId !== ctx.user.id || item.accessType !== "request_fulfillment" || !item.storageKey) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Upload a file for this request before marking it delivered" });
         }
         await db.deliverContentRequest(input.requestId);
         try {
@@ -4521,46 +4493,7 @@ export const appRouter = router({
 
   // ============ BOOKING OPERATIONS ============
   booking: router({
-    // Get coach availability
-    getCoachAvailability: publicProcedure
-      .input(z.object({
-        coachId: z.number(),
-        startDate: z.string(), // ISO date string
-        endDate: z.string(),
-      }))
-      .query(async ({ input }) => {
-        const { getCoachAvailability } = await import("./bookingService");
-        return await getCoachAvailability(
-          input.coachId,
-          new Date(input.startDate),
-          new Date(input.endDate)
-        );
-      }),
-
-    // Create a booking
-    createBooking: protectedProcedure
-      .input(z.object({
-        coachId: z.number(),
-        scheduledAt: z.string(), // ISO datetime string
-        durationMinutes: z.number(),
-        timezone: z.string(),
-        topic: z.string().optional(),
-        notes: z.string().optional(),
-      }))
-      .mutation(async ({ ctx, input }) => {
-        const { createBooking } = await import("./bookingService");
-        const booking = await createBooking({
-          studentId: ctx.user.id,
-          coachId: input.coachId,
-          scheduledAt: new Date(input.scheduledAt),
-          durationMinutes: input.durationMinutes,
-          timezone: input.timezone,
-          topic: input.topic,
-          notes: input.notes,
-        });
-        return booking;
-      }),
-
+    // Availability and reservation creation use coach.getAvailability and lesson.book.
     // Get student's bookings
     getMyBookings: protectedProcedure.query(async ({ ctx }) => {
       return await db.getLessonsByStudent(ctx.user.id);
