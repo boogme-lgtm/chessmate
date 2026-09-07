@@ -1109,3 +1109,24 @@
 - [ ] S-STOREFRONT-3-6: Add getStudentContentPurchaseReceiptEmail template in emailService.ts
 - [ ] S-STOREFRONT-3-7: Replace hardcoded $0 Content cell in EarningsModule with live contentEarningsCents
 - [ ] S-STOREFRONT-3-8: Write sprint-storefront3.test.ts with >=8 tests
+
+## Production Availability Recovery (2026-09-01)
+
+- [ ] Diagnose why boogme.com and www.boogme.com were detached after the offline period
+- [ ] Restore required custom-domain configuration and verify HTTPS routing
+- [ ] Verify the production deployment, database connectivity, and core public endpoints
+
+## Production Configuration Audit (2026-09-01)
+
+- [ ] Verify required production environment variables and secret wiring
+- [ ] Validate Stripe, Resend, database, and authentication service health
+- [ ] Validate boogme.com, www.boogme.com, HTTPS, and critical public routes
+- [ ] Record any external configuration requiring owner action
+- [ ] Add account.updated to the existing Stripe sandbox Event Destination event list
+- [ ] Rotate the Stripe webhook signing secret and securely replace STRIPE_WEBHOOK_SECRET
+
+## Astra Access Control (2026-09-01)
+
+- [x] Review and implement the requirements in Astra’s access-control handoff
+- [x] Add regression coverage for the implemented authorization boundaries
+- [x] Run full TypeScript and test-suite verification before deployment
