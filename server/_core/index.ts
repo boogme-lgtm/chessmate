@@ -8,6 +8,7 @@ import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
+import { startBackgroundJobs } from "./backgroundJobs";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -140,9 +141,7 @@ async function startServer() {
     console.log(`Server running on http://localhost:${port}/`);
   });
 
-  // Start the 24-hour lesson reminder scheduler
-  const { startReminderScheduler } = await import("../reminderScheduler");
-  startReminderScheduler();
+  await startBackgroundJobs();
 }
 
 startServer().catch(console.error);

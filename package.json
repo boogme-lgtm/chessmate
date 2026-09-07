@@ -10,6 +10,8 @@
     "check": "tsc --noEmit",
     "format": "prettier --write .",
     "test": "vitest run",
+    "test:ops": "node --test scripts/stripe-webhook-ops.test.mjs",
+    "stripe:inspect": "node scripts/stripe-webhook-ops.mjs inspect",
     "db:push": "drizzle-kit generate && drizzle-kit migrate",
     "postinstall": "node scripts/copy-stockfish.mjs"
   },

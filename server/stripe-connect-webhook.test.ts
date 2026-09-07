@@ -7,6 +7,7 @@ import { handleStripeWebhook } from "./webhooks";
 import * as db from "./db";
 import { transferToCoach } from "./stripeConnect";
 import { sendEmail } from "./emailService";
+import { SAFE_EVENT_TYPES } from "../scripts/stripe-webhook-ops.mjs";
 
 vi.mock("./db");
 vi.mock("./stripeConnect");
@@ -151,6 +152,17 @@ describe("destination signing secrets", () => {
 });
 
 describe("event scope and Connect account identity", () => {
+  it.each(SAFE_EVENT_TYPES)("keeps operational replay of %s free of business processing", async type => {
+    const res = await dispatch({ id: "evt_existing_subscription", object: "event", type,
+      livemode: false, data: { object: { id: "sub_existing" } } }, platformSecret);
+    expect(res.json).toHaveBeenCalledWith({ received: true });
+    for (const method of Object.values(db)) {
+      if (vi.isMockFunction(method)) expect(method).not.toHaveBeenCalled();
+    }
+    expect(transferToCoach).not.toHaveBeenCalled();
+    expect(sendEmail).not.toHaveBeenCalled();
+  });
+
   it("does not route Connect-signed checkout events into platform payments", async () => {
     const res = await dispatch({ ...paymentEvent, account: "acct_coach_unit" });
     expect(res.json).toHaveBeenCalledWith({ received: true });

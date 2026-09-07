@@ -1,0 +1,15 @@
+.git
+**/node_modules
+.pnpm-store
+.env*
+dist
+build
+coverage
+.manus-logs
+*.log
+*.zip
+*.tar*
+*.pem
+*.key
+.project-config.json
+test-results
