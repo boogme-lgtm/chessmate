@@ -24,6 +24,7 @@ export const ENV = {
   // Stripe
   stripeSecretKey: optionalEnv("STRIPE_SECRET_KEY"),
   stripeWebhookSecret: optionalEnv("STRIPE_WEBHOOK_SECRET"),
+  stripeConnectWebhookSecret: optionalEnv("STRIPE_CONNECT_WEBHOOK_SECRET"),
   stripePublishableKey: optionalEnv("VITE_STRIPE_PUBLISHABLE_KEY"),
 
   // Resend (Email Service)

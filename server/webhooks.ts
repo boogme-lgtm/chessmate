@@ -7,7 +7,8 @@
 
 import { Request, Response } from 'express';
 import Stripe from 'stripe';
-import { constructWebhookEvent, createRefund } from './stripe';
+import { createRefund } from './stripe';
+import { verifyStripeWebhook } from './stripeWebhookVerification';
 import * as db from './db';
 import { transferToCoach, getChargeIdForPaymentIntent } from './stripeConnect';
 import { sendEmail, getStudentBookingConfirmationEmail, getCoachBookingNotificationEmail, getStudentContentPurchaseReceiptEmail } from './emailService';
@@ -29,18 +30,17 @@ export async function handleStripeWebhook(req: Request, res: Response) {
   }
 
   try {
-    // Validate webhook secret is configured
-    if (!ENV.stripeWebhookSecret) {
-      console.error('[Webhook] STRIPE_WEBHOOK_SECRET not configured');
+    // Each destination has its own signing secret, even when sharing a URL.
+    if (!ENV.stripeWebhookSecret && !ENV.stripeConnectWebhookSecret) {
+      console.error('[Webhook] No Stripe webhook signing secret configured');
       return res.status(500).json({ error: 'Webhook secret not configured' });
     }
+    if (ENV.stripeConnectWebhookSecret && ENV.stripeConnectWebhookSecret === ENV.stripeWebhookSecret) {
+      console.error('[Webhook] Platform and Connect destinations require distinct signing secrets');
+      return res.status(500).json({ error: 'Webhook secrets must be distinct' });
+    }
 
-    // Construct and verify the webhook event
-    const event = constructWebhookEvent(
-      req.body,
-      signature,
-      ENV.stripeWebhookSecret
-    );
+    const { event, source } = verifyStripeWebhook(req.body, signature);
 
     console.log(`[Webhook] Received event: ${event.type} (${event.id})`);
 
@@ -48,6 +48,25 @@ export async function handleStripeWebhook(req: Request, res: Response) {
     if (event.id.startsWith('evt_test_')) {
       console.log('[Webhook] Test event detected, returning verification response');
       return res.json({ verified: true });
+    }
+
+    // Connect events never enter the platform payment handlers.
+    if (source === 'connect') {
+      if (event.type === 'account.updated') {
+        const account = event.data.object as Stripe.Account;
+        if (!event.account || event.account !== account.id) {
+          return res.status(400).json({ error: 'Connect account identity mismatch' });
+        }
+        await handleAccountUpdated(event);
+      } else {
+        console.log(`[Webhook] Ignoring unsupported Connect event: ${event.type}`);
+      }
+      return res.json({ received: true });
+    }
+
+    // This integration collects lesson payments on the platform account.
+    if (event.account) {
+      return res.status(400).json({ error: 'Connected-account event requires Connect destination signature' });
     }
 
     // Route to specific handlers based on event type
@@ -62,10 +81,6 @@ export async function handleStripeWebhook(req: Request, res: Response) {
       
       case 'payment_intent.payment_failed':
         await handlePaymentFailed(event);
-        break;
-
-      case 'account.updated':
-        await handleAccountUpdated(event);
         break;
 
       default:
@@ -457,8 +472,8 @@ async function handlePaymentFailed(event: Stripe.Event) {
  * the case where Stripe finishes verifying a coach *after* they returned to
  * the wizard (e.g. KYC documents processed hours later).
  *
- * To receive this event, add "account.updated" to the webhook's event list
- * in the Stripe Dashboard → Developers → Webhooks.
+ * Receive this through a Connected accounts destination with a dedicated
+ * STRIPE_CONNECT_WEBHOOK_SECRET. The router verifies event.account first.
  */
 async function handleAccountUpdated(event: Stripe.Event) {
   const account = event.data.object as Stripe.Account;
@@ -470,35 +485,29 @@ async function handleAccountUpdated(event: Stripe.Event) {
     return;
   }
 
-  // Find the user with this Connect account ID and flip the flag
-  try {
-    // Look up user by stripeConnectAccountId via raw SQL
-    const database = (await import("./db")).getDb;
-    const dbInstance = await database();
-    if (!dbInstance) return;
+  // Propagate database failures so Stripe can retry the account update.
+  const dbInstance = await db.getDb();
+  if (!dbInstance) throw new Error('Database unavailable for Connect account update');
 
-    const { sql } = await import("drizzle-orm");
-    const result: any = await dbInstance.execute(sql`
+  const { sql } = await import("drizzle-orm");
+  const result: any = await dbInstance.execute(sql`
       SELECT id, stripeConnectOnboarded FROM users
       WHERE stripeConnectAccountId = ${account.id}
       LIMIT 1
     `);
-    const user = result[0]?.[0];
-    if (!user) {
-      console.log(`[Webhook] No user found for Connect account ${account.id}`);
-      return;
-    }
-
-    if (user.stripeConnectOnboarded) {
-      console.log(`[Webhook] User ${user.id} already marked onboarded, skipping`);
-      return;
-    }
-
-    await db.updateUserStripeConnectAccount(user.id, account.id, true);
-    console.log(`[Webhook] User ${user.id} stripeConnectOnboarded set to true via account.updated`);
-  } catch (err) {
-    console.error(`[Webhook] Failed to process account.updated for ${account.id}:`, err);
+  const user = result[0]?.[0];
+  if (!user) {
+    console.log(`[Webhook] No user found for Connect account ${account.id}`);
+    return;
   }
+
+  if (user.stripeConnectOnboarded) {
+    console.log(`[Webhook] User ${user.id} already marked onboarded, skipping`);
+    return;
+  }
+
+  await db.updateUserStripeConnectAccount(user.id, account.id, true);
+  console.log(`[Webhook] User ${user.id} stripeConnectOnboarded set to true via account.updated`);
 }
 
 /**
