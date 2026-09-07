@@ -5,9 +5,7 @@
  *   1. contentRequest.create — creates a record, returns success + id
  *   2. contentRequest.listForStudent — calls getContentRequestsByStudent with user id
  *   3. contentRequest.listForCoach — calls getContentRequestsByCoach with user id (coach only)
- *   4. contentRequest.updateStatus — coach can update; rejects non-owner
- *   5. contentRequest.updateStatus — rejects if request not found
- *   6. coach.getStudentRoster — calls getStudentRoster with user id
+ *   4. coach.getStudentRoster: calls getStudentRoster with user id
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -82,71 +80,6 @@ describe("S-DASH-1 — contentRequest.listForCoach", () => {
   it("rejects non-coach users", async () => {
     const caller = appRouter.createCaller(ctx(student));
     await expect(caller.contentRequest.listForCoach()).rejects.toThrow();
-  });
-});
-
-// ---- contentRequest.updateStatus ----
-describe("S-DASH-1 — contentRequest.updateStatus", () => {
-  it("coach can update status of their own request", async () => {
-    vi.mocked(db.getContentRequestById).mockResolvedValue({
-      id: 10,
-      coachId: 42,
-      studentId: 1,
-      status: "queued",
-    } as any);
-    vi.mocked(db.updateContentRequestStatus).mockResolvedValue(undefined);
-    const caller = appRouter.createCaller(ctx(coach));
-    const result = await caller.contentRequest.updateStatus({
-      requestId: 10,
-      status: "in_progress",
-    });
-    expect(result).toEqual({ success: true });
-    expect(db.updateContentRequestStatus).toHaveBeenCalledWith(10, "in_progress", expect.any(Object));
-  });
-
-  it("rejects non-owner coach", async () => {
-    vi.mocked(db.getContentRequestById).mockResolvedValue({
-      id: 10,
-      coachId: 999, // different coach
-      studentId: 1,
-      status: "queued",
-    } as any);
-    const caller = appRouter.createCaller(ctx(coach));
-    await expect(
-      caller.contentRequest.updateStatus({ requestId: 10, status: "in_progress" }),
-    ).rejects.toThrow(/Not your content request/);
-  });
-
-  it("rejects if request not found", async () => {
-    vi.mocked(db.getContentRequestById).mockResolvedValue(null);
-    const caller = appRouter.createCaller(ctx(coach));
-    await expect(
-      caller.contentRequest.updateStatus({ requestId: 999, status: "cancelled" }),
-    ).rejects.toThrow(/Content request not found/);
-  });
-
-  it("sets deliveredAt when status is delivered", async () => {
-    vi.mocked(db.getContentRequestById).mockResolvedValue({
-      id: 10,
-      coachId: 42,
-      studentId: 1,
-      status: "in_progress",
-    } as any);
-    vi.mocked(db.updateContentRequestStatus).mockResolvedValue(undefined);
-    const caller = appRouter.createCaller(ctx(coach));
-    await caller.contentRequest.updateStatus({
-      requestId: 10,
-      status: "delivered",
-      contentItemId: 5,
-    });
-    expect(db.updateContentRequestStatus).toHaveBeenCalledWith(
-      10,
-      "delivered",
-      expect.objectContaining({
-        deliveredAt: expect.any(Date),
-        contentItemId: 5,
-      }),
-    );
   });
 });
 

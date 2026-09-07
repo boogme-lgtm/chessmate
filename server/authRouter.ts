@@ -14,6 +14,7 @@ import { ENV } from "./_core/env";
 import { stringifySetCookie } from 'cookie/dist/index.js';
 import { COOKIE_NAME, ONE_YEAR_MS } from '@shared/const';
 import * as db from './db';
+import { toAccountUser } from "./accessControl";
 
 const JWT_SECRET = new TextEncoder().encode(ENV.cookieSecret);
 
@@ -72,7 +73,7 @@ export const authRouter = router({
   /**
    * Get current user
    */
-  me: publicProcedure.query(opts => opts.ctx.user),
+  me: publicProcedure.query(({ ctx }) => ctx.user ? toAccountUser(ctx.user) : null),
 
   /**
    * Register a new user
@@ -197,7 +198,7 @@ export const authRouter = router({
 
       return {
         success: true,
-        user: result.user,
+        user: toAccountUser(result.user),
       };
     }),
 

@@ -166,8 +166,9 @@ describe("contentRequest.startWork", () => {
 // ── Test 6: markDelivered requires in_progress, sets deliveredAt + payoutAt ──
 
 describe("contentRequest.markDelivered", () => {
-  it("requires in_progress, notifies student", async () => {
-    vi.mocked(db.getContentRequestById).mockResolvedValue({ ...baseRequest, status: "in_progress" } as any);
+  it("requires in_progress with an owned file, notifies student", async () => {
+    vi.mocked(db.getContentRequestById).mockResolvedValue({ ...baseRequest, status: "in_progress", contentItemId: 20 } as any);
+    vi.mocked(db.getContentItemById).mockResolvedValue({ id: 20, coachId: 42, accessType: "request_fulfillment", storageKey: "coach-content/42/lesson.pgn" } as any);
     vi.mocked(db.deliverContentRequest).mockResolvedValue(undefined as any);
     const caller = appRouter.createCaller(ctx(coach));
     const res = await caller.contentRequest.markDelivered({ requestId: 10 });

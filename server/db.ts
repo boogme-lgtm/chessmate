@@ -1643,12 +1643,14 @@ export async function getUnreadMessageCountsForUser(
 
   // mysql2 interpolates arrays as a comma list when passed via sql.join
   const result: any = await db.execute(sql`
-    SELECT lessonId, COUNT(*) AS unread
-    FROM messages
-    WHERE readAt IS NULL
-      AND senderId <> ${userId}
-      AND lessonId IN (${sql.join(lessonIds.map(id => sql`${id}`), sql`, `)})
-    GROUP BY lessonId
+    SELECT m.lessonId, COUNT(*) AS unread
+    FROM messages m
+    JOIN lessons l ON l.id = m.lessonId
+    WHERE m.readAt IS NULL
+      AND m.senderId <> ${userId}
+      AND (l.studentId = ${userId} OR l.coachId = ${userId})
+      AND m.lessonId IN (${sql.join(lessonIds.map(id => sql`${id}`), sql`, `)})
+    GROUP BY m.lessonId
   `);
   const rows = (result[0] || []) as { lessonId: number; unread: number | string }[];
   for (const row of rows) {
@@ -3214,7 +3216,7 @@ export async function getOwnedContentItems(
         ci.accessType, ci.targetStudentId, ci.createdAt, ci.updatedAt,
         cr.deliveredAt AS unlockedAt
       FROM content_items ci
-      JOIN content_requests cr ON cr.contentItemId = ci.id
+      JOIN content_requests cr ON cr.contentItemId = ci.id AND cr.coachId = ci.coachId
       WHERE ci.accessType = 'request_fulfillment'
         AND cr.studentId = ${userId}
         AND cr.status = 'delivered'
@@ -3283,6 +3285,7 @@ export async function userHasContentAccess(userId: number, contentItemId: number
           AND EXISTS (
             SELECT 1 FROM content_requests cr
             WHERE cr.contentItemId = ci.id
+              AND cr.coachId = ci.coachId
               AND cr.studentId = ${userId}
               AND cr.status = 'delivered'
           )
