@@ -1124,6 +1124,7 @@
 - [ ] Record any external configuration requiring owner action
 - [ ] Add account.updated to the existing Stripe sandbox Event Destination event list
 - [ ] Rotate the Stripe webhook signing secret and securely replace STRIPE_WEBHOOK_SECRET
+- [x] Deliver Astra’s six-check preview verification and Stripe environment-mapping report before any Stripe modification
 
 ## Astra Access Control (2026-09-01)
 
