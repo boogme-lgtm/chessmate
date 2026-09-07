@@ -39,3 +39,7 @@ After confirming that the deployed `https://boogme.com/api/webhooks/stripe` endp
 The endpoint is scoped to Connected accounts, targets the existing BooGMe webhook URL, and subscribes only to `account.updated`. The existing platform endpoint and its signing secret were not changed. The new signing secret was stored as `STRIPE_CONNECT_WEBHOOK_SECRET` through the project secret mechanism and validated locally using a signed `evt_test_` diagnostic that returns before database access. No secret value is recorded here.
 
 For reconciliation, the sandbox event list contained no Stripe event records in the ten-second active creation-to-disable window. Stripe’s connector does not expose webhook-delivery logs for this endpoint type; the endpoint is now disabled, and no test event was sent through Stripe. No application publication or live-mode configuration occurred.
+
+## Release reconciliation note
+
+During non-publishing release-plan preparation, the live endpoint `https://boogme.com/__manus__/version.json` returned deployment version `18f33161` with timestamp `1788799260399`, corresponding to the checkpoint interval for `d18de17f`. Production logs also show an application restart immediately after that checkpoint. This indicates the managed hosting environment has already deployed the checkpointed candidate even though no manual Publish action was invoked in this session. The only uncheckpointed local change at the time of reconciliation is a task-list entry for release planning; there are no uncheckpointed application-code, schema, or secret changes.

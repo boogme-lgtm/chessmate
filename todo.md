@@ -1134,6 +1134,7 @@
 - [x] Create a disabled Connected accounts sandbox destination for account.updated at the existing BooGMe webhook URL
 - [x] Store its distinct signing secret as STRIPE_CONNECT_WEBHOOK_SECRET without altering the existing platform secret or publishing
 - [x] Execute the approved sandbox-only create-then-immediately-disable Connect endpoint procedure after signature and secret preconditions pass
+- [x] Prepare the reviewed production-release plan for access-control and Connect webhook repairs without publishing or enabling Connect
 
 ## Astra Access Control (2026-09-01)
 
