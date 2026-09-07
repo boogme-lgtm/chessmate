@@ -1125,6 +1125,11 @@
 - [ ] Add account.updated to the existing Stripe sandbox Event Destination event list
 - [ ] Rotate the Stripe webhook signing secret and securely replace STRIPE_WEBHOOK_SECRET
 - [x] Deliver Astra’s six-check preview verification and Stripe environment-mapping report before any Stripe modification
+- [ ] Confirm integration-managed secret propagation to the deployed application before sandbox secret rotation
+- [ ] Verify a harmless signed sandbox event before expiring the exposed signing secret
+- [ ] Confirm Connected-account event delivery before adding account.updated to the existing destination
+- [x] Review and integrate Astra’s separate Stripe Connect webhook handler in preview before activating any new destination
+- [ ] Decide whether Astra needs a separate direct Stripe connector for future independent configuration work
 
 ## Astra Access Control (2026-09-01)
 
