@@ -1122,14 +1122,18 @@
 - [ ] Validate Stripe, Resend, database, and authentication service health
 - [ ] Validate boogme.com, www.boogme.com, HTTPS, and critical public routes
 - [ ] Record any external configuration requiring owner action
-- [ ] Add account.updated to the existing Stripe sandbox Event Destination event list
+- [x] Superseded — do not add account.updated to the existing platform destination; stage it on a separate Connected accounts destination
 - [ ] Rotate the Stripe webhook signing secret and securely replace STRIPE_WEBHOOK_SECRET
 - [x] Deliver Astra’s six-check preview verification and Stripe environment-mapping report before any Stripe modification
 - [ ] Confirm integration-managed secret propagation to the deployed application before sandbox secret rotation
 - [ ] Verify a harmless signed sandbox event before expiring the exposed signing secret
-- [ ] Confirm Connected-account event delivery before adding account.updated to the existing destination
+- [x] Confirm Connected-account delivery design; stage account.updated on a distinct Connected accounts destination instead of the platform destination
 - [x] Review and integrate Astra’s separate Stripe Connect webhook handler in preview before activating any new destination
-- [ ] Decide whether Astra needs a separate direct Stripe connector for future independent configuration work
+- [x] Decide whether Astra needs a separate direct Stripe connector for future independent configuration work
+- [x] Use the existing project sandbox Stripe connector as the sole approved Stripe control plane; keep the Connect destination inactive and production publication on hold
+- [x] Create a disabled Connected accounts sandbox destination for account.updated at the existing BooGMe webhook URL
+- [x] Store its distinct signing secret as STRIPE_CONNECT_WEBHOOK_SECRET without altering the existing platform secret or publishing
+- [x] Execute the approved sandbox-only create-then-immediately-disable Connect endpoint procedure after signature and secret preconditions pass
 
 ## Astra Access Control (2026-09-01)
 

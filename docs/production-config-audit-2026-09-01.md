@@ -31,3 +31,11 @@ References: [Stripe webhook secret rollover](https://docs.stripe.com/webhooks#ro
 Astra's Connect webhook repair from commit `52a76e748b10a7360993b94fdc0c6d2ae61af273` was integrated into the preview as local cherry-pick `f9d35ffc2ce88e671ac6705e1cc08c5caa642d2a`. The patch adds the server-only `STRIPE_CONNECT_WEBHOOK_SECRET`, independently verifies platform versus Connect signatures, prevents Connect-signed events from entering platform payment handlers, validates that `event.account` matches the account payload before database access, and returns a retryable non-success response for database failures.
 
 Validation used synthetic local secrets with provider effects disabled: TypeScript passed; the focused Connect suite passed 22/22; the isolated full suite passed 728 tests with one opt-in Resend connectivity test skipped; and the production build passed. The direct managed preview URL rendered normally after restart. No Stripe destination, Stripe secret, live-mode credential, or production publication was changed.
+
+## Disabled sandbox Connect destination staging
+
+After confirming that the deployed `https://boogme.com/api/webhooks/stripe` endpoint rejects unsigned requests with HTTP 400 before application processing, and confirming that no Connect signing secret was configured, a separate sandbox Connected accounts endpoint was created using the existing project sandbox account. Stripe created the endpoint at `2026-09-07T16:27:56Z`; it was disabled immediately after creation and independently retrieved with status `disabled` at `2026-09-07T16:28:06Z`.
+
+The endpoint is scoped to Connected accounts, targets the existing BooGMe webhook URL, and subscribes only to `account.updated`. The existing platform endpoint and its signing secret were not changed. The new signing secret was stored as `STRIPE_CONNECT_WEBHOOK_SECRET` through the project secret mechanism and validated locally using a signed `evt_test_` diagnostic that returns before database access. No secret value is recorded here.
+
+For reconciliation, the sandbox event list contained no Stripe event records in the ten-second active creation-to-disable window. Stripe’s connector does not expose webhook-delivery logs for this endpoint type; the endpoint is now disabled, and no test event was sent through Stripe. No application publication or live-mode configuration occurred.
