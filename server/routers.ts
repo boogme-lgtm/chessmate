@@ -1132,7 +1132,7 @@ export const appRouter = router({
         const ext = mimeType.split("/")[1] ?? "jpg";
         const key = `coach-photos/${ctx.user.id}-${Date.now()}.${ext}`;
 
-        const { url } = await storagePut(key, buffer, mimeType);
+        const { url } = await storagePut(key, buffer, mimeType, "public");
 
         // Persist the URL on the user record immediately
         await db.updateUserProfile(ctx.user.id, { avatarUrl: url });
@@ -2631,7 +2631,7 @@ export const appRouter = router({
         if (input.thumbnailBase64) {
           const thumbBuffer = Buffer.from(input.thumbnailBase64, "base64");
           const thumbKey = `coach-content/${ctx.user.id}/${uniqueId}-thumb.jpg`;
-          const { url } = await storagePut(thumbKey, thumbBuffer, "image/jpeg");
+          const { url } = await storagePut(thumbKey, thumbBuffer, "image/jpeg", "public");
           thumbnailUrl = url;
         }
 
@@ -2690,7 +2690,7 @@ export const appRouter = router({
         if (input.thumbnailBase64) {
           const thumbBuffer = Buffer.from(input.thumbnailBase64, "base64");
           const thumbKey = `coach-content/${ctx.user.id}/${input.id}-thumb-${Date.now()}.jpg`;
-          const { url } = await storagePut(thumbKey, thumbBuffer, "image/jpeg");
+          const { url } = await storagePut(thumbKey, thumbBuffer, "image/jpeg", "public");
           data.thumbnailUrl = url;
         }
 
