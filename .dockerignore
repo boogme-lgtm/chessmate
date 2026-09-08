@@ -13,3 +13,4 @@ coverage
 *.key
 .project-config.json
 test-results
+.preview-data

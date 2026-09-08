@@ -1,5 +1,6 @@
 import { TRPCError } from "@trpc/server";
 import { ENV } from "./env";
+import { capturePreviewEmail } from "./previewEmail";
 
 export type NotificationPayload = {
   title: string;
@@ -67,6 +68,14 @@ export async function notifyOwner(
   payload: NotificationPayload
 ): Promise<boolean> {
   const { title, content } = validatePayload(payload);
+
+  if (ENV.preview) {
+    const escaped = content.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    try {
+      await capturePreviewEmail({ to: "owner@boogme-preview.invalid", subject: title, html: `<pre>${escaped}</pre>` });
+      return true;
+    } catch { return false; }
+  }
 
   if (!ENV.forgeApiUrl) {
     throw new TRPCError({

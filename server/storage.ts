@@ -2,6 +2,13 @@
 // Uses the Biz-provided storage proxy (Authorization: Bearer <token>)
 
 import { ENV } from './_core/env';
+import { PreviewStorage } from './_core/previewStorage';
+
+const previewStorage = ENV.preview ? new PreviewStorage(ENV.preview) : undefined;
+
+export async function verifyStorageIsolation(): Promise<void> {
+  await previewStorage?.verify();
+}
 
 type StorageConfig = { baseUrl: string; apiKey: string };
 
@@ -70,8 +77,10 @@ function buildAuthHeaders(apiKey: string): HeadersInit {
 export async function storagePut(
   relKey: string,
   data: Buffer | Uint8Array | string,
-  contentType = "application/octet-stream"
+  contentType = "application/octet-stream",
+  visibility: "private" | "public" = "private",
 ): Promise<{ key: string; url: string }> {
+  if (previewStorage) return previewStorage.put(relKey, data, contentType, visibility);
   const { baseUrl, apiKey } = getStorageConfig();
   const key = normalizeKey(relKey);
   const uploadUrl = buildUploadUrl(baseUrl, key);
@@ -93,6 +102,7 @@ export async function storagePut(
 }
 
 export async function storageGet(relKey: string): Promise<{ key: string; url: string; }> {
+  if (previewStorage) return previewStorage.get(relKey);
   const { baseUrl, apiKey } = getStorageConfig();
   const key = normalizeKey(relKey);
   return {

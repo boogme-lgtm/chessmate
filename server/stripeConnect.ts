@@ -1,9 +1,8 @@
 import Stripe from 'stripe';
 import { ENV } from './_core/env';
+import { createAppStripeClient } from './_core/stripeClient';
 
-const stripe = new Stripe(ENV.stripeSecretKey, {
-  apiVersion: '2026-01-28.clover',
-});
+const stripe = createAppStripeClient();
 
 export interface CreateConnectAccountParams {
   email: string;

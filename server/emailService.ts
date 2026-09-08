@@ -1,16 +1,17 @@
 import { Resend } from 'resend';
 import { ENV } from './_core/env';
+import { capturePreviewEmail } from './_core/previewEmail';
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
 // Initialize Resend client
-const resend = new Resend(ENV.resendApiKey);
+let resend: Resend | undefined;
 
 // P1: Make a missing key immediately visible at startup. Without this, sends
 // fail silently (new Resend("") returns a 401 on every send).
-if (!ENV.resendApiKey) {
+if (!ENV.preview && !ENV.resendApiKey) {
   console.warn('[Email Service] WARNING: RESEND_API_KEY is not set. All email sends will fail silently.');
 }
 
@@ -25,6 +26,13 @@ export interface EmailOptions {
  * Send an email using Resend
  */
 export async function sendEmail(options: EmailOptions) {
+  if (ENV.preview) {
+    try {
+      return { success: true, id: await capturePreviewEmail(options) };
+    } catch {
+      return { success: false, error: 'Preview capture inbox is unavailable; no external email was sent' };
+    }
+  }
   // Short-circuit when the key is missing: avoids a doomed 401 round-trip and
   // surfaces the misconfiguration on every attempt (not just at startup).
   if (!ENV.resendApiKey) {
@@ -38,6 +46,7 @@ export async function sendEmail(options: EmailOptions) {
   console.log(`[Email Service] Sending to: ${options.to} | subject: "${options.subject}"`);
 
   try {
+    resend ??= new Resend(ENV.resendApiKey);
     const { data, error } = await resend.emails.send({
       from: options.from || 'BooGMe <noreply@contact.boogme.com>',
       to: options.to,

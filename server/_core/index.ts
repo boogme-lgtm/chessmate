@@ -9,6 +9,9 @@ import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { startBackgroundJobs } from "./backgroundJobs";
+import { ENV } from "./env";
+import { getDb } from "../db";
+import { verifyStorageIsolation } from "../storage";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -30,6 +33,11 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 }
 
 async function startServer() {
+  if (ENV.preview) {
+    await getDb();
+    await verifyStorageIsolation();
+    console.log(`[Preview] Resource isolation verified for ${ENV.preview.instanceId}`);
+  }
   const app = express();
   const server = createServer(app);
 
@@ -39,7 +47,7 @@ async function startServer() {
   app.set("trust proxy", 1);
 
   // Force HTTPS redirect in production
-  if (process.env.NODE_ENV === "production") {
+  if (process.env.NODE_ENV === "production" && !ENV.preview?.allowLocalHttp) {
     app.use((req, res, next) => {
       const proto = req.headers['x-forwarded-proto'] || req.protocol || 'http';
       const isSecure = proto === 'https' || req.secure || req.headers['x-forwarded-ssl'] === 'on';
@@ -131,7 +139,7 @@ async function startServer() {
   }
 
   const preferredPort = parseInt(process.env.PORT || "3000");
-  const port = await findAvailablePort(preferredPort);
+  const port = ENV.preview ? preferredPort : await findAvailablePort(preferredPort);
 
   if (port !== preferredPort) {
     console.log(`Port ${preferredPort} is busy, using port ${port} instead`);
@@ -144,4 +152,9 @@ async function startServer() {
   await startBackgroundJobs();
 }
 
-startServer().catch(console.error);
+startServer().catch(error => {
+  console.error(error);
+  // Startup has failed. Do not leave a preview process alive with partially
+  // initialized clients or allow a supervisor to report it as healthy.
+  process.exit(1);
+});
