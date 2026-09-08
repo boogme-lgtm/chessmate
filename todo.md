@@ -1125,8 +1125,8 @@
 - [x] Superseded — do not add account.updated to the existing platform destination; stage it on a separate Connected accounts destination
 - [ ] Rotate the Stripe webhook signing secret and securely replace STRIPE_WEBHOOK_SECRET
 - [x] Deliver Astra’s six-check preview verification and Stripe environment-mapping report before any Stripe modification
-- [ ] Confirm integration-managed secret propagation to the deployed application before sandbox secret rotation
-- [ ] Verify a harmless signed sandbox event before expiring the exposed signing secret
+- [x] Confirm integration-managed secret propagation to the deployed application before sandbox secret rotation
+- [x] Verify a harmless signed sandbox event before expiring the exposed signing secret
 - [x] Confirm Connected-account delivery design; stage account.updated on a distinct Connected accounts destination instead of the platform destination
 - [x] Review and integrate Astra’s separate Stripe Connect webhook handler in preview before activating any new destination
 - [x] Decide whether Astra needs a separate direct Stripe connector for future independent configuration work
@@ -1140,13 +1140,20 @@
 - [ ] Rotate only the sandbox platform signing secret with delayed expiration, validate both secret paths, reject the retired secret, and keep Connect unchanged
 - [ ] Resolve access to the project-specific Manus Stripe sandbox dashboard before the approved platform-secret rotation
 - [ ] Reauthorize the existing project sandbox Stripe connector without resuming paused Stripe configuration changes
-- [ ] Diagnose platform-secret replacement verification failure using production logs, timestamped old/new diagnostics, and configuration-precedence checks before retiring the old secret
+- [x] Diagnose platform-secret replacement verification failure using production logs, timestamped old/new diagnostics, and configuration-precedence checks before retiring the old secret
 - [ ] Confirm the claimed-sandbox Test webhook can produce a non-mutating Stripe-originated platform delivery before using it to validate the rotated secret
-- [ ] Diagnose Stripe event evt_1UDB5ODWCgTDQAOtKLlXrZgk delivery failures and determine the supported runtime-secret reload path
-- [ ] Perform only a supported same-version production refresh for marker 03d9d887, then resend evt_1UDB5ODWCgTDQAOtKLlXrZgk once and collect production evidence
-- [ ] Redeploy the reviewed d2579ea7 source with saved configuration only, then verify public routes, the specified Stripe resend, and Connect signature handling
+- [x] Diagnose Stripe event evt_1UDB5ODWCgTDQAOtKLlXrZgk delivery failures and determine the supported runtime-secret reload path
+- [x] Perform only a supported same-version production refresh for marker 03d9d887, then resend evt_1UDB5ODWCgTDQAOtKLlXrZgk once and collect production evidence
+- [x] Redeploy the reviewed d2579ea7 source with saved configuration only, then verify public routes, the specified Stripe resend, and Connect signature handling
 
 ## Astra Access Control (2026-09-01)
+
+## Astra Isolated Preview Environment (Planning)
+
+- [ ] Review PR #5’s final reconciled commit and the isolated-preview handoff before any synchronization
+- [x] Prepare a review-only plan for a separate preview project, database, storage, controlled email, and disabled background jobs
+- [x] Document resource permissions, expected cost/hosting implications, rehearsal acceptance checks, and rollback boundaries
+- [ ] Await explicit approval before provisioning, configuring, deploying, or testing the isolated preview
 
 - [x] Review and implement the requirements in Astra’s access-control handoff
 - [x] Add regression coverage for the implemented authorization boundaries
