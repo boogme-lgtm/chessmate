@@ -1,6 +1,14 @@
 # Direct Stripe webhook operations
 
-This tool helps finish BooGMe's platform-secret rotation without exporting a protected webhook signing secret. It talks to the project sandbox with an independently authorized API credential. It does not change application configuration or Stripe destinations.
+This tool inspects BooGMe's sandbox webhook configuration and can request a narrowly reviewed replay without exporting a protected webhook signing secret. It talks to the project sandbox with an independently authorized API credential. It does not change application configuration or Stripe destinations.
+
+## Verified recovery, September 8, 2026
+
+The delivery incident is resolved. The current platform endpoint is **we_1UD6tGDWCgTDQAOtLzqwDtjx** (six events, Your account). The separate Connect endpoint is **we_1UD5OiDWCgTDQAOtFD4KDpyJ** (Connected accounts, account.updated only). Both target https://boogme.com/api/webhooks/stripe in the project sandbox.
+
+Following Coach's secret correction and approved same-code production redeploy, a real platform delivery returned HTTP 200 with {"received":true} at 04:02:52 UTC. Manus correlated the event with the production handler's intentionally unhandled subscription path and verified the Connect diagnostic at 04:07:48 UTC. Checkpoint cb60245e has marker 7b2019f3; only generated version metadata and task tracking differ from d2579ea7. See the [incident closure and next steps](stripe-incident-2026-09-08.md) for evidence sources and remaining limits.
+
+This script was not used for the successful resend. Coach used the Stripe Dashboard. No additional replay is needed to close this incident. For future diagnostics, the command below requires a locally installed official Stripe CLI; do not assume the Dashboard's browser Shell supports the same operations or flags.
 
 ## Inspect first
 
@@ -25,18 +33,17 @@ Install the official Stripe CLI separately if this operation is needed. Use the 
       --expected-account acct_VERIFIED \
       --confirm-replay
 
-This is the only write operation: a resend of that existing event to the pinned platform endpoint we_1TCAt6DWCgTDQAOtMWelR3Hs. It re-reads the account, endpoint and event immediately before invoking the official CLI. The CLI receives the same authorized API key through its environment, never through an argument. It cannot select live mode, change destinations, replay payment/account events, or create a subscription.
+This is the only write operation: a resend of that existing event to the pinned platform endpoint we_1UD6tGDWCgTDQAOtLzqwDtjx. It re-reads the account, endpoint and event immediately before invoking the official CLI. The CLI receives the same authorized API key through its environment, never through an argument. It cannot select live mode, change destinations, replay payment/account events, or create a subscription.
 
 The CLI's acknowledgment means only that resend was requested. Success still requires matching Stripe delivery evidence and the receiving server's HTTP result and logs. For these ignored subscription events, expect HTTP 200 with {"received":true}; {"verified":true} is reserved for the app's special evt_test_ diagnostics. Neither pending_webhooks nor an integration toast proves that this destination accepted the request.
 
-## Finish the existing rotation
+## Reconcile historical secret retirement separately
 
-1. Confirm the real platform delivery succeeded and the serving release/configuration is consistent across instances.
-2. Confirm a fresh old-only diagnostic is rejected and the separate Connect diagnostic still succeeds.
-3. Retire the old platform key under the existing authorization and confirm retirement in Stripe. Do not infer a secret-expiry timestamp from endpoint metadata.
-4. Preserve the Connect secret/destination, platform event list and application code.
+The prior rotation and estimated September 8, 2026, 17:58 UTC overlap deadline referred to **we_1TCAt6DWCgTDQAOtMWelR3Hs**. Manus reports that endpoint is no longer present in the sandbox inventory. Its deletion/retirement history and exact expiry are not independently verified here. That historical deadline must not be applied to the current endpoint or treated as a reason to roll the working secret again.
 
-The old key's estimated automatic expiration is September 8, 2026, at 17:58 UTC. Its exact deadline remains unverified. If there is no safe existing event or no authorized API credential, the script cannot prove delivery; report that concrete limit instead of reusing the stale local secret or claiming that protected runtime values were inspected.
+If a retirement follow-up is needed, first identify the exact endpoint and any still-active overlapping secrets through authorized read-only Stripe evidence. The latest verification did not test or retire an old secret. An old-only rejection test, positive current-secret delivery and authorized retirement are meaningful only when tied to the same relevant endpoint. Do not request an unavailable historical secret from protected tooling or expose secret values in chat.
+
+If there is no safe existing event or no authorized API credential for a future check, report that concrete limit instead of reusing a stale local secret or claiming protected runtime values were inspected. The resolved delivery incident is separate from that historical configuration review.
 
 ## Tests
 

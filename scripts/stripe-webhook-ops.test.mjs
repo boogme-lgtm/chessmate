@@ -71,6 +71,7 @@ test('unsafe event kinds, mode, scope and expired events cannot be replayed', ()
 test('changed, disabled, wildcard-only, or live destinations cannot be replayed', () => {
   for (const modification of [
     { id: CONNECT_ENDPOINT }, { status: 'disabled' }, { livemode: true },
+    { id: 'we_1TCAt6DWCgTDQAOtMWelR3Hs' },
     { deleted: true }, { url: 'https://other.invalid/api/webhooks/stripe' },
     { url: RECEIVER_URL + '?redirect=other' }, { enabled_events: ['*'] }, { enabled_events: [] },
   ]) assert.throws(() => validateReplay(event, { ...platform, ...modification }, now));
@@ -101,7 +102,8 @@ test('a payment event is blocked before the CLI can request delivery', async () 
 test('an existing ignored event targets only the pinned platform endpoint', async () => {
   const { stripe } = fixtures();
   const report = await replayEvent(stripe, options, async args => {
-    assert.deepEqual(args, ['events', 'resend', event.id, '--webhook-endpoint=' + PLATFORM_ENDPOINT, '--confirm']);
+    assert.deepEqual(args, ['events', 'resend', event.id,
+      '--webhook-endpoint=we_1UD6tGDWCgTDQAOtLzqwDtjx', '--confirm']);
     return { status: 0, stdout: JSON.stringify(event) };
   });
   assert.match(report.verification, /PENDING/);

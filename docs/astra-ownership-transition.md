@@ -1,28 +1,31 @@
 # BooGMe ownership transition
 
-Prepared September 7, 2026. This supersedes earlier assumptions that GitHub checkpoints cannot affect boogme.com. It does not authorize a DNS change, production deployment, data migration, or secret disclosure.
+Prepared September 7, 2026; incident status updated September 8. This supersedes earlier assumptions that GitHub checkpoints cannot affect boogme.com. It records the separately approved recovery redeploy and does not authorize further publication, DNS changes, data migration, or secret disclosure.
 
 ## What Coach asked for
 
 Move engineering and service access to Coach-owned accounts operated through Astra and Claude. Use GitHub as the shared source of truth. Manus can remain the current host while we replace its services in small, testable steps. Avoid another rewrite of an existing marketplace.
 
-The immediate incident is platform webhook-secret verification. The broader dependency problem is that the source, managed secret store, workspace environment, public assets, and serving process are different things. A successful save or matching frontend version file does not establish what the running backend verifies.
+The platform webhook-delivery incident is resolved. The broader dependency problem is that the source, managed secret store, workspace environment, public assets, and serving process are different things. A successful save or matching frontend version file does not establish what the running backend verifies. The next engineering step is an isolated preview, before exercising coach onboarding or booking against persistent data.
 
 ## Current incident, evidence and limits
 
 | Item | Last reported state |
 | --- | --- |
 | Stripe account | Project sandbox Manus chessmate-xkyng35x; separate from live BooGMe |
-| Platform destination | we_1TCAt6DWCgTDQAOtMWelR3Hs, enabled, existing platform event set |
+| Platform destination | we_1UD6tGDWCgTDQAOtLzqwDtjx, enabled, six platform events; Your account scope |
 | Connect destination | we_1UD5OiDWCgTDQAOtFD4KDpyJ, enabled, account.updated only |
 | Receiver | https://boogme.com/api/webhooks/stripe |
-| Production marker/source | 03d9d887 / d2579ea7, per latest verification |
-| Old platform secret | Fresh old-only diagnostic rejected before processing |
-| Replacement platform secret | Not yet proven at the receiver |
-| Connect secret | Harmless signed diagnostic accepted; genuine account update still pending |
-| Old-key overlap | Estimated expiration September 8, 2026, 17:58 UTC; exact UI deadline not verified |
+| Production marker/checkpoint | 7b2019f3 / cb60245e; same application code as d2579ea7 |
+| Platform delivery | Real Stripe event evt_1UDB5ODWCgTDQAOtKLlXrZgk accepted at 2026-09-08T04:02:52Z, HTTP 200, received=true |
+| Production correlation | Manus reports a fresh server start after Publish and receipt of that event on the ignored subscription path |
+| Connect verification | Signed evt_test_ diagnostic accepted at 04:07:48 UTC; genuine account update still pending |
+| Earlier platform endpoint | we_1TCAt6DWCgTDQAOtMWelR3Hs no longer appears in the reported inventory |
+| Historical retirement | Not performed in the recovery pass; the earlier overlap deadline belongs to the former endpoint and is not a current-endpoint deadline |
 
-Old-key rejection and Connect success do not prove that the replacement platform key is present or correct. A missing or different platform key produces the same result. Do not call the platform channel healthy until there is positive evidence. Do not prematurely retire the old key or repeat rotation to hide an unresolved problem. The existing overlap still expires automatically.
+Coach confirmed the current endpoint's secret matched the saved sandbox integration field. A same-code production redeploy was then approved because the agent had no same-version production reload operation. Astra independently checked the GitHub diff, public marker and HTTP page responses. Coach supplied the successful Stripe delivery screenshot; Manus supplied the production-log and Connect-diagnostic evidence. These results support Manus's diagnosis that the serving runtime had retained stale configuration. They prove sandbox signature verification and delivery, not booking/payment settlement or real Connect onboarding. See [incident closure](operations/stripe-incident-2026-09-08.md).
+
+Do not repeat the secret comparison or resend to re-establish this completed check. Any old-secret retirement follow-up must first identify the relevant endpoint and whether overlapping secrets still exist. Do not rotate the now-working current destination merely because an older handoff references the former endpoint.
 
 The new operations tool is documented in [Stripe operations](operations/stripe-webhook-ops.md). It inspects the correct sandbox and identifies previously existing subscription events that the current handler ignores. A reviewed replay is delivered by Stripe and does not require the webhook signing secret. It never creates payment/subscription fixtures, changes destinations, retires secrets, or infers delivery success from a queued resend.
 
@@ -67,7 +70,7 @@ These are reviewed source changes, not a completed move off Manus. The Docker re
 - The compiled server booted locally with background jobs disabled, synthetic credentials, an unavailable dummy database, and outbound connect calls blocked. Homepage and sign-in HTML returned 200; platform and Connect diagnostics each returned 200 with verified=true; an unknown signature returned 400. No scheduler started. These are HTTP/server checks, not a browser or real-service rehearsal.
 - Docker is unavailable in this workspace, so the image recipe has not been built or deployed. The successful standalone check ran the compiled Node server directly.
 
-No Stripe account request, real webhook replay, database connection, email, production restart, DNS change or Manus checkpoint was performed by Astra during this change. Direct Stripe access has been offered but remains unconfirmed at the time this report was written.
+This draft branch has not been deployed. Astra did not perform a Stripe account request, real webhook replay, database connection, email, production restart, DNS change or Manus checkpoint. Separately, Coach and Manus completed the authorized recovery redeploy and delivery checks documented above. Direct Stripe access for Astra remains unconfirmed. The September 8 endpoint-pin update was checked with the 13 mocked operations tests; it changes no running application code.
 
 ## Build and run outside Manus
 
@@ -92,13 +95,15 @@ Do not run pnpm db:push against either the managed database or a fresh productio
 
 | Step | Work | Completion evidence |
 | --- | --- | --- |
-| Now | Finish platform secret verification through directly authorized Stripe access; preserve Connect | Real platform delivery + receiver response/log, old-only rejection, then confirmed retirement |
-| 1 | Choose an owned host, separate preview database/storage, and add GitHub CI/release promotion | A branch build cannot change boogme.com; isolated app starts without background effects |
-| 2 | Repair database baseline and exercise one student/coach booking journey | Reproducible disposable MySQL setup and behavioral tests for reservations, timezones, settlement/refunds |
+| Done | Restore sandbox platform delivery and preserve Connect verification | Real platform HTTP 200 with production correlation; Connect diagnostic HTTP 200 after the same-code redeploy |
+| 1 | Build an isolated preview: explicit environment identity, separate MySQL database/storage, background jobs off, safe email delivery, and GitHub checks | Preview starts only with its own resources; no test record, email or scheduled job reaches the persistent production environment |
+| 2 | Reconcile a clean MySQL baseline and test Student A/B/Coach C, then one onboarding and booking journey | Reproducible disposable schema and synthetic accounts; real sandbox Connect update and booking behavior verified against isolated data |
 | 3 | Replace storage, OAuth, vetting and owner notifications in separate small PRs | Old users and files remain accessible; each provider has an explicit adapter and verification |
 | 4 | Rehearse cutover and data reconciliation, then approve DNS/webhook URL changes | Named release, backup/restore proof, rollback procedure and verified service delivery |
 
 No database-engine change, new billing model or UI redesign is needed for this transition. Keep real-money launch separate from sandbox configuration: the original booking/payment audit findings still need repairs.
+
+The first preview change can be prepared in GitHub before choosing a new host. BACKGROUND_JOBS_ENABLED=false is already in this draft, but it does not isolate a database or block user-triggered email/storage writes. Environment validation and a reproducible disposable database baseline are the next code tasks. A later host cutover must add explicit release promotion so a branch checkpoint cannot publish itself to boogme.com. Existing Stripe destinations remain on the current production receiver until a separate preview integration plan is reviewed.
 
 ## Astra and Claude collaboration
 

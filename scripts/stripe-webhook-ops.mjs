@@ -3,8 +3,9 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 
-// These are existing resources, not instructions to create new destinations.
-export const PLATFORM_ENDPOINT = 'we_1TCAt6DWCgTDQAOtMWelR3Hs';
+// Existing resources confirmed during the September 8 recovery, not creation instructions.
+// The former platform endpoint we_1TCAt6DWCgTDQAOtMWelR3Hs is no longer listed.
+export const PLATFORM_ENDPOINT = 'we_1UD6tGDWCgTDQAOtLzqwDtjx';
 export const CONNECT_ENDPOINT = 'we_1UD5OiDWCgTDQAOtFD4KDpyJ';
 export const RECEIVER_URL = 'https://boogme.com/api/webhooks/stripe';
 export const SAFE_EVENT_TYPES = Object.freeze([
