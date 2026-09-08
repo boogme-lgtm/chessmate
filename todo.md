@@ -1135,6 +1135,16 @@
 - [x] Store its distinct signing secret as STRIPE_CONNECT_WEBHOOK_SECRET without altering the existing platform secret or publishing
 - [x] Execute the approved sandbox-only create-then-immediately-disable Connect endpoint procedure after signature and secret preconditions pass
 - [x] Prepare the reviewed production-release plan for access-control and Connect webhook repairs without publishing or enabling Connect
+- [x] Verify the live release marker, public routes, both harmless signed diagnostics, runtime evidence, and disabled Connect endpoint without changes
+- [x] Enable the approved sandbox Connected accounts endpoint and verify delivery/error status without changing other Stripe or deployment settings
+- [ ] Rotate only the sandbox platform signing secret with delayed expiration, validate both secret paths, reject the retired secret, and keep Connect unchanged
+- [ ] Resolve access to the project-specific Manus Stripe sandbox dashboard before the approved platform-secret rotation
+- [ ] Reauthorize the existing project sandbox Stripe connector without resuming paused Stripe configuration changes
+- [ ] Diagnose platform-secret replacement verification failure using production logs, timestamped old/new diagnostics, and configuration-precedence checks before retiring the old secret
+- [ ] Confirm the claimed-sandbox Test webhook can produce a non-mutating Stripe-originated platform delivery before using it to validate the rotated secret
+- [ ] Diagnose Stripe event evt_1UDB5ODWCgTDQAOtKLlXrZgk delivery failures and determine the supported runtime-secret reload path
+- [ ] Perform only a supported same-version production refresh for marker 03d9d887, then resend evt_1UDB5ODWCgTDQAOtKLlXrZgk once and collect production evidence
+- [ ] Redeploy the reviewed d2579ea7 source with saved configuration only, then verify public routes, the specified Stripe resend, and Connect signature handling
 
 ## Astra Access Control (2026-09-01)
 
