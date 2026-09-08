@@ -1153,6 +1153,7 @@
 - [ ] Review PR #5’s final reconciled commit and the isolated-preview handoff before any synchronization
 - [x] Prepare a review-only plan for a separate preview project, database, storage, controlled email, and disabled background jobs
 - [x] Document resource permissions, expected cost/hosting implications, rehearsal acceptance checks, and rollback boundaries
+- [x] Revise the Option A plan with browser-reachable private HTTPS storage, separate database and storage bootstrap credentials, durable service/restart checks, and isolated failure-test records
 - [ ] Await explicit approval before provisioning, configuring, deploying, or testing the isolated preview
 
 - [x] Review and implement the requirements in Astra’s access-control handoff
