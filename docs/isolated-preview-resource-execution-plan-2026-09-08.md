@@ -6,6 +6,8 @@
 
 Production remains on **`cb60245e`** at build marker **`7b2019f3`**. The isolated-preview work is a stacked draft: PR #5 (`astra/isolated-preview-1`) is based on PR #4 (`astra/portable-operations-1`). The currently published PR #5 head is **`3e6020ff9264a8000e8f3717bdbc969b6346c25c`**. Referenced review fix **`75620e0`** is not reachable from the GitHub remote and must be recovered and pushed before an isolated environment may use this work.
 
+**Source-gate recheck:** a subsequent GitHub API lookup for `75620e0` returned “No commit found for SHA,” and PR #5 still reports `3e6020ff9264a8000e8f3717bdbc969b6346c25c` as its only head commit. The reported focused-test results and database-guard fix are therefore treated as an **unpublished/local handoff**, not deployable source evidence. Astra/Claude must push the commit (or provide the reachable replacement SHA) and update PR #5 before the source gate can pass.
+
 | Gate | Required evidence | Status |
 |---|---|---|
 | Final stacked source | Astra/Claude identify one reachable final commit that includes PR #4 and the recovered PR #5 review fix | **Blocked** — `75620e0` unresolved |
