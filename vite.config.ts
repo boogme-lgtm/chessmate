@@ -150,7 +150,11 @@ function vitePluginManusDebugCollector(): Plugin {
   };
 }
 
-const plugins = [react(), tailwindcss(), jsxLocPlugin(), vitePluginManusRuntime(), vitePluginManusDebugCollector()];
+// Standalone builds can omit Manus editor instrumentation without changing the UI.
+const manusPlugins = process.env.MANUS_DEV_TOOLS_ENABLED === "false"
+  ? []
+  : [vitePluginManusRuntime(), vitePluginManusDebugCollector()];
+const plugins = [react(), tailwindcss(), jsxLocPlugin(), ...manusPlugins];
 
 export default defineConfig({
   plugins,
