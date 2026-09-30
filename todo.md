@@ -1150,12 +1150,15 @@
 
 ## Astra Isolated Preview Environment (Planning)
 
-- [ ] Review PR #5’s final reconciled commit and the isolated-preview handoff before any synchronization
+- [x] Independently verify the reachable PR #5 replacement candidate `da4fd9062a0c9f50478114d64e1f7e69aeab15c1`, its PR #4 stack, database-baseline guard, and committed handoff — read-only GitHub verification only; no synchronization
+- [x] Obtain Astra/Claude’s formal stacked approval for draft PR #4 `13a426bf9e24167c89f0b89d2bad82093ad75245`, then draft PR #5 `da4fd9062a0c9f50478114d64e1f7e69aeab15c1`; both remain unmerged
 - [x] Prepare a review-only plan for a separate preview project, database, storage, controlled email, and disabled background jobs
 - [x] Document resource permissions, expected cost/hosting implications, rehearsal acceptance checks, and rollback boundaries
 - [x] Revise the Option A plan with browser-reachable private HTTPS storage, separate database and storage bootstrap credentials, durable service/restart checks, and isolated failure-test records
-- [ ] Verify commit 75620e0 is reachable at PR #5’s final head and record the focused-preview pass plus separately reproduced Sprint 44 Stripe lookup timeouts
-- [ ] Await explicit approval before provisioning, configuring, deploying, or testing the isolated preview
+- [x] Reconcile unavailable `75620e0` with published replacement `da4fd9062a0c9f50478114d64e1f7e69aeab15c1`; record the reported replacement validation separately from the historical Sprint 44 timeout report
+- [x] Perform read-only host-access check: listed `cloud-pc-7y5pwwut` is online but `cloud_pc_sidecar_only`, so it is not task-accessible or an approved isolation boundary
+- [ ] Await explicit resource-creation approval for a new dedicated Standard Cloud Computer and the named empty preview resources; no source checkout, bootstrap, runtime configuration, deployment, or test execution
+- [ ] After resource evidence review, await separate explicit bootstrap/rehearsal approval for the approved draft source and synthetic acceptance checks
 
 - [x] Review and implement the requirements in Astra’s access-control handoff
 - [x] Add regression coverage for the implemented authorization boundaries
