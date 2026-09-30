@@ -41,7 +41,9 @@ describe("explicit preview-only bootstrap", () => {
     await initializeEmptyPreview(config, connection, storage, baseline);
     expect(storage.send.mock.invocationCallOrder[0]).toBeLessThan(connection.query.mock.invocationCallOrder[2]);
     expect(connection.query).toHaveBeenCalledTimes(31); // two reads, 28 app tables, guard table
-    expect(connection.execute.mock.calls[0][1][0]).toBe(config.instanceId);
+    expect(connection.execute.mock.calls[0][1]).toEqual([
+      config.instanceId, createHash("sha256").update(baseline).digest("hex"),
+    ]);
     const marker = storage.send.mock.calls[1][0] as PutObjectCommand;
     expect(marker.input).toMatchObject({ Bucket: config.storage.bucket, Key: "boogme_preview_guard.json" });
   });

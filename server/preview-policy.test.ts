@@ -3,6 +3,7 @@ import { previewEnvironment } from "../test/preview-fixture";
 import { loadPreviewConfig } from "./_core/previewPolicy";
 import { verifyPreviewDatabase } from "./_core/previewDatabase";
 import { startBackgroundJobs } from "./_core/backgroundJobs";
+import manifest from "../preview/schema-manifest.json";
 
 describe("preview startup policy", () => {
   it("allows an explicit isolated configuration without shared provider keys", () => {
@@ -39,9 +40,13 @@ describe("preview startup policy", () => {
 
 describe("database resource identity", () => {
   const config = loadPreviewConfig(previewEnvironment())!;
-  it.each(["wrong database", "missing marker", "wrong marker", "driver error"])("refuses %s before application access", async failure => {
+  it.each(["wrong database", "missing marker", "wrong marker", "stale baseline", "missing baseline", "driver error"])("refuses %s before application access", async failure => {
     const query = vi.fn().mockResolvedValueOnce([[{ name: failure === "wrong database" ? "production" : config.databaseName }]])
-      .mockResolvedValueOnce([failure === "missing marker" ? [] : [{ instance_id: "other" }]]);
+      .mockResolvedValueOnce([failure === "missing marker" ? [] : [{
+        instance_id: failure === "wrong marker" ? "other" : config.instanceId,
+        baseline_sha256: failure === "stale baseline" ? "0".repeat(64)
+          : failure === "missing baseline" ? undefined : manifest.sqlSha256,
+      }]]);
     if (failure === "driver error") query.mockReset().mockRejectedValue(new Error("sensitive driver connection data"));
     const end = vi.fn().mockResolvedValue(undefined);
     await expect(verifyPreviewDatabase(config, "unit", vi.fn().mockResolvedValue({ query, end })))
@@ -49,9 +54,9 @@ describe("database resource identity", () => {
     expect(query.mock.calls.every(([sql]) => sql.startsWith("SELECT"))).toBe(true);
     expect(end).toHaveBeenCalledOnce();
   });
-  it("accepts exactly the dedicated database and matching marker", async () => {
+  it("accepts exactly the dedicated database, instance and reviewed baseline", async () => {
     const query = vi.fn().mockResolvedValueOnce([[{ name: config.databaseName }]])
-      .mockResolvedValueOnce([[{ instance_id: config.instanceId }]]);
+      .mockResolvedValueOnce([[{ instance_id: config.instanceId, baseline_sha256: manifest.sqlSha256 }]]);
     const end = vi.fn().mockResolvedValue(undefined);
     await verifyPreviewDatabase(config, "unit", vi.fn().mockResolvedValue({ query, end }));
     expect(end).toHaveBeenCalledOnce();

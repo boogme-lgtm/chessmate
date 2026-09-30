@@ -13,7 +13,7 @@ Astra/Claude own implementation and review in GitHub. Manus may synchronize revi
 | Boundary | Preview behavior |
 | --- | --- |
 | Environment | `APP_ENV=preview` validates before clients connect. A unique instance ID, app ID and new JWT secret are required. Shared Stripe, Resend, Forge and OAuth settings are rejected. Legacy production behavior remains when preview is not selected. |
-| Database | Only `boogme_preview_<instance>` with a non-admin user is accepted. Before any ORM use, the app reads the selected database name and its instance marker. Missing/wrong markers stop startup and application access. |
+| Database | Only `boogme_preview_<instance>` with a non-admin user is accepted. Before any ORM use, the app checks the selected database name, instance marker and recorded baseline SHA-256 against the reviewed schema manifest. Missing/wrong markers or a stale/missing baseline hash stop startup and application access. |
 | Storage | Uses a dedicated S3-compatible `boogme-preview-<instance>` bucket and explicit credentials. The app checks its instance marker before writes/download signing. Paid and fulfillment files use `private/` and five-minute signed URLs; avatars/thumbnails use `public/` and stable URLs. Existing authorization checks still apply. |
 | Email | Both application email senders and owner notices go to a private Mailpit inbox. Inbox failure never falls back to Resend or Manus notifications. Verification/reset links remain in that inbox, not server logs. |
 | Background work | Scheduler imports and startup are disabled in preview. An attempt to enable background jobs or payout release fails configuration validation. |
@@ -77,7 +77,7 @@ The provider may require an equivalent public-prefix policy. Never allow anonymo
 ## Acceptance checks for the separate environment
 
 - Record commit and preview URL, actual database name, bucket name, credential scope and inbox address. Include no credentials or personal records.
-- Confirm startup logs report the instance's resource checks and disabled jobs. Missing/wrong DB and bucket markers must prevent the preview from listening. Do not modify production to test this.
+- Confirm startup logs report the instance's resource checks and disabled jobs. Missing/wrong DB and bucket markers, and a stale/missing DB baseline hash, must prevent the preview from listening. Do not modify production to test this.
 - Homepage, sign-in and coach browse render in the browser. No Manus OAuth configuration is needed for native sign-in.
 - Register synthetic Student A and Student B using `.invalid` addresses. Read verification links in the private inbox, verify, sign in and sign out. Check password reset in the same inbox. Confirm there is no message delivery outside Mailpit.
 - Create a synthetic coach through the app's non-payment flow. Verify avatar upload and thumbnail URLs resolve from the dedicated preview bucket. A private content object must reject anonymous GET; an authorized application's signed download should work and expire. Repeat the Student A/B access-denial checks using preview records only.
@@ -95,6 +95,26 @@ Final command results are recorded in the PR. No new infrastructure, database co
 If the preview is misconfigured, stop only its process. Production remains on its existing release; do not roll it back or publish this branch there. Keep the incident closed and historical Stripe-secret/fixture work outside this task.
 
 ## Handoff between Codex and Claude
+
+### Database-baseline review correction — September 30, 2026
+
+GitHub could not resolve the previously reported `75620e0`. This correction was recreated from published PR #5 head `3e6020ff9264a8000e8f3717bdbc969b6346c25c`; its parent and PR base preserve the dependency on draft PR #4 (`astra/portable-operations-1` at `13a426bf9e24167c89f0b89d2bad82093ad75245`). No merge is part of this correction.
+
+The prior guard accepted the right database/instance even when `baseline_sha256` was stale or absent. Two new regression cases failed against that implementation (31 passed, 2 failed), then passed after the guard selected and compared the recorded hash with `preview/schema-manifest.json`'s `sqlSha256`. The manifest is imported into the server bundle. Bootstrap coverage also checks the exact recorded SHA-256. Driver errors remain redacted, connections are closed, and rejection happens before ORM access and before startup listens. This checks the recorded initialization baseline, not arbitrary later schema drift; runtime credentials must still lack DDL/guard-write privileges.
+
+Actual replacement validation, Windows / Node 24.21.0 / frozen pnpm 10.4.1 lockfile:
+
+- Focused five-file preview suite: **54 passed**, 0 skipped, 0 failed.
+- Full Vitest suite (`vitest run --maxWorkers=2 --minWorkers=1`): **792 passed, 2 intentionally skipped**, 0 failed, **0 timeouts**. The skipped tests are the opt-in Resend connection and configured Connect signing-secret checks. The separately reported historical two `sprint44.test.ts` Stripe lookup timeouts were not reproduced in this run; all five tests in that file passed. Historical reports are not validation evidence for this replacement.
+- TypeScript (`tsc --noEmit`, the `check` script): passed.
+- Operations unit tests (`node --test scripts/stripe-webhook-ops.test.mjs`): **13 passed**.
+- Production client and server bundles: passed with preview public settings and Manus instrumentation disabled. Client command: `vite build --configLoader native`; server command: `esbuild server/_core/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist`. Existing analytics-placeholder and large-chunk warnings remain.
+- The standard `build` script did **not** pass unchanged in this Windows sandbox: an unreadable profile ancestor required a temporary drive mapping, which exposed a Vite HTML-proxy path mismatch. A preserve-symlinks attempt then hit an esbuild binary-version resolution mismatch. The successful client build used Node 24's native TypeScript config loader at the physical checkout path; the server build used the temporary mapping. No build/config/dependency source files were changed for these tooling workarounds. Re-run the standard build on the approved target host before deployment.
+- `git diff --check`: passed.
+
+Verification ran with an allowlisted process environment, synthetic test settings, no `.env` file, and a local Node preload that blocks socket connections and real fetch calls (including test workers). These are offline unit/build results, not live connectivity evidence. Install lifecycle scripts were disabled; the repository's local Stockfish copy script was run explicitly for the build. No bootstrap, real database/storage/email access, deployment, Stripe operation, secret change or production-data change was performed.
+
+Remaining gates: independently verify the replacement PR head and its diff, review PR #4 before PR #5, retain both drafts until review is complete, and obtain explicit approval for the named separate host, empty MySQL database, bucket policies/credentials and private Mailpit capture service. Docker, real-service isolation checks, and browser acceptance remain unperformed. An existing initialized preview with a stale hash must stop; do not edit its marker to bypass the check or run production migrations. Have the resource owner review a fresh-resource setup separately.
 
 Open this repository and branch in a Codex Cloud environment or a local coding workspace. Read this file and the PR diff first; do not reconstruct requirements from chat alone. Claude reviews the branch against the acceptance checks. Neither a new coding view nor a GitHub connection transfers Manus runtime or Stripe permissions. Keep source changes in GitHub and any later configuration/deployment approval tied to a named commit and separate environment.
 
