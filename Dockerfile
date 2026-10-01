@@ -7,6 +7,7 @@ COPY scripts/copy-stockfish.mjs ./scripts/copy-stockfish.mjs
 RUN pnpm install --frozen-lockfile
 COPY . .
 # Public build-time settings only. Never pass private credentials as build args.
+ARG APP_ENV=production
 ARG VITE_APP_ID=boogme
 ARG VITE_FRONTEND_URL
 ARG VITE_OAUTH_PORTAL_URL
