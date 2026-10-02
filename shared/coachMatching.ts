@@ -177,7 +177,7 @@ function countAreaOverlap(studentAreas: string[], coachSpecialties: string[]): n
 // directional approximations, not exact conversions.
 
 export function normalizeToFide(rating: number, system: string | null | undefined): number {
-  const s = (system ?? "fide").toLowerCase();
+  const s = typeof system === "string" ? system.toLowerCase() : "fide";
   let fideEquiv = rating;
   if (s === "lichess") fideEquiv = rating - 150;
   else if (s === "chesscom" || s === "chess.com") fideEquiv = rating - 100;
@@ -348,11 +348,12 @@ function scoreCredential(importance: string | null, coachTitle: string | null): 
 }
 
 function scoreSchedule(studentAvailability: string[] | undefined, coachSchedule: string | null): DimScore {
-  if (!studentAvailability?.length || !coachSchedule) return { score: WEIGHTS.schedule * 0.7, real: false };
+  if (!Array.isArray(studentAvailability) || !studentAvailability.length || !coachSchedule) return { score: WEIGHTS.schedule * 0.7, real: false };
   const coach = parseCoachAvailability(coachSchedule);
   if (!coach.hasAny) return { score: WEIGHTS.schedule * 0.7, real: false };
 
   const hasOverlap = studentAvailability.some((label) => {
+    if (typeof label !== "string") return false;
     const token = studentAvailabilityToken(label);
     if (token === null) return false;
     if (token === "flexible") return coach.hasAny;
@@ -401,7 +402,7 @@ const DIMENSION_LABELS: Record<keyof DimensionScores, string> = {
   budget: "Within your budget range",
   ratingGap: "Right skill level to challenge and teach you",
   credential: "Meets your credential preferences",
-  schedule: "Available when you are",
+  schedule: "Schedule preference",
   styleAlignment: "Playing style complements your chess personality",
   experience: "Proven track record with students",
 };
@@ -416,7 +417,12 @@ function topReasons(
   real: Record<keyof DimensionScores, boolean>
 ): string[] {
   return (Object.entries(breakdown) as [keyof DimensionScores, number][])
-    .filter(([key, value]) => real[key] && value >= WEIGHTS[key] * 0.7)
+    // Local time buckets have no dates or reliable cross-zone/DST conversion.
+    // Even same-zone overlap is not a booking slot. Preserve ranking, but never
+    // promote that heuristic to an availability claim. Budget also retains its
+    // score: questionnaire per-lesson amounts and hourly rates are not comparable
+    // enough to justify a price-fit explanation.
+    .filter(([key, value]) => key !== "schedule" && key !== "budget" && real[key] && value >= WEIGHTS[key] * 0.7)
     .sort(([, a], [, b]) => b - a)
     .slice(0, 3)
     .map(([key]) => DIMENSION_LABELS[key]);
@@ -463,6 +469,17 @@ export function scoreCoachForStudent(coach: CoachForMatching, student: StudentFo
     experience: dims.experience.real,
   };
 
+  // Assessment mapping supplies defaults for omitted answers. Those defaults
+  // may still affect the existing score, but cannot justify a personal reason.
+  // Legacy structured profiles without an assessment retain their own evidence.
+  if (student.assessmentData != null) {
+    real.style &&= ["sage", "master", "guide", "innovator", "coach"].includes(assessment?.teachingArchetype ?? "");
+    real.specialties &&= Array.isArray(assessment?.improvementAreas) && assessment.improvementAreas.some(a => typeof a === "string" && !!a.trim());
+    real.ratingGap &&= typeof assessment?.rating === "number" && Number.isFinite(assessment.rating) && assessment.rating > 0 && assessment.rating <= 4000 && ["fide", "lichess", "chesscom", "chess.com"].includes(assessment.ratingSystem ?? "");
+    real.credential &&= ["gm", "titled", "somewhat", "teaching", "notimportant"].includes(assessment?.credentialImportance ?? "");
+    real.styleAlignment &&= ["tal", "kasparov", "polgar", "fischer", "carlsen", "mixed", "petrosian", "karpov"].includes(assessment?.styleIcon ?? "");
+  }
+
   // Sum the ROUNDED breakdown values so the headline score always equals the
   // sum of the per-dimension numbers shown to the user (no off-by-one between
   // the badge and the breakdown). Clamp guards the rare rounding overshoot.
@@ -473,7 +490,7 @@ export function scoreCoachForStudent(coach: CoachForMatching, student: StudentFo
     coachUserId: coach.userId,
     coachName: coach.name,
     score,
-    reasons: reasons.length > 0 ? reasons : ["Available on BooGMe"],
+    reasons: reasons.length > 0 ? reasons : ["No specific preference match established"],
     breakdown,
   };
 }

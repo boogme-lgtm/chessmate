@@ -54,6 +54,7 @@ import { useEffect, useState, useCallback } from "react";
 import ReviewDialog from "@/components/ReviewDialog";
 import MessageThread from "@/components/MessageThread";
 import DashShell from "@/components/DashShell";
+import StudentMatchingPanel from "@/components/StudentMatchingPanel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { differenceInMinutes } from "date-fns";
 
@@ -240,6 +241,7 @@ export function StudentDashboardContent({ user }: { user: any }) {
 
   return (
     <div className="space-y-8">
+      <StudentMatchingPanel />
       {/* ── GETTING STARTED (new students only) ───────────────────────────── */}
       {isNewStudent && (
         <section>
