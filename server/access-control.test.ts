@@ -180,3 +180,91 @@ describe("request delivery ownership", () => {
     expect(db.updateContentRequestStatus).not.toHaveBeenCalled();
   });
 });
+
+
+describe("organized class correspondence", () => {
+  beforeEach(() => {
+    vi.mocked(db.getLessonById).mockResolvedValue({ id: 10, studentId: 1, coachId: 42, status: "completed", topic: "Opening" } as any);
+    vi.mocked(db.getMessageSummaries).mockResolvedValue([]);
+  });
+
+  it.each([student, outsider, { ...coach, id: 88 }])("rejects title edits by user $id", async user => {
+    await expect(appRouter.createCaller(context(user)).messages.setClassTitle({ lessonId: 10, title: "Changed" }))
+      .rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(db.updateLessonTitle).not.toHaveBeenCalled();
+  });
+
+  it("allows the assigned coach and trims the existing topic", async () => {
+    await appRouter.createCaller(context(coach)).messages.setClassTitle({ lessonId: 10, title: "  Endgame practice  " });
+    expect(db.updateLessonTitle).toHaveBeenCalledWith(10, 42, "Endgame practice");
+  });
+
+  it.each(["", "   ", "x".repeat(256)])("rejects invalid titles before writing", async title => {
+    await expect(appRouter.createCaller(context(coach)).messages.setClassTitle({ lessonId: 10, title }))
+      .rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(db.updateLessonTitle).not.toHaveBeenCalled();
+  });
+
+  it("accepts the storage boundary and names cancelled classes", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue({ id: 10, studentId: 1, coachId: 42, status: "cancelled" } as any);
+    await appRouter.createCaller(context(coach)).messages.setClassTitle({ lessonId: 10, title: "x".repeat(255) });
+    expect(db.updateLessonTitle).toHaveBeenCalledWith(10, 42, "x".repeat(255));
+  });
+
+  it("does not name subscription chats as classes", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue({ id: 10, studentId: 1, coachId: 42, status: "subscription_dm" } as any);
+    await expect(appRouter.createCaller(context(coach)).messages.setClassTitle({ lessonId: 10, title: "Class" }))
+      .rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(db.updateLessonTitle).not.toHaveBeenCalled();
+  });
+
+  it("returns NOT_FOUND for missing lessons", async () => {
+    vi.mocked(db.getLessonById).mockResolvedValue(undefined);
+    await expect(appRouter.createCaller(context(coach)).messages.setClassTitle({ lessonId: 10, title: "Class" }))
+      .rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it.each([student, coach])("preview for participant $id never marks read", async user => {
+    await appRouter.createCaller(context(user)).messages.getPreviewForLesson({ lessonId: 10 });
+    expect(db.getMessagesForLesson).toHaveBeenCalledWith(10);
+    expect(db.markLessonMessagesRead).not.toHaveBeenCalled();
+  });
+
+  it("rejects an outsider preview", async () => {
+    await expect(appRouter.createCaller(context(outsider)).messages.getPreviewForLesson({ lessonId: 10 }))
+      .rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(db.getMessagesForLesson).not.toHaveBeenCalled();
+  });
+
+  it("scopes summaries to the signed-in participant without read writes", async () => {
+    await appRouter.createCaller(context(student)).messages.getSummaries({ lessonIds: [10, 20] });
+    expect(db.getMessageSummaries).toHaveBeenCalledWith(1, [10, 20]);
+    expect(db.markLessonMessagesRead).not.toHaveBeenCalled();
+  });
+
+  it("scopes history to the current user and side", async () => {
+    vi.mocked(db.getMessageClasses).mockResolvedValue({ items: [], nextCursor: undefined });
+    await appRouter.createCaller(context(student)).messages.getClasses({ role: "student" });
+    expect(db.getMessageClasses).toHaveBeenCalledWith(1, "student", undefined);
+    await expect(appRouter.createCaller(context(null)).messages.getClasses({ role: "coach" }))
+      .rejects.toMatchObject({ code: "UNAUTHORIZED" });
+  });
+
+  it("completes read marking before returning a thread and refreshing badges", async () => {
+    let release!: () => void;
+    vi.mocked(db.markLessonMessagesRead).mockReturnValue(new Promise<void>(resolve => { release = resolve; }));
+    const result = appRouter.createCaller(context(student)).messages.getForLesson({ lessonId: 10 });
+    await vi.waitFor(() => expect(db.markLessonMessagesRead).toHaveBeenCalledWith(10, 1));
+    expect(db.getMessagesForLesson).not.toHaveBeenCalled();
+    release();
+    await result;
+    expect(db.getMessagesForLesson).toHaveBeenCalledWith(10);
+  });
+
+  it("rejects anonymous metadata access and oversized summary batches", async () => {
+    await expect(appRouter.createCaller(context(null)).messages.getSummaries({ lessonIds: [10] }))
+      .rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    await expect(appRouter.createCaller(context(student)).messages.getSummaries({ lessonIds: Array(201).fill(10) }))
+      .rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+});

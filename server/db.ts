@@ -1620,6 +1620,63 @@ export async function getMessagesForLesson(lessonId: number, limit: number = 200
   return (result[0] || []) as any[];
 }
 
+/** Inbox metadata only: browsing must never mark correspondence as read. */
+export async function getMessageClasses(userId: number, role: "student" | "coach", cursor?: { scheduledAt: Date; id: number }) {
+  const database = await getDb();
+  if (!database) throw new Error("Database not available");
+  const ownership = role === "student" ? sql`l.studentId = ${userId}` : sql`l.coachId = ${userId}`;
+  const after = cursor ? sql`AND (l.scheduledAt < ${cursor.scheduledAt} OR (l.scheduledAt = ${cursor.scheduledAt} AND l.id < ${cursor.id}))` : sql``;
+  const result: any = await database.execute(sql`
+    SELECT l.id, l.coachId, l.studentId, l.topic, l.status, l.scheduledAt,
+      coach.name AS coachName, student.name AS studentName,
+      (SELECT COUNT(*) FROM messages m WHERE m.lessonId = l.id AND m.senderId <> ${userId} AND m.readAt IS NULL) AS unread
+    FROM lessons l
+    LEFT JOIN users coach ON coach.id = l.coachId
+    LEFT JOIN users student ON student.id = l.studentId
+    WHERE ${ownership} ${after}
+    ORDER BY l.scheduledAt DESC, l.id DESC LIMIT 101
+  `);
+  const rows = (result[0] || []) as (import("../shared/messageOrganization").MessageLesson & { unread: number })[];
+  const items = rows.slice(0, 100);
+  const last = items[items.length - 1];
+  return { items, nextCursor: rows.length > 100 ? { scheduledAt: new Date(last.scheduledAt), id: last.id } : undefined };
+}
+
+export async function getMessageSummaries(userId: number, lessonIds: number[]) {
+  if (!lessonIds.length) return [];
+  const database = await getDb();
+  if (!database) throw new Error("Database not available");
+  const result: any = await database.execute(sql`
+    SELECT l.id AS lessonId, l.topic, COUNT(m.id) AS messageCount,
+      SUM(CASE WHEN m.contentType = 'pgn' THEN 1 ELSE 0 END) AS materialCount,
+      latest.contentType AS latestContentType, LEFT(latest.content, 200) AS latestContent,
+      latest.createdAt AS latestAt
+    FROM lessons l
+    LEFT JOIN messages m ON m.lessonId = l.id
+    LEFT JOIN messages latest ON latest.id = (
+      SELECT last.id FROM messages last WHERE last.lessonId = l.id
+      ORDER BY last.createdAt DESC, last.id DESC LIMIT 1
+    )
+    WHERE (l.studentId = ${userId} OR l.coachId = ${userId})
+      AND l.id IN (${sql.join(lessonIds.map(id => sql`${id}`), sql`, `)})
+    GROUP BY l.id, l.topic, latest.contentType, latest.content, latest.createdAt
+  `);
+  return (result[0] || []) as {
+    lessonId: number; topic: string | null; messageCount: number;
+    materialCount: number; latestContentType: string | null;
+    latestContent: string | null; latestAt: Date | null;
+  }[];
+}
+
+/** Scope the write as well as the route's ownership check. */
+export async function updateLessonTitle(lessonId: number, coachId: number, title: string) {
+  const database = await getDb();
+  if (!database) throw new Error("Database not available");
+  await database.update(lessons).set({ topic: title }).where(
+    and(eq(lessons.id, lessonId), eq(lessons.coachId, coachId))
+  );
+}
+
 /**
  * Mark all messages in a lesson as read for everyone except the specified user.
  * (The user opening the thread marks the counterpart's messages as read.)
