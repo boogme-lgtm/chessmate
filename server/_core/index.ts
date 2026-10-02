@@ -4,7 +4,7 @@ import { createServer } from "http";
 import net from "net";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
-import { registerOAuthRoutes } from "./oauth";
+import { registerOAuthCallbackRoutes, registerOAuthStartRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
@@ -46,6 +46,10 @@ async function startServer() {
   // entire chain and lets clients spoof X-Forwarded-For to evade the rate limiter.
   app.set("trust proxy", 1);
 
+  // Public start routes choose only configured origins, before the Host-based
+  // transport redirect. The callback keeps its existing middleware position.
+  registerOAuthStartRoutes(app);
+
   // Force HTTPS redirect in production
   if (process.env.NODE_ENV === "production" && !ENV.preview?.allowLocalHttp) {
     app.use((req, res, next) => {
@@ -73,7 +77,7 @@ async function startServer() {
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   // OAuth callback under /api/oauth/callback
-  registerOAuthRoutes(app);
+  registerOAuthCallbackRoutes(app);
   
   // Force logout endpoint for debugging
   app.get("/api/force-logout", (req, res) => {

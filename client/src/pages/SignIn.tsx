@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation, useSearch } from "wouter";
-import { getLoginUrl } from "@/const";
+import { getLoginUrl, getOAuthAvailability } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { Loader2, Eye, EyeOff } from "lucide-react";
 import Logo from "@/components/Logo";
@@ -16,6 +16,19 @@ export default function SignIn() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [oauthEnabled, setOAuthEnabled] = useState(false);
+
+  useEffect(() => {
+    let current = true;
+    const controller = new AbortController();
+    void getOAuthAvailability(controller.signal).then(enabled => {
+      if (current) setOAuthEnabled(enabled);
+    });
+    return () => {
+      current = false;
+      controller.abort();
+    };
+  }, []);
 
   const utils = trpc.useUtils();
   const loginMutation = trpc.auth.login.useMutation({
@@ -152,7 +165,7 @@ export default function SignIn() {
             Sign in
           </button>
 
-          {import.meta.env.VITE_OAUTH_PORTAL_URL && <>
+          {oauthEnabled && <>
           <div className="relative py-2">
             <div className="absolute inset-0 flex items-center">
               <span className="w-full border-t border-border" />
