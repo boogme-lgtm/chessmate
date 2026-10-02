@@ -36,7 +36,9 @@ function origin(env: Environment, name: string): URL {
 
 /** Validate before SDK clients, database connections or background work initialize. */
 export function loadPreviewConfig(env: Environment): PreviewConfig | undefined {
-  const mode = env.APP_ENV ?? (env.NODE_ENV === "production" ? "production" : "development");
+  // Managed runtimes may use PROD; only this shorthand is case-insensitive.
+  const appEnv = env.APP_ENV?.toLowerCase() === "prod" ? "production" : env.APP_ENV;
+  const mode = appEnv ?? (env.NODE_ENV === "production" ? "production" : "development");
   if (!["preview", "production", "development"].includes(mode)) {
     throw new Error("APP_ENV must be preview, production or development");
   }

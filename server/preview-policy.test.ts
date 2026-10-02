@@ -15,6 +15,40 @@ describe("preview startup policy", () => {
     expect(loadPreviewConfig({ NODE_ENV: "production" })).toBeUndefined();
   });
   it.each([
+    "prod", "Prod", "pRod", "prOd", "proD", "PRod", "PrOd", "ProD",
+    "pROd", "pRoD", "prOD", "PROd", "PRoD", "PrOD", "pROD", "PROD",
+  ])(
+    "accepts the production shorthand %s without enabling preview",
+    APP_ENV => {
+      for (const NODE_ENV of [undefined, "development", "production"]) {
+        expect(loadPreviewConfig({ APP_ENV, NODE_ENV })).toBeUndefined();
+      }
+    },
+  );
+  it.each([undefined, "development", "production"])(
+    "preserves canonical non-preview mode %s",
+    APP_ENV => {
+      for (const NODE_ENV of [undefined, "development", "production"]) {
+        expect(loadPreviewConfig({ APP_ENV, NODE_ENV })).toBeUndefined();
+      }
+    },
+  );
+  it.each(["development", "production"])(
+    "keeps explicit preview validation with NODE_ENV=%s",
+    NODE_ENV => {
+      expect(loadPreviewConfig({ ...previewEnvironment(), NODE_ENV })?.instanceId).toBe("qa1");
+      expect(() => loadPreviewConfig({ ...previewEnvironment(), NODE_ENV, STRIPE_SECRET_KEY: "synthetic-key" }))
+        .toThrow("Remove STRIPE_SECRET_KEY");
+    },
+  );
+  it.each([
+    "", "PRODUCTION", "Production", "PREVIEW", "Preview", "DEVELOPMENT", "Development",
+    " prod", "prod ", " PROD ", "production ", " preview", "prod\n", "staging", "preveiw", "prd",
+  ])("still rejects unrelated or noncanonical APP_ENV=%j", APP_ENV => {
+    expect(() => loadPreviewConfig({ ...previewEnvironment(), APP_ENV, NODE_ENV: "development" }))
+      .toThrow("APP_ENV must be preview, production or development");
+  });
+  it.each([
     ["APP_ENV", "preveiw"], ["DATABASE_URL", "mysql://user:password@host/Xkyng35xnYFybYAdmyVo96"],
     ["DATABASE_URL", "mysql://root:password@host/boogme_preview_qa1"],
     ["DATABASE_URL", "mysql://%72oot:password@host/boogme_preview_qa1"],
