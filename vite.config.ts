@@ -151,7 +151,7 @@ function vitePluginManusDebugCollector(): Plugin {
 }
 
 // Standalone builds can omit Manus editor instrumentation without changing the UI.
-const manusPlugins = process.env.MANUS_DEV_TOOLS_ENABLED === "false"
+const manusPlugins = process.env.APP_ENV === "preview" || process.env.MANUS_DEV_TOOLS_ENABLED === "false"
   ? []
   : [vitePluginManusRuntime(), vitePluginManusDebugCollector()];
 const plugins = [react(), tailwindcss(), jsxLocPlugin(), ...manusPlugins];

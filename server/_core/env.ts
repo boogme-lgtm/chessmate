@@ -1,3 +1,7 @@
+import { loadPreviewConfig } from "./previewPolicy";
+
+const preview = loadPreviewConfig(process.env);
+
 function requireEnv(name: string): string {
   const value = process.env[name];
   if (!value) {
@@ -11,6 +15,7 @@ function optionalEnv(name: string, fallback: string = ""): string {
 }
 
 export const ENV = {
+  preview,
   appId: requireEnv("VITE_APP_ID"),
   cookieSecret: requireEnv("JWT_SECRET"),
   databaseUrl: requireEnv("DATABASE_URL"),

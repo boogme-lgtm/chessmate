@@ -1,0 +1,6 @@
+{
+  "source": "drizzle/schema.ts",
+  "generator": "drizzle-kit 0.31.10 export --dialect=mysql --schema=./drizzle/schema.ts",
+  "sourceSha256": "05306bef430c4e43e9b290b9b25985faecf1824e0c5a1a1c12a37a9e8ea207b3",
+  "sqlSha256": "a06b62ef77b208843a57e756c5b5d46f414e7fee6f1e1274cf6d8156d66979c3"
+}

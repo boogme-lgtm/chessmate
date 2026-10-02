@@ -152,6 +152,7 @@ export default function SignIn() {
             Sign in
           </button>
 
+          {import.meta.env.VITE_OAUTH_PORTAL_URL && <>
           <div className="relative py-2">
             <div className="absolute inset-0 flex items-center">
               <span className="w-full border-t border-border" />
@@ -179,6 +180,7 @@ export default function SignIn() {
             </svg>
             Sign in with Google
           </button>
+          </>}
 
           <p className="text-[13px] text-center text-muted-foreground pt-2">
             Don&rsquo;t have an account?{" "}
