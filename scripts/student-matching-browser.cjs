@@ -113,7 +113,7 @@ async function main() {
         inventory = [{ ...coaches[0], name: 'Profile A Coach' }];
         hold = responseA;
         onMatchPrepared = body => { assert.ok(body.includes('Profile A Coach')); preparedA.release(); };
-        await page.goto(origin + '/dashboard');
+        await page.goto(origin + '/find-another-coach');
         await preparedA.promise;
         profile = { ...profileFixture, learningStyle: 'interactive', assessmentData: JSON.stringify({ ...answers, teachingArchetype: 'innovator' }) };
         inventory = [{ ...coaches[0], name: 'Profile B Coach', teachingStyle: 'interactive' }];
@@ -150,7 +150,7 @@ async function main() {
         await check('empty');
         await panel.screenshot({ path: path.join(out, `${width}-empty.png`) });
 
-        await button().focus(); await page.keyboard.press('Tab');
+        await panel.getByRole('button', { name: 'Edit matching answers' }).focus(); await page.keyboard.press('Tab');
         assert.equal(await page.evaluate(() => document.activeElement.tagName), 'SUMMARY');
         await page.keyboard.press('Enter');
         assert.equal(await panel.locator('details').getAttribute('open'), null);
@@ -175,7 +175,7 @@ async function main() {
         assert.ok(!(await panel.innerText()).includes('%'));
         const link = panel.getByRole('link', { name: 'View profile for Synthetic Coach' });
         assert.equal(await link.getAttribute('href'), '/coach/902');
-        await button().focus(); await page.keyboard.press('Tab'); await page.keyboard.press('Tab');
+        await panel.getByRole('button', { name: 'Edit matching answers' }).focus(); await page.keyboard.press('Tab'); await page.keyboard.press('Tab');
         assert.equal(await page.evaluate(() => document.activeElement.getAttribute('href')), '/coach/902');
         await check('recommendations');
         await panel.screenshot({ path: path.join(out, `${width}-recommendations.png`) });
@@ -239,8 +239,9 @@ async function main() {
 
         profile = structuredClone(profileFixture); inventory = coaches;
         hold = deferred(); await refresh(); await waitText('Checking your saved preferences');
-        await page.getByRole('button', { name: 'Find Another Coach', exact: true }).click();
-        await page.waitForURL('**/coaches');
+        await page.getByRole('link', { name: 'Back to dashboard', exact: true }).click();
+        await page.waitForURL('**/dashboard*');
+        assert.equal(await page.getByText('Saved matching preferences', { exact: true }).count(), 0);
         hold.release(); hold = null;
         await page.goBack(); await waitText('Coaches to consider');
         await panel.getByText('America/New_York', { exact: true }).waitFor();
