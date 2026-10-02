@@ -45,7 +45,7 @@ async function createSessionToken(user: { id: number; openId: string | null; nam
 function setSessionCookie(res: any, token: string) {
   const cookieStr = stringifySetCookie(COOKIE_NAME, token, {
     httpOnly: true,
-    secure: true, // Always secure since preview/production are HTTPS
+    secure: !ENV.preview?.allowLocalHttp, // HTTP is permitted only for a loopback preview.
     sameSite: "lax", // More permissive, works better for same-site requests
     maxAge: ONE_YEAR_MS / 1000,
     path: "/",
@@ -60,7 +60,7 @@ function setSessionCookie(res: any, token: string) {
 function clearSessionCookie(res: any) {
   const cookieStr = stringifySetCookie(COOKIE_NAME, "", {
     httpOnly: true,
-    secure: true, // Always secure since preview/production are HTTPS
+    secure: !ENV.preview?.allowLocalHttp, // Must match setSessionCookie.
     sameSite: "lax", // Must match setSessionCookie
     maxAge: 0,
     path: "/",

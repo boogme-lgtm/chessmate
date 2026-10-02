@@ -1,4 +1,5 @@
 import { ENV } from "./_core/env";
+import { capturePreviewEmail } from "./_core/previewEmail";
 
 interface EmailParams {
   to: string;
@@ -10,6 +11,10 @@ interface EmailParams {
  * Send email using Resend API
  */
 export async function sendEmail(params: EmailParams): Promise<void> {
+  if (ENV.preview) {
+    await capturePreviewEmail(params);
+    return;
+  }
   if (!ENV.resendApiKey) {
     console.warn("[Email] Resend API key not configured, skipping email send");
     return;

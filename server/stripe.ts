@@ -1,11 +1,10 @@
 import Stripe from "stripe";
 import { ENV } from "./_core/env";
+import { createAppStripeClient } from "./_core/stripeClient";
 import { DEFAULT_PRICING_TIER, getTierFeePercent, calculateStripeFeeCents } from "@shared/pricing";
 
 // Initialize Stripe with the secret key
-const stripe = new Stripe(ENV.stripeSecretKey || "", {
-  apiVersion: "2026-01-28.clover",
-});
+const stripe = createAppStripeClient();
 
 // ============ CUSTOMER OPERATIONS ============
 
