@@ -8,6 +8,7 @@ import { registerOAuthCallbackRoutes, registerOAuthStartRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
+import { configureSecurityHeaders } from "./securityHeaders";
 import { startBackgroundJobs } from "./backgroundJobs";
 import { ENV } from "./env";
 import { getDb } from "../db";
@@ -39,6 +40,7 @@ async function startServer() {
     console.log(`[Preview] Resource isolation verified for ${ENV.preview.instanceId}`);
   }
   const app = express();
+  configureSecurityHeaders(app);
   const server = createServer(app);
 
   // Trust exactly ONE proxy hop (the platform's reverse proxy) so req.ip reflects
