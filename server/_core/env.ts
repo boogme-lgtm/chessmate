@@ -20,6 +20,10 @@ export const ENV = {
   cookieSecret: requireEnv("JWT_SECRET"),
   databaseUrl: requireEnv("DATABASE_URL"),
   oAuthServerUrl: optionalEnv("OAUTH_SERVER_URL"),
+  oAuthPortalUrl: optionalEnv("VITE_OAUTH_PORTAL_URL"),
+  // Managed production can use NODE_ENV=development; APP_ENV takes precedence.
+  allowOAuthLoopback:
+    (process.env.APP_ENV ?? process.env.NODE_ENV) === "development",
   ownerOpenId: optionalEnv("OWNER_OPEN_ID"),
   isProduction: process.env.NODE_ENV === "production",
   forgeApiUrl: optionalEnv("BUILT_IN_FORGE_API_URL"),

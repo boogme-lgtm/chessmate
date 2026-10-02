@@ -28,10 +28,16 @@ describe("environment initialization", () => {
       expect(alias).toEqual(canonical);
       expect(alias.preview).toBeUndefined();
       expect(alias.isProduction).toBe(NODE_ENV === "production");
+      expect(alias.allowOAuthLoopback).toBe(false);
       expect(alias.databaseUrl).toBe("mysql://unit:unit@127.0.0.1:9/synthetic_managed");
       expect(alias.stripeSecretKey).toBe("synthetic-provider-key");
     },
   );
+
+  it("allows OAuth loopback only in explicit development", async () => {
+    vi.stubEnv("APP_ENV", "development");
+    expect((await import("./_core/env")).ENV.allowOAuthLoopback).toBe(true);
+  });
 
   it.each(["production", "PROD"])("still requires application settings with APP_ENV=%s", async APP_ENV => {
     vi.stubEnv("APP_ENV", APP_ENV);

@@ -3,6 +3,8 @@ import type { Express, Request, Response } from "express";
 import * as db from "../db";
 import { getSessionCookieOptions } from "./cookies";
 import { sdk } from "./sdk";
+import { ENV } from "./env";
+import { getOAuthStartUrl } from "./oauthStart";
 
 function getQueryParam(req: Request, key: string): string | undefined {
   const value = req.query[key];
@@ -10,6 +12,33 @@ function getQueryParam(req: Request, key: string): string | undefined {
 }
 
 export function registerOAuthRoutes(app: Express) {
+  registerOAuthStartRoutes(app);
+  registerOAuthCallbackRoutes(app);
+}
+
+export function registerOAuthStartRoutes(app: Express) {
+  app.get("/api/oauth/availability", (_req: Request, res: Response) => {
+    res.setHeader("Cache-Control", "no-store");
+    let enabled = false;
+    try {
+      enabled = Boolean(getOAuthStartUrl(ENV));
+    } catch {
+      // Expose only a Boolean, never configuration or provider details.
+    }
+    res.json({ enabled });
+  });
+
+  app.get("/api/oauth/start", (_req: Request, res: Response) => {
+    res.setHeader("Cache-Control", "no-store");
+    try {
+      res.redirect(302, getOAuthStartUrl(ENV) ?? "/sign-in");
+    } catch {
+      res.status(503).json({ error: "OAuth sign-in is unavailable" });
+    }
+  });
+}
+
+export function registerOAuthCallbackRoutes(app: Express) {
   app.get("/api/oauth/callback", async (req: Request, res: Response) => {
     const code = getQueryParam(req, "code");
     const state = getQueryParam(req, "state");
