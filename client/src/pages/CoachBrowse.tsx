@@ -170,7 +170,7 @@ export default function CoachBrowse() {
                 <button
                   key={f}
                   onClick={() => setFilter(f)}
-                  className={`px-3.5 py-1.5 text-sm font-medium transition-colors rounded-sm ${
+                  className={`max-w-full wrap-anywhere px-3.5 py-1.5 text-sm font-medium transition-colors rounded-sm ${
                     filter === f
                       ? "bg-orange-600 text-white"
                       : "bg-white/5 text-muted-foreground hover:text-foreground hover:bg-white/10"
@@ -189,14 +189,14 @@ export default function CoachBrowse() {
 
       {/* Sort bar */}
       <div className="border-b border-border/20">
-        <div className="container py-3 flex items-center justify-between">
-          <div className="flex items-center gap-1 text-sm">
+        <div className="container py-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-1 text-sm">
             <span className="text-muted-foreground mr-2">Sort by:</span>
             {SORT_OPTIONS.map((s) => (
               <button
                 key={s}
                 onClick={() => setSort(s)}
-                className={`px-2.5 py-1 text-sm transition-colors rounded-sm ${
+                className={`max-w-full wrap-anywhere px-2.5 py-1 text-sm transition-colors rounded-sm ${
                   sort === s ? "text-foreground font-medium" : "text-muted-foreground hover:text-foreground"
                 }`}
               >
@@ -288,13 +288,13 @@ function CoachCard({ coach, viewMode, matchScore }: { coach: any; viewMode: "gri
 
   return (
     <div
-      className={`flex overflow-hidden bg-[#111] hover:bg-[#161616] transition-all cursor-pointer rounded-sm group ${
+      className={`flex flex-col sm:flex-row overflow-hidden bg-[#111] hover:bg-[#161616] transition-all cursor-pointer rounded-sm group ${
         isFull ? "border-l-2 border-l-orange-600" : ""
       } ${isSparse ? "opacity-75" : ""}`}
       onClick={() => setLocation(`/coach/${user.id}`)}
     >
       {/* Left panel — photo / initials */}
-      <div className={`relative shrink-0 ${viewMode === "list" ? "w-40" : "w-36"} bg-[#0d0d0d]`}>
+      <div className={`relative shrink-0 h-40 w-full sm:h-auto ${viewMode === "list" ? "sm:w-40" : "sm:w-36"} bg-[#0d0d0d]`}>
         {/* Match-score badge — only in Best Match mode */}
         {matchScore != null && (
           <div className="absolute top-0 left-0 z-10 bg-orange-600 text-white text-xs font-bold px-2 py-1 rounded-br-sm">
@@ -338,7 +338,7 @@ function CoachCard({ coach, viewMode, matchScore }: { coach: any; viewMode: "gri
 
           {/* Bio excerpt */}
           {bioExcerpt && (
-            <p className="text-sm text-muted-foreground italic leading-snug">{bioExcerpt}</p>
+            <p className="wrap-anywhere text-sm text-muted-foreground italic leading-snug">{bioExcerpt}</p>
           )}
 
           {/* Profile completeness dots */}
@@ -358,7 +358,7 @@ function CoachCard({ coach, viewMode, matchScore }: { coach: any; viewMode: "gri
           {specialties.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {specialties.slice(0, maxSpecialties).map((s: string) => (
-                <span key={s} className="text-[11px] px-2 py-0.5 bg-white/5 text-muted-foreground rounded-sm">
+                <span key={s} className="max-w-full wrap-anywhere text-[11px] px-2 py-0.5 bg-white/5 text-muted-foreground rounded-sm">
                   {s}
                 </span>
               ))}
@@ -367,8 +367,8 @@ function CoachCard({ coach, viewMode, matchScore }: { coach: any; viewMode: "gri
         </div>
 
         {/* Bottom: Stats + CTA */}
-        <div className="flex items-center justify-between pt-2 border-t border-white/5">
-          <div className="flex items-center gap-3 text-sm text-muted-foreground">
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-white/5">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
             {rating && (
               <span className="flex items-center gap-1">
                 <Star className="h-3.5 w-3.5 fill-yellow-500 text-yellow-500" />
@@ -394,7 +394,7 @@ function BrowseSkeleton() {
     <div className="min-h-screen bg-background">
       <div className="border-b border-border/40">
         <div className="container py-10">
-          <Skeleton className="h-14 w-96 mb-3" />
+          <Skeleton className="h-14 w-96 max-w-full mb-3" />
           <Skeleton className="h-6 w-full max-w-lg" />
         </div>
       </div>
