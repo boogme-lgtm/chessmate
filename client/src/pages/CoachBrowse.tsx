@@ -8,7 +8,6 @@ import {
   Award,
   ChevronRight,
   ArrowLeft,
-  Menu,
   LayoutGrid,
   List,
   Trophy,
@@ -108,7 +107,6 @@ function sortCoaches(arr: any[], sort: SortKey, matchScores?: Map<number, number
 export default function CoachBrowse() {
   useDocumentTitle("Browse Chess Coaches · BooGMe");
   const [, setLocation] = useLocation();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [filter, setFilter] = useState<FilterKey>("All");
   const [sort, setSort] = useState<SortKey>("Top Rated");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
@@ -139,12 +137,14 @@ export default function CoachBrowse() {
     <div className="min-h-screen bg-background">
       {/* Navigation Header */}
       <div className="sticky top-0 z-50 border-b border-border/40 bg-background/95 backdrop-blur-xl">
-        <div className="container flex items-center justify-between py-4">
+        <div className="container grid grid-cols-[1fr_auto_1fr] items-center py-4">
           <button
+            type="button"
+            aria-label="Back to Home"
             onClick={() => setLocation("/")}
-            className="flex items-center gap-2 text-sm font-light text-muted-foreground hover:text-foreground transition-colors"
+            className="justify-self-start flex items-center gap-2 text-sm font-light text-muted-foreground hover:text-foreground transition-colors"
           >
-            <ArrowLeft className="w-4 h-4" />
+            <ArrowLeft className="w-4 h-4" aria-hidden="true" />
             <span className="hidden sm:inline">Back to Home</span>
           </button>
           <img
@@ -152,10 +152,6 @@ export default function CoachBrowse() {
             alt="BooGMe"
             className="h-8 w-auto"
           />
-          <button className="md:hidden" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
-            <Menu className="w-5 h-5" />
-          </button>
-          <div className="hidden md:block w-20" />
         </div>
       </div>
 
