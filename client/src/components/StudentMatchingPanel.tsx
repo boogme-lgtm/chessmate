@@ -4,10 +4,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { savedMatchingPreferences } from "@shared/savedMatchingPreferences";
 import { Link } from "wouter";
 import { useEffect, useState } from "react";
+import { CoachMatchingAssessment } from "./CoachMatchingAssessment";
+import { editableSavedAssessment } from "@shared/editableSavedAssessment";
 import type { MatchResult } from "@shared/coachMatching";
 
 export default function StudentMatchingPanel() {
   const utils = trpc.useUtils();
+  const [editing, setEditing] = useState(false);
   const profile = trpc.student.getProfile.useQuery(undefined, { retry: false });
   const matches = trpc.match.getMatchedCoaches.useQuery(undefined, {
     // Fetch after each successful profile read, including cache invalidation
@@ -47,11 +50,24 @@ export default function StudentMatchingPanel() {
   const requestError = profile.isError || currentSnapshot?.error;
 
   // Refresh reads the profile; the effect then reads recommendations for it.
-  // There are no quiz/profile/match mutations on this surface.
+  // Editing saves through the original questionnaire and existing endpoint.
   async function refresh() {
     if (busy || paused) return;
     await profile.refetch();
   }
+
+  if (editing) return <CoachMatchingAssessment
+    mode="edit"
+    initialData={editableSavedAssessment(profile.data?.assessmentData)}
+    onClose={() => { setEditing(false); requestAnimationFrame(() => document.getElementById("edit-matching-answers")?.focus()); }}
+    onSaved={async () => {
+      setSnapshot(null);
+      await utils.match.getMatchedCoaches.cancel();
+      await utils.student.getProfile.invalidate();
+      // Recommendations are read only after the updated profile settles.
+      setEditing(false);
+    }}
+  />;
 
   return (
     <section id="coach-matching" aria-labelledby="coach-matching-heading" className="min-w-0">
@@ -60,7 +76,7 @@ export default function StudentMatchingPanel() {
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
               <h2 id="coach-matching-heading" className="text-lg font-semibold text-bone">Your coach matching</h2>
-              <p className="text-sm text-bone-muted">Your saved questionnaire preferences and current recommendations.</p>
+              <p className="text-sm text-bone-muted">Review or edit your answers while finding another coach.</p>
             </div>
             <Button type="button" variant="outline" disabled={busy || paused} onClick={refresh}>
               {requestError ? "Retry matching" : "Refresh matching"}
@@ -76,6 +92,12 @@ export default function StudentMatchingPanel() {
               : currentSnapshot && !currentSnapshot.data.length ? <p>No recommendations available right now. You can check again with Refresh matching.</p>
               : <p>Coaches to consider based on your saved profile. A recommendation does not confirm a lesson time or price.</p>}
           </div>
+
+          {profile.isSuccess && !profile.isFetching && !paused && (
+            <Button id="edit-matching-answers" type="button" onClick={() => setEditing(true)}>
+              Edit matching answers
+            </Button>
+          )}
 
           {profile.isSuccess && (
             <details open>

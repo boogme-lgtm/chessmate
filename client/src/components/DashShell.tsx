@@ -69,6 +69,19 @@ export default function DashShell({
 
   const navItems = role === "coach" ? COACH_NAV : STUDENT_NAV;
 
+  // Preserve links to the former dashboard section as an entry to the flow.
+  useEffect(() => {
+    if (role !== "student") return;
+    const followMatchingLink = () => {
+      if (window.location.hash === "#coach-matching") {
+        setLocation("/find-another-coach", { replace: true });
+      }
+    };
+    followMatchingLink();
+    window.addEventListener("hashchange", followMatchingLink);
+    return () => window.removeEventListener("hashchange", followMatchingLink);
+  }, [role, setLocation]);
+
   // Total unread messages across all lessons
   const { data: lessons } = role === "coach"
     ? trpc.lesson.coachLessons.useQuery({ limit: 50 }, { enabled: !!user })
@@ -99,6 +112,10 @@ export default function DashShell({
   useEffect(() => { lastEmittedRef.current = activeSection; }, [activeSection]);
 
   const handleNavClick = (key: string) => {
+    if (role === "student" && key === "coach-matching") {
+      setLocation("/find-another-coach");
+      return;
+    }
     onSectionChange(key);
     lastEmittedRef.current = key;
     // Suppress the spy until the smooth-scroll settles so it doesn't flicker
@@ -352,7 +369,7 @@ export default function DashShell({
               {role === "student" ? (
                 <>
                   <button
-                    onClick={() => setLocation("/coaches")}
+                    onClick={() => setLocation("/find-another-coach")}
                     className="px-3 py-1.5 text-sm text-bone-muted hover:text-bone border border-border/40 rounded-sm transition-colors"
                   >
                     Find Another Coach

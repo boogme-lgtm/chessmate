@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -29,45 +29,20 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-interface AssessmentData {
-  // Section 1: Chess Journey
-  rating: number;
-  ratingSystem: string;
-  yearsPlaying: string;
-  competitiveExperience: string[];
-  improvementAreas: string[];
-
-  // Section 2: Learning Goals
-  primaryGoal: string;
-  timeline: string;
-  targetImprovement: number;
-
-  // Section 3: Learning Style
-  teachingArchetype: string;
-  learningMethods: string[];
-  feedbackStyle: number;
-  lessonPace: string;
-
-  // Section 4: Practical Details
-  budgetMin: number;
-  budgetMax: number;
-  lessonFrequency: string;
-  timezone: string;
-  availability: string[];
-  lessonFormat: string;
-
-  // Section 5: Personality & Preferences
-  communicationPreference: string;
-  motivations: string[];
-  techComfort: number;
-  styleIcon: string;
-  credentialImportance: string;
-}
+import { assessmentDataSchema, type AssessmentData } from "@shared/assessmentMapping";
 
 const TOTAL_QUESTIONS = 20;
 const SECTIONS = 5;
 
-export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
+export function CoachMatchingAssessment({ onClose, mode = "signup", initialData, onSaved }: {
+  onClose: () => void;
+  mode?: "signup" | "edit";
+  initialData?: Partial<AssessmentData>;
+  onSaved?: () => Promise<void>;
+}) {
+  const editing = mode === "edit";
+  const saveLock = useRef(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [currentSection, setCurrentSection] = useState(0);
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [showResults, setShowResults] = useState(false);
@@ -85,7 +60,7 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
   const [matchResults, setMatchResults] = useState<any[] | null>(null);
   const [matchError, setMatchError] = useState(false);
 
-  const [data, setData] = useState<Partial<AssessmentData>>({
+  const [data, setData] = useState<Partial<AssessmentData>>(() => editing ? { ...initialData } : {
     rating: 1200,
     ratingSystem: "lichess",
     competitiveExperience: [],
@@ -101,6 +76,7 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
   });
 
   const updateData = (key: keyof AssessmentData, value: any) => {
+    if (saveLock.current) return;
     setData((prev) => ({ ...prev, [key]: value }));
   };
 
@@ -137,6 +113,28 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
   };
 
   const handleSubmit = async () => {
+    if (saveLock.current) return;
+    if (editing) {
+      const parsed = assessmentDataSchema.safeParse(data);
+      if (!parsed.success) { setSaveError("Check your answers and try saving again."); return; }
+      saveLock.current = true;
+      setIsProcessing(true);
+      setSaveError(null);
+      try {
+        await saveQuizMutation.mutateAsync({ assessmentData: parsed.data });
+      } catch {
+        setSaveError("We couldn't save your answers. Your changes are still here. Please retry or cancel.");
+        saveLock.current = false;
+        setIsProcessing(false);
+        return;
+      }
+      // A successful write remains successful even if a subsequent read fails.
+      try { await onSaved?.(); } finally {
+        saveLock.current = false;
+        setIsProcessing(false);
+      }
+      return;
+    }
     setIsProcessing(true);
     const steps = [
       "Analyzing your chess background...",
@@ -189,22 +187,23 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
             <div className="space-y-6">
               <div className="text-center">
                 <div className="text-5xl font-thin text-primary mb-2">
-                  {data.rating || 1200}
+                  {data.rating ?? 1200}
                 </div>
                 <div className="text-sm text-neutral-400">
-                  {(data.rating || 1200) < 1000
+                  {(data.rating ?? 1200) < 1000
                     ? "Beginner"
-                    : (data.rating || 1200) < 1600
+                    : (data.rating ?? 1200) < 1600
                       ? "Intermediate"
-                      : (data.rating || 1200) < 2000
+                      : (data.rating ?? 1200) < 2000
                         ? "Advanced"
-                        : (data.rating || 1200) < 2200
+                        : (data.rating ?? 1200) < 2200
                           ? "Expert"
                           : "Master"}
                 </div>
               </div>
               <Slider
-                value={[data.rating || 1200]}
+                disabled={editing && isProcessing}
+                value={[data.rating ?? 1200]}
                 onValueChange={([value]) => updateData("rating", value)}
                 min={0}
                 max={2800}
@@ -212,6 +211,7 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
                 className="w-full"
               />
               <Select
+                disabled={editing && isProcessing}
                 value={data.ratingSystem}
                 onValueChange={(value) => updateData("ratingSystem", value)}
               >
@@ -237,6 +237,7 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
             icon={<Calendar className="w-6 h-6" />}
           >
             <RadioGroup
+                disabled={editing && isProcessing}
               value={data.yearsPlaying}
               onValueChange={(value) => updateData("yearsPlaying", value)}
               className="space-y-3"
@@ -297,6 +298,7 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
                   }
                 >
                   <Checkbox
+                disabled={editing && isProcessing}
                     checked={data.competitiveExperience?.includes(option)}
                     onCheckedChange={() =>
                       toggleArrayItem("competitiveExperience", option)
@@ -342,6 +344,7 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
                   }}
                 >
                   <Checkbox
+                disabled={editing && isProcessing}
                     checked={data.improvementAreas?.includes(option)}
                     onCheckedChange={() => {
                       if (
@@ -436,6 +439,7 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
             icon={<Calendar className="w-6 h-6" />}
           >
             <RadioGroup
+                disabled={editing && isProcessing}
               value={data.timeline}
               onValueChange={(value) => updateData("timeline", value)}
               className="space-y-3"
@@ -510,7 +514,8 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
                 <div className="text-sm text-neutral-400">rating points</div>
               </div>
               <Slider
-                value={[data.targetImprovement || 200]}
+                disabled={editing && isProcessing}
+                value={[data.targetImprovement ?? 200]}
                 onValueChange={([value]) =>
                   updateData("targetImprovement", value)
                 }
@@ -632,6 +637,7 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
                   }}
                 >
                   <Checkbox
+                disabled={editing && isProcessing}
                     checked={data.learningMethods?.includes(option)}
                     onCheckedChange={() => {
                       if (
@@ -673,7 +679,8 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
                 </div>
               </div>
               <Slider
-                value={[data.feedbackStyle || 5]}
+                disabled={editing && isProcessing}
+                value={[data.feedbackStyle ?? 5]}
                 onValueChange={([value]) => updateData("feedbackStyle", value)}
                 min={1}
                 max={10}
@@ -696,6 +703,7 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
             icon={<Brain className="w-6 h-6" />}
           >
             <RadioGroup
+                disabled={editing && isProcessing}
               value={data.lessonPace}
               onValueChange={(value) => updateData("lessonPace", value)}
               className="space-y-3"
@@ -771,7 +779,8 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
                     Minimum: ${data.budgetMin}
                   </Label>
                   <Slider
-                    value={[data.budgetMin || 50]}
+                disabled={editing && isProcessing}
+                    value={[data.budgetMin ?? 50]}
                     onValueChange={([value]) => updateData("budgetMin", value)}
                     min={25}
                     max={400}
@@ -784,7 +793,8 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
                     Maximum: ${data.budgetMax}
                   </Label>
                   <Slider
-                    value={[data.budgetMax || 100]}
+                disabled={editing && isProcessing}
+                    value={[data.budgetMax ?? 100]}
                     onValueChange={([value]) => updateData("budgetMax", value)}
                     min={25}
                     max={400}
@@ -804,6 +814,7 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
             icon={<Calendar className="w-6 h-6" />}
           >
             <RadioGroup
+                disabled={editing && isProcessing}
               value={data.lessonFrequency}
               onValueChange={(value) => updateData("lessonFrequency", value)}
               className="space-y-3"
@@ -876,6 +887,7 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
                   Timezone
                 </Label>
                 <Select
+                disabled={editing && isProcessing}
                   value={data.timezone}
                   onValueChange={(value) => updateData("timezone", value)}
                 >
@@ -922,6 +934,7 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
                       onClick={() => toggleArrayItem("availability", option)}
                     >
                       <Checkbox
+                disabled={editing && isProcessing}
                         checked={data.availability?.includes(option)}
                         onCheckedChange={() =>
                           toggleArrayItem("availability", option)
@@ -945,6 +958,7 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
             icon={<Users className="w-6 h-6" />}
           >
             <RadioGroup
+                disabled={editing && isProcessing}
               value={data.lessonFormat}
               onValueChange={(value) => updateData("lessonFormat", value)}
               className="space-y-3"
@@ -1007,6 +1021,7 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
             icon={<Users className="w-6 h-6" />}
           >
             <RadioGroup
+                disabled={editing && isProcessing}
               value={data.communicationPreference}
               onValueChange={(value) =>
                 updateData("communicationPreference", value)
@@ -1097,6 +1112,7 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
                   }}
                 >
                   <Checkbox
+                disabled={editing && isProcessing}
                     checked={data.motivations?.includes(option)}
                     onCheckedChange={() => {
                       if (
@@ -1138,7 +1154,8 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
                 </div>
               </div>
               <Slider
-                value={[data.techComfort || 5]}
+                disabled={editing && isProcessing}
+                value={[data.techComfort ?? 5]}
                 onValueChange={([value]) => updateData("techComfort", value)}
                 min={1}
                 max={10}
@@ -1242,6 +1259,7 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
             icon={<Target className="w-6 h-6" />}
           >
             <RadioGroup
+                disabled={editing && isProcessing}
               value={data.credentialImportance}
               onValueChange={(value) =>
                 updateData("credentialImportance", value)
@@ -1311,7 +1329,7 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
     }
   };
 
-  if (isProcessing) {
+  if (isProcessing && !editing) {
     const processingSteps = [
       "Analyzing your chess background...",
       "Evaluating learning style preferences...",
@@ -1512,18 +1530,20 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/95 z-50 overflow-y-auto">
+    <div className={editing ? "min-w-0" : "fixed inset-0 bg-black/95 z-50 overflow-y-auto"} aria-busy={isProcessing}>
       <div className="container max-w-3xl mx-auto p-4 py-8">
         {/* Header */}
         <div className="flex justify-between items-center mb-6">
           <div>
-            <h2 className="text-2xl font-thin mb-1">Find Your Perfect Coach</h2>
+            <h2 className="text-2xl font-thin mb-1">{editing ? "Edit matching answers" : "Find Your Perfect Coach"}</h2>
             <p className="text-sm text-neutral-400">
               Question {currentQuestion + 1} of {TOTAL_QUESTIONS} • Takes 8-10
               minutes
             </p>
           </div>
           <Button
+            disabled={editing && isProcessing}
+            aria-label={editing ? "Cancel editing" : "Close questionnaire"}
             variant="ghost"
             size="icon"
             onClick={onClose}
@@ -1533,10 +1553,21 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
           </Button>
         </div>
 
+        {editing && (
+          <div className="mb-6 space-y-3">
+            <p className="text-sm text-neutral-400">Your saved answers are prefilled. Missing answers stay unsaved until you change them. Save at any question, or cancel to discard changes.</p>
+            {saveError && <p role="alert">{saveError}</p>}
+            <div className="flex flex-wrap gap-3">
+              <Button onClick={handleSubmit} disabled={isProcessing}>{isProcessing ? "Saving answers…" : "Save answers"}</Button>
+              <Button variant="outline" onClick={onClose} disabled={isProcessing}>Cancel</Button>
+            </div>
+          </div>
+        )}
+        <fieldset disabled={editing && isProcessing} className="min-w-0">
         {/* Progress Bar */}
         <div className="mb-8">
           <Progress value={progress} className="h-2" />
-          <div className="flex justify-between mt-2 text-xs text-neutral-500">
+          <div className={editing ? "grid grid-cols-2 gap-2 sm:flex sm:justify-between mt-2 text-xs text-neutral-500" : "flex justify-between mt-2 text-xs text-neutral-500"}>
             <span>Chess Journey</span>
             <span>Learning Goals</span>
             <span>Learning Style</span>
@@ -1575,7 +1606,7 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
           >
             {currentQuestion === TOTAL_QUESTIONS - 1 ? (
               <>
-                Complete Assessment
+                {editing ? "Save answers" : "Complete Assessment"}
                 <Sparkles className="w-4 h-4 ml-2" />
               </>
             ) : (
@@ -1586,6 +1617,7 @@ export function CoachMatchingAssessment({ onClose }: { onClose: () => void }) {
             )}
           </Button>
         </div>
+        </fieldset>
       </div>
     </div>
   );
