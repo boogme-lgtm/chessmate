@@ -16,6 +16,7 @@ import { Home } from "lucide-react";
 // ── Sidebar nav definitions ──────────────────────────────────────────────────
 
 const STUDENT_NAV = [
+  { key: "coach-matching", label: "Coach matching" },
   { key: "overview", label: "Overview" },
   { key: "lessons", label: "Lessons" },
   { key: "messages", label: "Messages", badgeKey: "messages" },

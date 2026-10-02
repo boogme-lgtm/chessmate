@@ -44,7 +44,7 @@ const BASE_STUDENT: StudentForMatching = {
   currentRating: 1500,
   credentialImportance: "titled",
   playingStyle: "aggressive",
-  assessmentData: JSON.stringify({ availability: ["Morning (9am-12pm)"], ratingSystem: "fide" }),
+  assessmentData: JSON.stringify({ availability: ["Morning (9am-12pm)"], ratingSystem: "fide", rating: 1500, teachingArchetype: "sage", improvementAreas: ["Opening preparation", "Tactical calculation", "Endgame technique"], credentialImportance: "titled", styleIcon: "tal" }),
 };
 
 describe("scoreCoachForStudent", () => {
