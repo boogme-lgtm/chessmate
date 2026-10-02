@@ -53,6 +53,7 @@ import { Link, useLocation } from "wouter";
 import { useEffect, useState, useCallback } from "react";
 import ReviewDialog from "@/components/ReviewDialog";
 import MessageThread from "@/components/MessageThread";
+import OrganizedMessages from "@/components/OrganizedMessages";
 import DashShell from "@/components/DashShell";
 import { Skeleton } from "@/components/ui/skeleton";
 import { differenceInMinutes } from "date-fns";
@@ -1366,7 +1367,7 @@ function RaiseIssueDialog({
 
 function CoachMessagePreview({ lesson }: { lesson: any }) {
   const [showMessageThread, setShowMessageThread] = useState(false);
-  const { data: messages } = trpc.messages.getForLesson.useQuery(
+  const { data: messages } = trpc.messages.getPreviewForLesson.useQuery(
     { lessonId: lesson.id },
     { enabled: !!lesson.id },
   );
@@ -1978,145 +1979,10 @@ function LessonHistorySection({ lessons }: { lessons: any[] }) {
 // MODULE 4: Messages
 // ─────────────────────────────────────────────────────────────────────────────
 
-function MessagesModule({
-  lessons,
-  unreadCounts,
-}: {
-  lessons: any[];
-  unreadCounts: any;
-}) {
-  const [, setLocation] = useLocation();
-  const [openLessonId, setOpenLessonId] = useState<number | null>(null);
-  const [openCoachName, setOpenCoachName] = useState("");
-  const [expanded, setExpanded] = useState(false);
-
-  // Compact inbox preview (3) — "View all" expands to the full list.
-  const previewLessons = expanded ? lessons : lessons.slice(0, 3);
-
-  return (
-    <>
-      <Card className="bg-ink-raised border-border/20 rounded-sm">
-        <CardContent className="p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-base font-semibold text-bone">Messages</h3>
-            {lessons.length > 3 && (
-              <button
-                className="text-xs text-ember hover:text-ember/80 transition-colors"
-                onClick={() => setExpanded((v) => !v)}
-              >
-                {expanded ? "Show less" : `View all (${lessons.length})`}
-              </button>
-            )}
-          </div>
-
-          {previewLessons.length === 0 ? (
-            <div>
-              <p className="text-sm text-bone-muted mb-3">
-                No conversations yet. Messages with your coach appear here once
-                you book a lesson.
-              </p>
-              <button
-                className="text-xs text-ember hover:text-ember/80 transition-colors"
-                onClick={() => setLocation("/coaches")}
-              >
-                Find a coach →
-              </button>
-            </div>
-          ) : (
-            <div className="divide-y divide-border/20">
-              {previewLessons.map((lesson: any) => {
-                const unread =
-                  (
-                    unreadCounts as Record<number, number> | undefined
-                  )?.[lesson.id] || 0;
-                const coachName =
-                  lesson.coachName || `Coach #${lesson.coachId}`;
-                return (
-                  <MessagePreviewRow
-                    key={lesson.id}
-                    lesson={lesson}
-                    coachName={coachName}
-                    unread={unread}
-                    onOpen={() => {
-                      setOpenLessonId(lesson.id);
-                      setOpenCoachName(coachName);
-                    }}
-                  />
-                );
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {openLessonId !== null && (
-        <MessageThread
-          open={openLessonId !== null}
-          onOpenChange={(v) => {
-            if (!v) {
-              setOpenLessonId(null);
-              setOpenCoachName("");
-            }
-          }}
-          lessonId={openLessonId}
-          otherPartyName={openCoachName}
-        />
-      )}
-    </>
-  );
+function MessagesModule({ lessons, unreadCounts }: { lessons: any[]; unreadCounts: any }) {
+  return <OrganizedMessages />;
 }
 
-function MessagePreviewRow({
-  lesson,
-  coachName,
-  unread,
-  onOpen,
-}: {
-  lesson: any;
-  coachName: string;
-  unread: number;
-  onOpen: () => void;
-}) {
-  const { data: messages } = trpc.messages.getForLesson.useQuery(
-    { lessonId: lesson.id },
-    { enabled: !!lesson.id },
-  );
-
-  const latestMsg = messages?.[messages.length - 1] || null;
-
-  return (
-    <button
-      onClick={onOpen}
-      className="flex items-center gap-3 py-3 w-full text-left hover:bg-ink-deep/50 transition-colors -mx-1 px-1 rounded-sm"
-    >
-      {/* Unread dot */}
-      <div className="w-2 shrink-0">
-        {unread > 0 && (
-          <div className="w-2 h-2 rounded-full bg-ember" />
-        )}
-      </div>
-
-      <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium text-bone truncate">
-          {coachName}
-        </div>
-        <p className="text-xs text-bone-muted truncate">
-          {latestMsg ? latestMsg.content : "No messages yet"}
-        </p>
-      </div>
-
-      <span className="text-[11px] text-bone-muted font-mono tabular-nums shrink-0">
-        {latestMsg
-          ? formatDistanceToNow(new Date(latestMsg.createdAt), {
-              addSuffix: true,
-            })
-          : ""}
-      </span>
-    </button>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // MODULE 4: Content Library (stub)
 // ─────────────────────────────────────────────────────────────────────────────
 

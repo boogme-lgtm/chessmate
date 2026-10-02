@@ -73,6 +73,7 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { useState, useEffect, useCallback } from "react";
 import MessageThread from "@/components/MessageThread";
+import OrganizedMessages from "@/components/OrganizedMessages";
 import ReviewDialog from "@/components/ReviewDialog";
 import DashShell from "@/components/DashShell";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -712,7 +713,7 @@ function UpNextCountdown({ scheduledAt }: { scheduledAt: Date }) {
 }
 
 function UpNextLastMessage({ lesson }: { lesson: any }) {
-  const { data: messages } = trpc.messages.getForLesson.useQuery(
+  const { data: messages } = trpc.messages.getPreviewForLesson.useQuery(
     { lessonId: lesson.id },
     { enabled: !!lesson.id },
   );
@@ -872,145 +873,9 @@ function EarningsModule({
 // MODULE 3: INBOX
 // ─────────────────────────────────────────────────────────────────────────────
 
-function InboxModule({
-  lessons,
-  unreadCounts,
-  totalUnread,
-}: {
-  lessons: any[];
-  unreadCounts: any;
-  totalUnread: number;
-}) {
-  const [openLessonId, setOpenLessonId] = useState<number | null>(null);
-  const [openStudentName, setOpenStudentName] = useState("");
-  const [expanded, setExpanded] = useState(false);
-
-  const previewLessons = expanded ? lessons : lessons.slice(0, 5);
-
-  return (
-    <>
-      <Card className="bg-ink-raised border-border/20 rounded-sm">
-        <CardContent className="p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              {totalUnread > 0 && (
-                <div className="text-[10px] font-bold tracking-[0.2em] uppercase text-ember mb-1">
-                  {totalUnread} UNREAD
-                </div>
-              )}
-              <h3 className="text-base font-semibold text-bone">Messages</h3>
-            </div>
-            {lessons.length > 5 && (
-              <button
-                className="text-xs text-ember hover:text-ember/80 transition-colors"
-                onClick={() => setExpanded((v) => !v)}
-              >
-                {expanded ? "Show less" : `View all (${lessons.length})`}
-              </button>
-            )}
-          </div>
-
-          {previewLessons.length === 0 ? (
-            <p className="text-sm text-bone-muted">
-              No conversations yet. Messages will appear here when students book
-              lessons.
-            </p>
-          ) : (
-            <div className="divide-y divide-border/20">
-              {previewLessons.map((lesson: any) => {
-                const unread =
-                  (
-                    unreadCounts as Record<number, number> | undefined
-                  )?.[lesson.id] || 0;
-                const studentName =
-                  lesson.studentName || `Student #${lesson.studentId}`;
-                return (
-                  <InboxPreviewRow
-                    key={lesson.id}
-                    lesson={lesson}
-                    studentName={studentName}
-                    unread={unread}
-                    onOpen={() => {
-                      setOpenLessonId(lesson.id);
-                      setOpenStudentName(studentName);
-                    }}
-                  />
-                );
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {openLessonId !== null && (
-        <MessageThread
-          open={openLessonId !== null}
-          onOpenChange={(v) => {
-            if (!v) {
-              setOpenLessonId(null);
-              setOpenStudentName("");
-            }
-          }}
-          lessonId={openLessonId}
-          otherPartyName={openStudentName}
-          viewerRole="coach"
-        />
-      )}
-    </>
-  );
+function InboxModule({ lessons, unreadCounts }: { lessons: any[]; unreadCounts: any; totalUnread: number }) {
+  return <OrganizedMessages viewerRole="coach" />;
 }
-
-function InboxPreviewRow({
-  lesson,
-  studentName,
-  unread,
-  onOpen,
-}: {
-  lesson: any;
-  studentName: string;
-  unread: number;
-  onOpen: () => void;
-}) {
-  const { data: messages } = trpc.messages.getForLesson.useQuery(
-    { lessonId: lesson.id },
-    { enabled: !!lesson.id },
-  );
-
-  const latestMsg = messages?.[messages.length - 1] || null;
-
-  return (
-    <button
-      onClick={onOpen}
-      className="flex items-center gap-3 py-3 w-full text-left hover:bg-ink-deep/50 transition-colors -mx-1 px-1 rounded-sm"
-    >
-      {/* Unread dot */}
-      <div className="w-2 shrink-0">
-        {unread > 0 && <div className="w-2 h-2 rounded-full bg-ember" />}
-      </div>
-
-      <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium text-bone truncate">
-          {studentName}
-        </div>
-        <p className="text-xs text-bone-muted truncate">
-          {latestMsg ? latestMsg.content : "No messages yet"}
-        </p>
-      </div>
-
-      <span className="text-[11px] text-bone-muted font-mono tabular-nums shrink-0">
-        {latestMsg
-          ? formatDistanceToNow(new Date(latestMsg.createdAt), {
-              addSuffix: true,
-            })
-          : ""}
-      </span>
-    </button>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// MODULE 4: CONTENT REQUESTS
-// ─────────────────────────────────────────────────────────────────────────────
 
 function ContentRequestsModule({
   contentRequests,

@@ -2113,6 +2113,35 @@ export const appRouter = router({
 
   // ============ IN-APP MESSAGING ============
   messages: router({
+    getClasses: protectedProcedure
+      .input(z.object({ role: z.enum(["student", "coach"]), cursor: z.object({ scheduledAt: z.date(), id: z.number().int().positive() }).optional() }))
+      .query(({ ctx, input }) => db.getMessageClasses(ctx.user.id, input.role, input.cursor)),
+    getPreviewForLesson: protectedProcedure
+      .input(z.object({ lessonId: z.number().int().positive() }))
+      .query(async ({ ctx, input }) => {
+        const lesson = await db.getLessonById(input.lessonId);
+        if (!lesson) throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
+        assertLessonParticipant(lesson, ctx.user.id);
+        return db.getMessagesForLesson(input.lessonId);
+      }),
+    getSummaries: protectedProcedure
+      .input(z.object({ lessonIds: z.array(z.number().int().positive()).max(200) }))
+      .query(({ ctx, input }) => db.getMessageSummaries(ctx.user.id, input.lessonIds)),
+
+    setClassTitle: coachProcedure
+      .input(z.object({ lessonId: z.number().int().positive(), title: z.string().trim().min(1).max(255) }))
+      .mutation(async ({ ctx, input }) => {
+        const lesson = await db.getLessonById(input.lessonId);
+        if (!lesson) throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
+        if (lesson.coachId !== ctx.user.id) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Not your lesson" });
+        }
+        if (lesson.status === "subscription_dm") {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "This is a direct chat, not a class" });
+        }
+        await db.updateLessonTitle(input.lessonId, ctx.user.id, input.title);
+        return { success: true };
+      }),
     /**
      * Send a message on a specific lesson. Requires the sender to be the
      * student or coach for that lesson.
@@ -2192,10 +2221,8 @@ export const appRouter = router({
           throw new TRPCError({ code: "NOT_FOUND", message: "Lesson not found" });
         }
         assertLessonParticipant(lesson, ctx.user.id);
-        // Fire-and-forget read marker; do not block the response on it.
-        db.markLessonMessagesRead(input.lessonId, ctx.user.id).catch(err =>
-          console.error("[messages.getForLesson] markRead failed:", err)
-        );
+        // Complete the marker before the client refreshes unread badges.
+        await db.markLessonMessagesRead(input.lessonId, ctx.user.id);
         return await db.getMessagesForLesson(input.lessonId);
       }),
 

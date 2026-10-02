@@ -21,6 +21,7 @@ interface MessageThreadProps {
   lessonId: number;
   otherPartyName: string;
   viewerRole?: "student" | "coach";
+  classTitle?: string;
 }
 
 /**
@@ -34,6 +35,7 @@ export default function MessageThread({
   lessonId,
   otherPartyName,
   viewerRole = "student",
+  classTitle,
 }: MessageThreadProps) {
   const { user } = useAuth();
   const utils = trpc.useUtils();
@@ -84,9 +86,18 @@ export default function MessageThread({
       setContentType("text");
       utils.messages.getForLesson.invalidate({ lessonId });
       utils.messages.getUnreadCounts.invalidate();
+      utils.messages.getSummaries.invalidate();
+      utils.messages.getClasses.invalidate();
     },
     onError: (err) => toast.error(err.message),
   });
+
+  useEffect(() => {
+    if (open && thread.data) {
+      utils.messages.getUnreadCounts.invalidate();
+      utils.messages.getClasses.invalidate();
+    }
+  }, [open, thread.data, utils]);
 
   // Auto-scroll to the latest message when new messages arrive
   useEffect(() => {
@@ -106,7 +117,7 @@ export default function MessageThread({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg h-[80vh] flex flex-col">
         <DialogHeader>
-          <DialogTitle>Conversation with {otherPartyName}</DialogTitle>
+          <DialogTitle className="break-words">{classTitle || `Conversation with ${otherPartyName}`}</DialogTitle>
           <DialogDescription>
             Messages are visible only to you and {otherPartyName}.
           </DialogDescription>
@@ -116,6 +127,11 @@ export default function MessageThread({
           {thread.isLoading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : thread.isError ? (
+            <div role="alert" className="text-sm text-center py-8">
+              Could not load messages.
+              <Button variant="outline" size="sm" onClick={() => thread.refetch()}>Retry</Button>
             </div>
           ) : thread.data && thread.data.length > 0 ? (
             thread.data.map((msg: any) => {
