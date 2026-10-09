@@ -361,7 +361,14 @@ export async function updateCoachProfile(userId: number, data: Partial<InsertCoa
     .where(eq(coachProfiles.userId, userId));
 }
 
-export async function updateUserProfile(userId: number, data: { name?: string; bio?: string; avatarUrl?: string; country?: string; timezone?: string }) {
+// drizzle's .set() skips undefined keys and throws "No values to set" when none remain.
+function hasValuesToSet(data: Record<string, unknown>) {
+  return Object.values(data).some((value) => value !== undefined);
+}
+
+// undefined leaves a field unchanged; null clears it. name has no null: it is never blanked.
+export async function updateUserProfile(userId: number, data: { name?: string; bio?: string | null; avatarUrl?: string | null; country?: string | null; timezone?: string | null }) {
+  if (!hasValuesToSet(data)) return;
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
@@ -539,8 +546,10 @@ export async function getWaitlistEntryByEmail(email: string) {
 
 export async function updateStudentChessProfiles(
   userId: number,
-  data: { chesscomUsername?: string; lichessUsername?: string; fideId?: string }
+  // undefined leaves a link unchanged; null unlinks it.
+  data: { chesscomUsername?: string | null; lichessUsername?: string | null; fideId?: string | null }
 ) {
+  if (!hasValuesToSet(data)) return;
   const db = await getDb();
   if (!db) return;
   await db.update(studentProfiles).set(data).where(eq(studentProfiles.userId, userId));

@@ -15,6 +15,7 @@ import { ENV } from "./_core/env";
 import { PRICING_TIERS, type PricingTier, calculateLessonBreakdown, getTierFeePercent, DEFAULT_PRICING_TIER } from "@shared/pricing";
 import { toCountryCode } from "@shared/countries";
 import { assessmentDataSchema } from "@shared/assessmentMapping";
+import { changedFields, normalizeOptionalText } from "./profileFields";
 import { generateToken, hashPassword } from "./auth";
 import {
   sendEmail,
@@ -224,7 +225,19 @@ export const appRouter = router({
         timezone: z.string().max(64).optional(),
       }))
       .mutation(async ({ ctx, input }) => {
-        await db.updateUserProfile(ctx.user.id, input);
+        // Omitted fields stay unchanged; blank bio/country/timezone clear to NULL.
+        // The account name is never blanked (same guard as coach.updateProfile).
+        const name = input.name?.trim() || undefined;
+        const changes = changedFields({
+          name,
+          bio: normalizeOptionalText(input.bio),
+          country: normalizeOptionalText(input.country),
+          timezone: normalizeOptionalText(input.timezone),
+        }, ctx.user);
+        // Nothing differs from the stored row: an empty SET would make drizzle throw.
+        if (Object.keys(changes).length > 0) {
+          await db.updateUserProfile(ctx.user.id, changes);
+        }
         return { success: true };
       }),
 
@@ -1225,8 +1238,18 @@ export const appRouter = router({
         fideId: z.string().max(20).optional(),
       }))
       .mutation(async ({ ctx, input }) => {
+        // Omitted fields stay linked as-is; a blank field unlinks (stored as NULL),
+        // so a removed account is no longer used for rating lookups.
         const existing = await db.getStudentProfileByUserId(ctx.user.id);
+        const changes = changedFields({
+          chesscomUsername: normalizeOptionalText(input.chesscomUsername),
+          lichessUsername: normalizeOptionalText(input.lichessUsername),
+          fideId: normalizeOptionalText(input.fideId),
+        }, existing);
+        // Nothing to link or unlink: skip the write (an empty SET makes drizzle throw).
+        if (Object.keys(changes).length === 0) return { success: true };
         if (!existing) {
+          // changedFields drops NULLs against a missing row, so only real links are stored.
           await db.createStudentProfile({
             userId: ctx.user.id,
             skillLevel: "beginner",
@@ -1234,12 +1257,10 @@ export const appRouter = router({
             playingStyle: "balanced",
             learningStyle: "analytical",
             practiceSchedule: "regular",
-            chesscomUsername: input.chesscomUsername,
-            lichessUsername: input.lichessUsername,
-            fideId: input.fideId,
+            ...changes,
           });
         } else {
-          await db.updateStudentChessProfiles(ctx.user.id, input);
+          await db.updateStudentChessProfiles(ctx.user.id, changes);
         }
         return { success: true };
       }),

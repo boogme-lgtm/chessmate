@@ -74,10 +74,18 @@ export default function Settings() {
   );
 }
 
+// Radix Select items can't use "" as a value, so "Not set" maps through a sentinel.
+const NOT_SET = "__not_set__";
+
 function ProfileSection() {
+  const utils = trpc.useUtils();
   const { data: profile, isLoading } = trpc.user.getProfile.useQuery();
   const updateProfile = trpc.user.updateProfile.useMutation({
-    onSuccess: () => toast.success("Profile updated"),
+    onSuccess: () => {
+      toast.success("Profile updated");
+      // Re-sync the form with what was stored (e.g. a blanked name is kept).
+      utils.user.getProfile.invalidate();
+    },
     onError: (err) => toast.error(err.message),
   });
 
@@ -122,11 +130,12 @@ function ProfileSection() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <Label>Country</Label>
-            <Select value={country} onValueChange={setCountry}>
+            <Select value={country} onValueChange={(v) => setCountry(v === NOT_SET ? "" : v)}>
               <SelectTrigger className="mt-1">
                 <SelectValue placeholder="Select country" />
               </SelectTrigger>
               <SelectContent className="max-h-[300px]">
+                <SelectItem value={NOT_SET}>Not set</SelectItem>
                 {COUNTRIES.map((c) => (
                   <SelectItem key={c.code} value={c.code}>{c.name}</SelectItem>
                 ))}
@@ -135,11 +144,12 @@ function ProfileSection() {
           </div>
           <div>
             <Label>Timezone</Label>
-            <Select value={timezone} onValueChange={setTimezone}>
+            <Select value={timezone} onValueChange={(v) => setTimezone(v === NOT_SET ? "" : v)}>
               <SelectTrigger className="mt-1">
                 <SelectValue placeholder="Select timezone" />
               </SelectTrigger>
               <SelectContent className="max-h-[300px]">
+                <SelectItem value={NOT_SET}>Not set</SelectItem>
                 {TIMEZONES.map((tz) => (
                   <SelectItem key={tz} value={tz}>{tz.replace(/_/g, " ")}</SelectItem>
                 ))}
@@ -148,8 +158,10 @@ function ProfileSection() {
           </div>
         </div>
         <div className="flex justify-end pt-2">
+          {/* Blank bio/country/timezone are sent as "" so the server clears them.
+              The account name can't be cleared, so a blank name is left unchanged. */}
           <Button
-            onClick={() => updateProfile.mutate({ name: name || undefined, bio: bio || undefined, country: country || undefined, timezone: timezone || undefined })}
+            onClick={() => updateProfile.mutate({ name: name.trim() || undefined, bio, country, timezone })}
             disabled={updateProfile.isPending}
           >
             {updateProfile.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}

@@ -2372,11 +2372,12 @@ function EditPlatformsDialog({
     onError: (err) => toast.error(err.message),
   });
 
+  // A blank field is sent as "" so the server unlinks that account.
   const handleSubmit = () => {
     updateMutation.mutate({
-      chesscomUsername: chesscomUsername.trim() || undefined,
-      lichessUsername: lichessUsername.trim() || undefined,
-      fideId: fideId.trim() || undefined,
+      chesscomUsername: chesscomUsername.trim(),
+      lichessUsername: lichessUsername.trim(),
+      fideId: fideId.trim(),
     });
   };
 
