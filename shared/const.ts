@@ -8,3 +8,5 @@ export const NOT_ADMIN_ERR_MSG = 'You do not have required permission (10002)';
 export const OAUTH_SIGN_IN_ERROR_PARAM = "oauthError";
 // The sign-in flow was missing, expired, replayed or started in another tab/browser.
 export const OAUTH_SIGN_IN_EXPIRED = "expired";
+// /api/oauth/start and /api/oauth/authorize read the post-sign-in return path from this.
+export const OAUTH_RETURN_TO_PARAM = "returnTo";

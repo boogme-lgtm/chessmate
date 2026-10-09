@@ -17,6 +17,11 @@ import * as db from './db';
 import { toAccountUser } from "./accessControl";
 import { importGuestAssessment } from "./studentAssessment";
 import { DISPLAY_NAME_MAX_LENGTH } from "@shared/displayName";
+import {
+  bindEmailVerificationToBrowser,
+  clearEmailVerificationBinding,
+  isEmailVerificationBoundToBrowser,
+} from "./emailVerificationBinding";
 
 const JWT_SECRET = new TextEncoder().encode(ENV.cookieSecret);
 
@@ -41,13 +46,18 @@ async function createSessionToken(user: { id: number; openId: string | null; nam
   return token;
 }
 
+/** HTTP is permitted only for a loopback preview. */
+function cookiesAreSecure(): boolean {
+  return !ENV.preview?.allowLocalHttp;
+}
+
 /**
  * Set session cookie in response
  */
 function setSessionCookie(res: any, token: string) {
   const cookieStr = stringifySetCookie(COOKIE_NAME, token, {
     httpOnly: true,
-    secure: !ENV.preview?.allowLocalHttp, // HTTP is permitted only for a loopback preview.
+    secure: cookiesAreSecure(),
     sameSite: "lax", // More permissive, works better for same-site requests
     maxAge: ONE_YEAR_MS / 1000,
     path: "/",
@@ -62,7 +72,7 @@ function setSessionCookie(res: any, token: string) {
 function clearSessionCookie(res: any) {
   const cookieStr = stringifySetCookie(COOKIE_NAME, "", {
     httpOnly: true,
-    secure: !ENV.preview?.allowLocalHttp, // Must match setSessionCookie.
+    secure: cookiesAreSecure(), // Must match setSessionCookie.
     sameSite: "lax", // Must match setSessionCookie
     maxAge: 0,
     path: "/",
@@ -96,7 +106,7 @@ export const authRouter = router({
           .max(DISPLAY_NAME_MAX_LENGTH, `Name must be at most ${DISPLAY_NAME_MAX_LENGTH} characters`),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const result = await registerUser({
         email: input.email,
         password: input.password,
@@ -108,6 +118,11 @@ export const authRouter = router({
           code: "BAD_REQUEST",
           message: result.error || "Registration failed",
         });
+      }
+
+      // Only this browser may turn the emailed link into a session (login CSRF).
+      if (result.verification) {
+        bindEmailVerificationToBrowser(ctx.res, result.verification, cookiesAreSecure());
       }
 
       return {
@@ -127,6 +142,9 @@ export const authRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
+      // The link signs in only the browser that registered: anyone can be made to load
+      // someone else's link (login CSRF), so elsewhere it just verifies the address.
+      const boundToBrowser = isEmailVerificationBoundToBrowser(ctx.req, input.token);
       const result = await verifyEmail(input.token);
 
       if (!result.success) {
@@ -136,12 +154,17 @@ export const authRouter = router({
         });
       }
 
-      // Create session for verified user
+      let signedIn = false;
       if (result.userId) {
         const user = await db.getUserById(result.userId);
         if (user) {
-          const sessionToken = await createSessionToken(user);
-          setSessionCookie(ctx.res, sessionToken);
+          if (boundToBrowser) {
+            const sessionToken = await createSessionToken(user);
+            setSessionCookie(ctx.res, sessionToken);
+            // After setSessionCookie, which replaces the Set-Cookie header: the binding is spent.
+            clearEmailVerificationBinding(ctx.res, cookiesAreSecure());
+            signedIn = true;
+          }
 
           // Migrate assessment data from waitlist → student profile.
           // Validate against the bounded schema before mapping — legacy waitlist
@@ -164,7 +187,10 @@ export const authRouter = router({
 
       return {
         success: true,
-        message: "Email verified successfully! You can now sign in.",
+        signedIn,
+        message: signedIn
+          ? "Email verified successfully!"
+          : "Email verified successfully! Please sign in to continue.",
       };
     }),
 

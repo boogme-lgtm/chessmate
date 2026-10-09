@@ -6,15 +6,15 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { trpc } from "@/lib/trpc";
+import { toSafeReturnPath } from "@/const";
 import { Loader2, CheckCircle2, Eye, EyeOff } from "lucide-react";
 import { DISPLAY_NAME_MAX_LENGTH, displayNameProblem } from "@shared/displayName";
 
 export default function Register() {
   const [, setLocation] = useLocation();
   const searchParams = useSearch();
-  const rawRedirect = new URLSearchParams(searchParams).get("redirect") || "/dashboard";
-  // Prevent open redirect: only allow relative paths
-  const redirect = rawRedirect.startsWith('/') && !rawRedirect.startsWith('//') ? rawRedirect : "/dashboard";
+  // Prevent open redirect: only same-origin page paths (see toSafeReturnPath)
+  const redirect = toSafeReturnPath(new URLSearchParams(searchParams).get("redirect")) ?? "/dashboard";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");

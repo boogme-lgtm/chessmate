@@ -1,6 +1,14 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useSearch } from "wouter";
-import { getLoginUrl, getOAuthAvailability, getOAuthSignInErrorMessage } from "@/const";
+import { OAUTH_SIGN_IN_ERROR_PARAM } from "@shared/const";
+import {
+  getOAuthAvailability,
+  getOAuthSignInErrorMessage,
+  isEmbeddedInFrame,
+  startOAuthSignIn,
+  takePendingOAuthReturnPath,
+  toSafeReturnPath,
+} from "@/const";
 import { trpc } from "@/lib/trpc";
 import { Loader2, Eye, EyeOff } from "lucide-react";
 import Logo from "@/components/Logo";
@@ -8,14 +16,19 @@ import Logo from "@/components/Logo";
 export default function SignIn() {
   const [, setLocation] = useLocation();
   const searchParams = useSearch();
-  const rawRedirect = new URLSearchParams(searchParams).get("redirect") || "/";
-  // Prevent open redirect: only allow relative paths
-  const redirect = rawRedirect.startsWith('/') && !rawRedirect.startsWith('//') ? rawRedirect : "/";
+  const query = new URLSearchParams(searchParams);
+  // A refused OAuth callback keeps the destination when this browser's flow still knew it;
+  // otherwise fall back to the one this tab sent to OAuth (read once, then forgotten).
+  const [pendingOAuthReturnPath] = useState(() =>
+    query.has(OAUTH_SIGN_IN_ERROR_PARAM) ? takePendingOAuthReturnPath() : null
+  );
+  // Prevent open redirect: only same-origin page paths (see toSafeReturnPath)
+  const redirect = toSafeReturnPath(query.get("redirect")) ?? pendingOAuthReturnPath ?? "/";
   
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   // A refused OAuth callback lands here with a flag; explain it until the next attempt.
-  const [error, setError] = useState(() => getOAuthSignInErrorMessage(searchParams));
+  const [error, setError] = useState(() => getOAuthSignInErrorMessage(searchParams, isEmbeddedInFrame()));
   const [showPassword, setShowPassword] = useState(false);
   const [oauthEnabled, setOAuthEnabled] = useState(false);
 
@@ -181,10 +194,7 @@ export default function SignIn() {
           <button
             type="button"
             className="btn-editorial-ghost w-full inline-flex items-center justify-center gap-2"
-            onClick={() => {
-              localStorage.setItem("postLoginRedirect", redirect);
-              window.location.href = getLoginUrl();
-            }}
+            onClick={() => startOAuthSignIn(redirect)}
           >
             <svg className="h-4 w-4" viewBox="0 0 24 24">
               <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>

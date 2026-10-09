@@ -2,7 +2,9 @@ import type { Request } from "express";
 import { describe, expect, it } from "vitest";
 import {
   createOAuthFlowNonce,
+  decodeOAuthFlowCookie,
   decodeOAuthState,
+  encodeOAuthFlowCookie,
   encodeOAuthState,
   getOAuthFlowCookieOptions,
   isOAuthStateBound,
@@ -97,5 +99,48 @@ describe("OAuth flow cookie", () => {
     expect(read("app_session_id=session")).toBeUndefined();
     expect(read("a=1; app_oauth_flow=first; app_oauth_flow=second")).toBe("first");
     expect(read("app_oauth_flow_other=x")).toBeUndefined();
+  });
+});
+
+describe("OAuth flow cookie value", () => {
+  const nonce = createOAuthFlowNonce();
+  const encodedPath = (path: string) => Buffer.from(path, "utf8").toString("base64url");
+
+  it("is the bare nonce when there is nowhere special to return to", () => {
+    for (const returnTo of [null, "/"]) {
+      const value = encodeOAuthFlowCookie(nonce, returnTo);
+      expect(value).toBe(nonce);
+      expect(decodeOAuthFlowCookie(value)).toEqual({ nonce, returnTo: null });
+    }
+  });
+
+  it("round-trips a return path in cookie-safe characters", () => {
+    const returnTo = "/coach/42?tab=book&slot=2026-10-09T10:00#times";
+    const value = encodeOAuthFlowCookie(nonce, returnTo);
+    expect(value).toBe(`${nonce}.${encodedPath(returnTo)}`);
+    expect(value).toMatch(/^[A-Za-z0-9_.-]+$/);
+    expect(decodeOAuthFlowCookie(value)).toEqual({ nonce, returnTo });
+  });
+
+  it.each(["//evil.example", "https://evil.example", "/\\evil.example", "/api/force-logout"])(
+    "never stores the unsafe return path %j",
+    returnTo => {
+      expect(encodeOAuthFlowCookie(nonce, returnTo)).toBe(nonce);
+    },
+  );
+
+  it("drops an unsafe return path from a tampered cookie but keeps the binding check to the nonce", () => {
+    expect(decodeOAuthFlowCookie(`${nonce}.${encodedPath("//evil.example")}`)).toEqual({ nonce, returnTo: null });
+  });
+
+  it.each([undefined, "", "short", `${nonce}.`, `${nonce}.a.b`, `${nonce}x.${encodedPath("/coach/42")}`, `.${nonce}`])(
+    "reads nothing from a value this server did not mint: %j",
+    value => {
+      expect(decodeOAuthFlowCookie(value)).toBeNull();
+    },
+  );
+
+  it("refuses to mint a cookie without a well-formed nonce", () => {
+    expect(() => encodeOAuthFlowCookie("short", "/coach/42")).toThrow("Invalid OAuth flow");
   });
 });

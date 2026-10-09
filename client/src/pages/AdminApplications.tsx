@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
+import { getSignInPath } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -191,7 +192,9 @@ export default function AdminApplications() {
             <p className="text-muted-foreground mb-4">
               Please log in to access the admin dashboard.
             </p>
-            <Button onClick={() => window.location.href = "/api/oauth/login"}>Log In</Button>
+            <Button asChild>
+              <a href={getSignInPath({ returnTo: "/admin/applications" })}>Log In</a>
+            </Button>
           </CardContent>
         </Card>
       </div>

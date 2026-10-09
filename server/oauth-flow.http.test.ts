@@ -54,8 +54,8 @@ beforeEach(() => {
 const get = (path: string, cookie?: string) =>
   fetch(`${base}${path}`, { redirect: "manual", headers: cookie ? { cookie } : {} });
 
-async function authorize() {
-  const response = await get("/api/oauth/authorize");
+async function authorize(path = "/api/oauth/authorize") {
+  const response = await get(path);
   const setCookie = response.headers.getSetCookie();
   const location = new URL(response.headers.get("location")!);
   const nonce = /^app_oauth_flow=([^;]+);/.exec(setCookie[0])![1];
@@ -117,6 +117,31 @@ describe("OAuth flow over real HTTP", () => {
     const legacyState = Buffer.from("https://app.example.invalid/api/oauth/callback").toString("base64");
     const response = await get(callbackPath("attacker-code", legacyState));
     expect(response.headers.get("location")).toBe("/sign-in?oauthError=expired");
+    expect(mocks.sdk.exchangeCodeForToken).not.toHaveBeenCalled();
+  });
+});
+
+describe("OAuth return path over real HTTP", () => {
+  it("carries a deep link from the start route through the flow cookie and lands there after sign-in", async () => {
+    const start = await get("/api/oauth/start?returnTo=%2Fcoach%2F42%3Ftab%3Dbook");
+    const hop = new URL(start.headers.get("location")!);
+    expect(hop.toString()).toBe("https://app.example.invalid/api/oauth/authorize?returnTo=%2Fcoach%2F42%3Ftab%3Dbook");
+
+    const flow = await authorize(`${hop.pathname}${hop.search}`);
+    // The browser stores and sends back the cookie value verbatim.
+    const cookie = flow.setCookie[0].split(";")[0];
+    expect(flow.location.toString()).not.toContain("coach");
+    const response = await get(callbackPath("synthetic-code", flow.state), cookie);
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).toBe("/coach/42?tab=book");
+    expect(mocks.sdk.exchangeCodeForToken).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends a refused flow back to sign-in with its destination", async () => {
+    const attacker = await authorize();
+    const victim = await authorize("/api/oauth/authorize?returnTo=%2Fcoach%2F42");
+    const response = await get(callbackPath("attacker-code", attacker.state), victim.setCookie[0].split(";")[0]);
+    expect(response.headers.get("location")).toBe("/sign-in?oauthError=expired&redirect=%2Fcoach%2F42");
     expect(mocks.sdk.exchangeCodeForToken).not.toHaveBeenCalled();
   });
 });

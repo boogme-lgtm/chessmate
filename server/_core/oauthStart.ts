@@ -1,3 +1,5 @@
+import { OAUTH_RETURN_TO_PARAM } from "@shared/const";
+import { toSafeReturnPath } from "@shared/returnPath";
 import { OAUTH_CALLBACK_PATH, encodeOAuthState } from "./oauthFlow";
 
 /** Same-origin hop that binds a sign-in flow to the browser before it leaves for the broker. */
@@ -54,6 +56,13 @@ export function getOAuthSignInTarget(config: OAuthStartConfig): OAuthSignInTarge
     // Validation admits HTTP only for the explicitly allowed loopback development origin.
     secureCookies: frontendOrigin.startsWith("https:"),
   };
+}
+
+/** The binding hop, carrying a validated return path (other than "/") for the flow cookie. */
+export function getOAuthAuthorizeUrl(target: OAuthSignInTarget, returnTo: string | null): string {
+  const path = toSafeReturnPath(returnTo);
+  if (!path || path === "/") return target.authorizeUrl;
+  return `${target.authorizeUrl}?${new URLSearchParams({ [OAUTH_RETURN_TO_PARAM]: path })}`;
 }
 
 /** Broker sign-in URL; the same `flowNonce` must be stored in the browser's flow cookie. */

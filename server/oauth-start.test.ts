@@ -428,6 +428,95 @@ describe("OAuth callback login-CSRF binding", () => {
   });
 });
 
+describe("OAuth return path", () => {
+  const RETURN_TO = "/coach/42?tab=book";
+  const encodedReturnTo = Buffer.from(RETURN_TO, "utf8").toString("base64url");
+
+  beforeEach(() => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  async function beginFlowTo(routes: ReturnType<typeof registeredRoutes>, returnTo: unknown) {
+    const { raw, res } = response();
+    await routes("/api/oauth/authorize")(request({ returnTo }), res);
+    const [, value] = raw.cookie.mock.calls[0];
+    const location = new URL(raw.redirect.mock.calls[0][1]);
+    return { raw, value: value as string, location, state: location.searchParams.get("state")!, cookie: `app_oauth_flow=${value}` };
+  }
+
+  it("start forwards only a validated same-origin path to the binding hop", async () => {
+    const routes = registeredRoutes();
+    for (const [returnTo, location] of [
+      [RETURN_TO, "https://app.example.invalid/api/oauth/authorize?returnTo=%2Fcoach%2F42%3Ftab%3Dbook"],
+      ["/", "https://app.example.invalid/api/oauth/authorize"],
+      ["/api/force-logout", "https://app.example.invalid/api/oauth/authorize"],
+      ["/\\evil.example.invalid", "https://app.example.invalid/api/oauth/authorize"],
+      [["/coach/42"], "https://app.example.invalid/api/oauth/authorize"],
+    ] as const) {
+      const { raw, res } = response();
+      await routes("/api/oauth/start")(request({ returnTo }), res);
+      expect(raw.redirect).toHaveBeenCalledWith(302, location);
+      expect(raw.cookie).not.toHaveBeenCalled();
+    }
+  });
+
+  it("remembers the path in the flow cookie only; the broker sees exactly what it saw before", async () => {
+    const { value, location } = await beginFlowTo(registeredRoutes(), RETURN_TO);
+    const [nonce, storedPath] = value.split(".");
+    expect(nonce).toMatch(NONCE_SHAPE);
+    expect(storedPath).toBe(encodedReturnTo);
+    expect(Object.fromEntries(location.searchParams)).toEqual({
+      appId: "synthetic-runtime-project",
+      redirectUri: CALLBACK,
+      state: Buffer.from(`${CALLBACK}?nonce=${nonce}`).toString("base64"),
+      type: "signIn",
+    });
+    expect(location.toString()).not.toContain("coach");
+  });
+
+  it("lands a completed sign-in on the remembered path", async () => {
+    const routes = registeredRoutes();
+    const { state, cookie } = await beginFlowTo(routes, RETURN_TO);
+    const { raw } = await callback(routes, { code: "synthetic-code", state }, cookie);
+    expect(mocks.sdk.exchangeCodeForToken).toHaveBeenCalledWith("synthetic-code", state);
+    expect(raw.cookie).toHaveBeenCalledWith(COOKIE_NAME, "synthetic-session-token", expect.anything());
+    expect(raw.redirect).toHaveBeenCalledWith(302, RETURN_TO);
+    expectFlowCookieCleared(raw);
+  });
+
+  it("keeps the remembered path when it refuses a callback, so a retry still gets there", async () => {
+    const routes = registeredRoutes();
+    const attacker = await beginFlow(routes);
+    const victim = await beginFlowTo(routes, RETURN_TO);
+    const { raw } = await callback(routes, { code: "attacker-code", state: attacker.state }, victim.cookie);
+    expect(raw.redirect).toHaveBeenCalledTimes(1);
+    expect(raw.redirect).toHaveBeenCalledWith(302, "/sign-in?oauthError=expired&redirect=%2Fcoach%2F42%3Ftab%3Dbook");
+    expectFlowCookieCleared(raw);
+    expectNoProviderOrDatabaseEffects();
+  });
+
+  it("lands on the home page when a tampered cookie names an unsafe path, without loosening the binding", async () => {
+    const routes = registeredRoutes();
+    const { state, value } = await beginFlowTo(routes, RETURN_TO);
+    const [nonce] = value.split(".");
+    const tampered = `app_oauth_flow=${nonce}.${Buffer.from("//evil.example.invalid").toString("base64url")}`;
+    const { raw } = await callback(routes, { code: "synthetic-code", state }, tampered);
+    expect(raw.redirect).toHaveBeenCalledWith(302, "/");
+  });
+
+  it.each(startRoutes.flatMap(path => ["preview", "no portal"].map(mode => [path, mode] as const)))(
+    "%s keeps the path for native sign-in in %s mode",
+    async (path, mode) => {
+      if (mode === "preview") mocks.env.preview = { instanceId: "synthetic-preview" };
+      else mocks.env.oAuthPortalUrl = "";
+      const { raw, res } = response();
+      await registeredRoutes()(path)(request({ returnTo: RETURN_TO }), res);
+      expect(raw.redirect).toHaveBeenCalledWith(302, "/sign-in?redirect=%2Fcoach%2F42%3Ftab%3Dbook");
+      expect(raw.cookie).not.toHaveBeenCalled();
+    },
+  );
+});
+
 describe("runtime environment controls loopback OAuth", () => {
   async function initializedEnv(APP_ENV: string | undefined, NODE_ENV: string | undefined) {
     vi.resetModules();

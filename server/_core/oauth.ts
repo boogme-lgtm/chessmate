@@ -1,9 +1,10 @@
 import {
   COOKIE_NAME,
-  OAUTH_SIGN_IN_ERROR_PARAM,
+  OAUTH_RETURN_TO_PARAM,
   OAUTH_SIGN_IN_EXPIRED,
   ONE_YEAR_MS,
 } from "@shared/const";
+import { getSignInPath, toSafeReturnPath } from "@shared/returnPath";
 import type { Express, Request, Response } from "express";
 import * as db from "../db";
 import { getSessionCookieOptions } from "./cookies";
@@ -14,15 +15,27 @@ import {
   OAUTH_FLOW_COOKIE,
   OAUTH_FLOW_TTL_MS,
   createOAuthFlowNonce,
+  decodeOAuthFlowCookie,
+  encodeOAuthFlowCookie,
   getOAuthFlowCookieOptions,
   isOAuthStateBound,
   readOAuthFlowCookie,
 } from "./oauthFlow";
-import { OAUTH_AUTHORIZE_PATH, getOAuthSignInTarget, getOAuthStartUrl } from "./oauthStart";
+import {
+  OAUTH_AUTHORIZE_PATH,
+  getOAuthAuthorizeUrl,
+  getOAuthSignInTarget,
+  getOAuthStartUrl,
+} from "./oauthStart";
 
 function getQueryParam(req: Request, key: string): string | undefined {
   const value = req.query[key];
   return typeof value === "string" ? value : undefined;
+}
+
+/** The validated same-origin path to land on after sign-in, if the request named one. */
+function getReturnTo(req: Request): string | null {
+  return toSafeReturnPath(getQueryParam(req, OAUTH_RETURN_TO_PARAM));
 }
 
 function flowCookieIsSecure(): boolean {
@@ -52,26 +65,29 @@ export function registerOAuthStartRoutes(app: Express) {
 
   // Sign-in links may be followed on any host serving the app (e.g. a platform domain), but the
   // flow cookie must be set on the configured callback origin, so always hop there first.
-  app.get("/api/oauth/start", (_req: Request, res: Response) => {
+  app.get("/api/oauth/start", (req: Request, res: Response) => {
     res.setHeader("Cache-Control", "no-store");
+    const returnTo = getReturnTo(req);
     try {
-      res.redirect(302, getOAuthSignInTarget(ENV)?.authorizeUrl ?? "/sign-in");
+      const target = getOAuthSignInTarget(ENV);
+      res.redirect(302, target ? getOAuthAuthorizeUrl(target, returnTo) : getSignInPath({ returnTo }));
     } catch {
       res.status(503).json({ error: "OAuth sign-in is unavailable" });
     }
   });
 
-  app.get(OAUTH_AUTHORIZE_PATH, (_req: Request, res: Response) => {
+  app.get(OAUTH_AUTHORIZE_PATH, (req: Request, res: Response) => {
     res.setHeader("Cache-Control", "no-store");
+    const returnTo = getReturnTo(req);
     try {
       const target = getOAuthSignInTarget(ENV);
       if (!target) {
-        res.redirect(302, "/sign-in");
+        res.redirect(302, getSignInPath({ returnTo }));
         return;
       }
       const flowNonce = createOAuthFlowNonce();
       const location = getOAuthStartUrl(target, flowNonce);
-      res.cookie(OAUTH_FLOW_COOKIE, flowNonce, {
+      res.cookie(OAUTH_FLOW_COOKIE, encodeOAuthFlowCookie(flowNonce, returnTo), {
         ...getOAuthFlowCookieOptions(target.secureCookies),
         maxAge: OAUTH_FLOW_TTL_MS,
       });
@@ -87,7 +103,7 @@ export function registerOAuthCallbackRoutes(app: Express) {
     res.setHeader("Cache-Control", "no-store");
     const code = getQueryParam(req, "code");
     const state = getQueryParam(req, "state");
-    const flowCookie = readOAuthFlowCookie(req);
+    const flow = decodeOAuthFlowCookie(readOAuthFlowCookie(req));
     // Single use whatever the outcome: clear the binding before any validation or exchange.
     res.clearCookie(OAUTH_FLOW_COOKIE, getOAuthFlowCookieOptions(flowCookieIsSecure()));
 
@@ -96,10 +112,11 @@ export function registerOAuthCallbackRoutes(app: Express) {
       return;
     }
 
-    if (!isOAuthStateBound(state, flowCookie)) {
+    if (!isOAuthStateBound(state, flow?.nonce)) {
       // Missing, expired, replayed or foreign flow (login CSRF): never exchange this code.
+      // This browser's own flow, if any, still says where the person was going.
       console.warn("[OAuth] Rejected a callback that does not match this browser's sign-in flow");
-      res.redirect(302, `/sign-in?${OAUTH_SIGN_IN_ERROR_PARAM}=${OAUTH_SIGN_IN_EXPIRED}`);
+      res.redirect(302, getSignInPath({ oauthError: OAUTH_SIGN_IN_EXPIRED, returnTo: flow?.returnTo }));
       return;
     }
 
@@ -128,7 +145,7 @@ export function registerOAuthCallbackRoutes(app: Express) {
       const cookieOptions = getSessionCookieOptions(req);
       res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
 
-      res.redirect(302, "/");
+      res.redirect(302, flow?.returnTo ?? "/");
     } catch (error) {
       console.error("[OAuth] Callback failed", error);
       res.status(500).json({ error: "OAuth callback failed" });

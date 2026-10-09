@@ -56,7 +56,13 @@ export async function registerUser(params: {
   email: string;
   password: string;
   name: string;
-}): Promise<{ success: boolean; userId?: number; error?: string }> {
+}): Promise<{
+  success: boolean;
+  userId?: number;
+  /** The emailed link's secret, so the caller can bind it to the registering browser. */
+  verification?: { token: string; expiresAt: Date };
+  error?: string;
+}> {
   // A blank name would leave the account nameless; the router validates this
   // too, but the account write is where the rule must hold.
   const name = normalizeDisplayName(params.name);
@@ -108,7 +114,11 @@ export async function registerUser(params: {
     html: getAccountVerificationEmail({ name, verificationUrl }),
   });
 
-  return { success: true, userId: newUser.insertId };
+  return {
+    success: true,
+    userId: newUser.insertId,
+    verification: { token: verificationToken, expiresAt: verificationExpires },
+  };
 }
 
 /**

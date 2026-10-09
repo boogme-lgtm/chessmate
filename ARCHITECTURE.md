@@ -210,7 +210,20 @@ layers or a running Docker compose stack. Noted here for future sprints.
    nonce cookie (Lax, httpOnly, callback path) and carries the nonce in
    `state`. The callback clears it and refuses a mismatch with
    `/sign-in?oauthError=expired` before any token exchange
-   (`server/_core/oauthFlow.ts`).
+   (`server/_core/oauthFlow.ts`). A validated same-origin `returnTo` path
+   (`shared/returnPath.ts`) rides in the same cookie, never through the broker:
+   sign-in lands there, and a refusal passes it back as `redirect`. Browsers
+   drop Lax cookies in cross-site frames, so OAuth cannot complete inside the
+   Manus editor or management preview; framed pages open it in a new top-level
+   tab (`startOAuthSignIn` in `client/src/const.ts`) and otherwise explain how
+   to recover.
+7. **Email verification binding** — a verification link would sign in whoever
+   opens it (login CSRF), so registration sets an `app_email_verification`
+   cookie (a digest of the link's token; Lax, httpOnly, `/api/trpc`, expires
+   with the link). `auth.verifyEmail` always verifies the address but creates a
+   session only when that cookie matches; elsewhere (another device, a resent
+   link) the person is asked to sign in (`server/emailVerificationBinding.ts`,
+   shared helpers in `server/_core/browserBinding.ts`).
 
 ## Known Bugs Being Tracked (from `BUILD_PLAN.md`)
 

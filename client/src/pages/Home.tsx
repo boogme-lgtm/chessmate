@@ -33,7 +33,7 @@ import Logo from "@/components/Logo";
 import QuizResultMockup from "@/components/hero/QuizResultMockup";
 import { BgMark } from "@/components/BgMark";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { getLoginUrl } from "@/const";
+import { getLoginLinkProps } from "@/const";
 import { PRICING_TIERS, DEFAULT_PRICING_TIER } from "@shared/pricing";
 
 // Editorial motion tokens
@@ -123,7 +123,7 @@ function Navigation({ onOpenAssessment }: { onOpenAssessment: () => void }) {
           ) : (
             <>
               <a
-                href={getLoginUrl()}
+                {...getLoginLinkProps()}
                 className="text-[13px] text-muted-foreground hover:text-foreground transition-colors"
               >
                 Sign in
@@ -166,7 +166,7 @@ function Navigation({ onOpenAssessment }: { onOpenAssessment: () => void }) {
               </a>
             ) : (
               <>
-                <a href={getLoginUrl()} className="block text-sm text-muted-foreground">
+                <a {...getLoginLinkProps()} className="block text-sm text-muted-foreground">
                   Sign in
                 </a>
                 <button onClick={handleOpenAssessment} className="btn-editorial-primary text-sm w-full mt-2">

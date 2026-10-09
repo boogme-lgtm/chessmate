@@ -4,7 +4,17 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { trpc } from "@/lib/trpc";
+import { getSignInPath, toSafeReturnPath } from "@/const";
 import { Loader2, CheckCircle2, XCircle } from "lucide-react";
+
+/**
+ * Where to go once the address is verified. The server signs in only the browser that
+ * registered; anywhere else the person signs in first and still lands on the destination.
+ */
+export function getPostVerificationPath(signedIn: boolean, storedRedirect: string | null): string {
+  const destination = toSafeReturnPath(storedRedirect) ?? "/dashboard";
+  return signedIn ? destination : getSignInPath({ returnTo: destination });
+}
 
 export default function VerifyEmail() {
   const [, setLocation] = useLocation();
@@ -14,23 +24,21 @@ export default function VerifyEmail() {
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
   const [message, setMessage] = useState("");
   const [dest, setDest] = useState("/dashboard");
+  const [signedIn, setSignedIn] = useState(true);
 
   const verifyMutation = trpc.auth.verifyEmail.useMutation({
     onSuccess: (data) => {
       setStatus("success");
       setMessage(data.message);
-      // The server creates a session + sets the auth cookie on verification, so
-      // the user is already logged in. Skip the re-login step: send them straight
-      // to their destination (a stored redirect, otherwise the dashboard).
-      const stored = localStorage.getItem("postLoginRedirect");
-      // Only honor safe, same-origin relative paths (guard against open redirect
-      // via a tampered localStorage value, since we navigate with window.location).
-      const target =
-        stored && stored.startsWith("/") && !stored.startsWith("//")
-          ? stored
-          : "/dashboard";
+      // In the browser that registered, the server also signed the user in: skip the
+      // re-login step and go straight to the destination (a stored redirect, otherwise
+      // the dashboard). Elsewhere, sign in first. Only safe same-origin paths are honored
+      // (a tampered localStorage value must not redirect off-site).
+      const target = getPostVerificationPath(data.signedIn, localStorage.getItem("postLoginRedirect"));
       localStorage.removeItem("postLoginRedirect");
       setDest(target);
+      setSignedIn(data.signedIn);
+      if (!data.signedIn) return;
       // Brief confirmation, then hard-navigate so the app boots with the new
       // session cookie applied.
       setTimeout(() => {
@@ -101,7 +109,9 @@ export default function VerifyEmail() {
 
           {status === "success" && (
             <p className="text-sm text-muted-foreground text-center mt-4">
-              You're all set — taking you to your dashboard…
+              {signedIn
+                ? "You're all set — taking you to your dashboard…"
+                : "For your security, verification links only sign you in on the browser you registered with."}
             </p>
           )}
 
@@ -120,7 +130,7 @@ export default function VerifyEmail() {
                 window.location.href = dest;
               }}
             >
-              Go to your dashboard
+              {signedIn ? "Go to your dashboard" : "Sign in"}
             </Button>
           )}
 

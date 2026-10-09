@@ -26,7 +26,7 @@ import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import Logo from "@/components/Logo";
 import { BgMark } from "@/components/BgMark";
-import { getLoginUrl } from "@/const";
+import { getLoginLinkProps } from "@/const";
 
 // Editorial motion tokens
 const fadeIn = {
@@ -103,7 +103,7 @@ function Navigation() {
             For coaches
           </a>
           <a
-            href={getLoginUrl()}
+            {...getLoginLinkProps()}
             className="text-[13px] text-muted-foreground hover:text-foreground transition-colors"
           >
             Sign in
@@ -138,7 +138,7 @@ function Navigation() {
             <a href="/for-coaches" className="block text-sm text-muted-foreground">
               For coaches
             </a>
-            <a href={getLoginUrl()} className="block text-sm text-muted-foreground">
+            <a {...getLoginLinkProps()} className="block text-sm text-muted-foreground">
               Sign in
             </a>
             <a href="/coaches" className="btn-editorial-primary text-sm w-full mt-2 text-center block">
