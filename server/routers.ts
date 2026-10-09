@@ -14,7 +14,8 @@ import { retrieveCheckoutSession, createContentRequestCheckoutSession, createCon
 import { ENV } from "./_core/env";
 import { PRICING_TIERS, type PricingTier, calculateLessonBreakdown, getTierFeePercent, DEFAULT_PRICING_TIER } from "@shared/pricing";
 import { toCountryCode } from "@shared/countries";
-import { assessmentDataSchema } from "@shared/assessmentMapping";
+import { assessmentDataSchema, MAX_RATING, skillLevelForRating } from "@shared/assessmentMapping";
+import { saveStudentAssessment } from "./studentAssessment";
 import { generateToken, hashPassword } from "./auth";
 import {
   sendEmail,
@@ -1219,27 +1220,20 @@ export const appRouter = router({
 
   // ============ STUDENT OPERATIONS ============
   student: router({
-    // Create/update student profile from quiz
+    // Create/update student profile from quiz. An update changes only what the
+    // answers changed (never the rating unless the student moved it).
     saveQuizResults: protectedProcedure
       .input(z.object({
         assessmentData: assessmentDataSchema,
+        // The rating the questionnaire started from (null: it showed none).
+        // Optional so clients built before it keep working.
+        ratingBaseline: z.number().min(0).max(MAX_RATING).nullable().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
-        const { mapAssessmentToProfile } = await import("@shared/assessmentMapping");
-        const mapped = mapAssessmentToProfile(input.assessmentData);
-        const existing = await db.getStudentProfileByUserId(ctx.user.id);
-
-        if (existing) {
-          await db.updateStudentProfile(ctx.user.id, mapped);
-          return { success: true, profileId: existing.id };
-        }
-
-        await db.createStudentProfile({
-          userId: ctx.user.id,
-          ...mapped,
+        const result = await saveStudentAssessment(ctx.user.id, input.assessmentData, {
+          ratingBaseline: input.ratingBaseline,
         });
-
-        return { success: true };
+        return { success: true, ...result };
       }),
 
     // Get student profile
@@ -1247,7 +1241,9 @@ export const appRouter = router({
       return (await db.getStudentProfileByUserId(ctx.user.id)) ?? null;
     }),
 
-    // Set/update the student's current chess rating (S-DASH-2)
+    // Set/update the student's current chess rating (S-DASH-2). The profile's
+    // currentRating is the single source of truth for the student's rating;
+    // updateStudentRating also keeps the saved questionnaire answer in step.
     updateRating: protectedProcedure
       .input(z.object({
         currentRating: z.number().int().min(100).max(3200),
@@ -1258,11 +1254,7 @@ export const appRouter = router({
           await db.createStudentProfile({
             userId: ctx.user.id,
             currentRating: input.currentRating,
-            skillLevel:
-              input.currentRating >= 2000 ? "expert"
-              : input.currentRating >= 1500 ? "advanced"
-              : input.currentRating >= 1000 ? "intermediate"
-              : "beginner",
+            skillLevel: skillLevelForRating(input.currentRating),
             primaryGoal: "rating_improvement",
             playingStyle: "balanced",
             learningStyle: "analytical",

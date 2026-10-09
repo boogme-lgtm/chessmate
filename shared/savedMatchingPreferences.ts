@@ -1,3 +1,5 @@
+import { isValidRating } from "./assessmentMapping";
+
 // Read the original answers, not derived profile columns: mapping fills missing
 // columns with defaults, which must never be presented as answers the user gave.
 export function readSavedAssessment(raw: string | null | undefined): Record<string, unknown> {
@@ -7,6 +9,39 @@ export function readSavedAssessment(raw: string | null | undefined): Record<stri
   } catch {
     return {};
   }
+}
+
+/** The parts of a student profile that describe their saved answers. */
+export interface SavedAnswersProfile {
+  assessmentData?: string | null;
+  currentRating?: number | null;
+}
+
+/**
+ * A student's saved answers as they stand now. The profile's currentRating is
+ * the single source of truth for the rating: it also changes on the dashboard
+ * (and, later, from synced chess.com/lichess ratings), so the rating answer is
+ * always read from it and can never show a stale copy. The rating is included
+ * only when the student gave one — a rating answer, or the dashboard rating of
+ * a profile that has no questionnaire answers at all. A questionnaire saved
+ * without a rating answer gets a default currentRating from the mapping, and a
+ * default is never presented as the student's answer.
+ */
+export function currentAssessmentAnswers(profile: SavedAnswersProfile | null | undefined): Record<string, unknown> {
+  if (!profile) return {};
+  const { rating: savedRating, ...answers } = readSavedAssessment(profile.assessmentData);
+  const ratingGiven = profile.assessmentData == null || isValidRating(savedRating);
+  return ratingGiven && isValidRating(profile.currentRating) ? { ...answers, rating: profile.currentRating } : answers;
+}
+
+/**
+ * Saved answers from a profile (rating kept current, see above) or, for callers
+ * holding only the stored JSON, exactly as stored.
+ */
+export type SavedAnswersSource = SavedAnswersProfile | string | null | undefined;
+
+export function savedAnswers(source: SavedAnswersSource): Record<string, unknown> {
+  return typeof source === "object" && source !== null ? currentAssessmentAnswers(source) : readSavedAssessment(source);
 }
 
 const labels: Record<string, Record<string, string>> = {
@@ -33,8 +68,8 @@ function answer(data: Record<string, unknown>, key: string): string | null {
   return null;
 }
 
-export function savedMatchingPreferences(raw: string | null | undefined) {
-  const data = readSavedAssessment(raw);
+export function savedMatchingPreferences(source: SavedAnswersSource) {
+  const data = savedAnswers(source);
   const rows = [
     ["Primary goal", answer(data, "primaryGoal")],
     ["Improvement areas", answer(data, "improvementAreas")],

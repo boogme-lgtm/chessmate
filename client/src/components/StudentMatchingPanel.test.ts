@@ -1,0 +1,54 @@
+import { createElement, type ReactNode } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { mapAssessmentToProfile } from "@shared/assessmentMapping";
+import { editableSavedAssessment } from "@shared/editableSavedAssessment";
+import StudentMatchingPanel from "./StudentMatchingPanel";
+import { CoachMatchingAssessment } from "./CoachMatchingAssessment";
+
+const { profileQuery, mutation } = vi.hoisted(() => ({
+  profileQuery: { current: {} as Record<string, unknown> },
+  mutation: () => ({ mutateAsync: () => Promise.resolve(), isPending: false }),
+}));
+
+vi.mock("@/lib/trpc", () => ({
+  trpc: {
+    useUtils: () => ({}),
+    student: {
+      getProfile: { useQuery: () => profileQuery.current },
+      saveQuizResults: { useMutation: mutation },
+    },
+    match: {
+      getMatchedCoaches: { useQuery: () => ({ refetch: vi.fn(), isFetching: false, isPaused: false }) },
+      generateMatches: { useMutation: mutation },
+    },
+    waitlist: { join: { useMutation: mutation } },
+  },
+}));
+vi.mock("@/_core/hooks/useAuth", () => ({ useAuth: () => ({ user: { id: 901, userType: "student" } }) }));
+vi.mock("wouter", () => ({ Link: ({ href, children }: { href: string; children: ReactNode }) => createElement("a", { href }, children) }));
+
+// Saved before the dashboard rating moved: the stored answer still says 1400.
+const drifted = { ...mapAssessmentToProfile({ rating: 1400, ratingSystem: "lichess", lessonFormat: "online" }), currentRating: 1650 };
+
+beforeEach(() => {
+  profileQuery.current = { data: drifted, isSuccess: true, isFetching: false, isPaused: false, isPending: false, isError: false, dataUpdatedAt: 1, refetch: vi.fn() };
+});
+
+describe("saved matching preferences read the profile's current rating", () => {
+  it("lists the current rating, not a stale saved answer", () => {
+    const html = renderToStaticMarkup(createElement(StudentMatchingPanel));
+    expect(html).toContain("1650 (Lichess)");
+    expect(html).not.toContain("1400");
+  });
+
+  it("prefills the edit form with the current rating", () => {
+    const html = renderToStaticMarkup(createElement(CoachMatchingAssessment, {
+      mode: "edit", initialData: editableSavedAssessment(drifted), onClose: () => {},
+    }));
+    expect(html).toContain("Edit matching answers");
+    expect(html).toMatch(/>1650</);
+    expect(html).toContain("Advanced");
+    expect(html).not.toContain("1400");
+  });
+});

@@ -6,6 +6,7 @@ const path = require('node:path');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE_PATH || 'playwright');
 require('tsx/cjs');
 const { mapAssessmentToProfile } = require('../shared/assessmentMapping.ts');
+const { assessmentChangesForProfile } = require('../shared/assessmentProfileUpdate.ts');
 const { rankCoachesForStudent, toCoachForMatching } = require('../shared/coachMatching.ts');
 const root = path.resolve(__dirname, '..');
 const publicDir = path.join(root, 'dist/public');
@@ -39,7 +40,7 @@ async function main() {
       const page = await browser.newPage({ viewport: { width, height: 900 }, serviceWorkers: 'block' });
       let profile = { id: 7, userId: 901, ...mapAssessmentToProfile(answers) };
       let saveFail = false, saveHold, matchHold, matchPrepared, inventory = [coach], userType = 'student';
-      const calls = [], writes = [], errors = [];
+      const calls = [], writes = [], baselines = [], errors = [];
       page.on('pageerror', e => errors.push(e.message));
       await page.route('**/*', async route => {
         const req = route.request(), url = new URL(req.url());
@@ -51,10 +52,16 @@ async function main() {
         assert.equal(req.method(), save ? 'POST' : 'GET');
         if (save) {
           const payload = JSON.parse(req.postData());
-          const submitted = (payload[0] || payload).json.assessmentData;
+          const input = (payload[0] || payload).json;
+          const submitted = input.assessmentData;
           writes.push(structuredClone(submitted));
+          baselines.push(input.ratingBaseline);
           if (saveHold) await saveHold.promise;
-          if (!saveFail) profile = { ...profile, ...mapAssessmentToProfile(submitted) };
+          // Same rules as the server: a first save creates the profile, later
+          // saves change only what the answers changed.
+          if (!saveFail) profile = profile
+            ? { ...profile, ...assessmentChangesForProfile(profile, submitted, { ratingBaseline: input.ratingBaseline }) }
+            : { id: 7, userId: 901, ...mapAssessmentToProfile(submitted) };
         }
         const body = names.map(name => {
           if (save && saveFail) return { error: { json: { message: 'Synthetic save unavailable', code: -32603, data: { code: 'INTERNAL_SERVER_ERROR', httpStatus: 500 } } } };
@@ -104,6 +111,7 @@ async function main() {
         // An untouched edit preserves absent fields and saved zero values.
         await page.getByRole('button', { name: 'Save answers', exact: true }).click(); await ready();
         assert.deepEqual(writes.at(-1), answers);
+        assert.equal(baselines.at(-1), 0, 'the save reports the prefilled rating');
         // A save must replace a frozen recommendation response from before it.
         inventory = [{ ...coach, name: 'Obsolete Synthetic Coach' }];
         matchHold = deferred(); matchPrepared = deferred();
@@ -137,6 +145,8 @@ async function main() {
         saveHold.release(); saveHold = null; await ready();
         assert.equal(writes.length, before + 1, 'single write per save');
         assert.equal(writes.at(-1).rating, 50);
+        assert.equal(baselines.at(-1), 0);
+        assert.equal(profile.currentRating, 50, 'a moved rating is saved to the profile');
         await panel.getByText('50 (FIDE)', { exact: true }).waitFor();
         // Back/navigation discards an unsaved draft; reload reads persisted data.
         await edit(); await page.getByRole('slider').focus(); await page.keyboard.press('ArrowRight');
@@ -161,6 +171,7 @@ async function main() {
         await edit(); await page.getByRole('button', { name: 'Save answers', exact: true }).click();
         await panel.getByRole('status').filter({ hasText: 'No recommendations available' }).waitFor();
         assert.deepEqual(writes.at(-1), {}, 'missing answers do not become defaults');
+        assert.equal(baselines.at(-1), null, 'no rating was prefilled');
         assert.equal(await panel.locator('dd').filter({ hasText: 'Not saved' }).count(), 11);
         assert.deepEqual(errors, []);
         assert.ok(calls.every(name => !/generate|update|create/.test(name)), 'only original save endpoint writes');

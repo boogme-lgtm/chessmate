@@ -61,7 +61,7 @@ export function CoachMatchingAssessment({ onClose, mode = "signup", initialData,
   const [matchResults, setMatchResults] = useState<any[] | null>(null);
   const [matchError, setMatchError] = useState(false);
 
-  const [data, setData] = useState<Partial<AssessmentData>>(() => editing ? { ...initialData } : {
+  const [startingData] = useState<Partial<AssessmentData>>(() => editing ? { ...initialData } : {
     rating: 1200,
     ratingSystem: "lichess",
     competitiveExperience: [],
@@ -75,6 +75,10 @@ export function CoachMatchingAssessment({ onClose, mode = "signup", initialData,
     techComfort: 5,
     targetImprovement: 200,
   });
+  const [data, setData] = useState<Partial<AssessmentData>>(startingData);
+  // Sent with every save: a rating still equal to where the form started was
+  // not changed, so the server keeps the stored rating (which may be newer).
+  const ratingBaseline = startingData.rating ?? null;
 
   const updateData = (key: keyof AssessmentData, value: any) => {
     if (saveLock.current) return;
@@ -122,7 +126,7 @@ export function CoachMatchingAssessment({ onClose, mode = "signup", initialData,
       setIsProcessing(true);
       setSaveError(null);
       try {
-        await saveQuizMutation.mutateAsync({ assessmentData: parsed.data });
+        await saveQuizMutation.mutateAsync({ assessmentData: parsed.data, ratingBaseline });
       } catch {
         setSaveError("We couldn't save your answers. Your changes are still here. Please retry or cancel.");
         saveLock.current = false;
@@ -148,7 +152,7 @@ export function CoachMatchingAssessment({ onClose, mode = "signup", initialData,
     try {
       if (user) {
         setProcessingStep(0);
-        await saveQuizMutation.mutateAsync({ assessmentData: data as any });
+        await saveQuizMutation.mutateAsync({ assessmentData: data as any, ratingBaseline });
       }
 
       for (let i = user ? 1 : 0; i < steps.length; i++) {

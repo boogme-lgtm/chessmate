@@ -47,7 +47,9 @@ export default function StudentMatchingPanel() {
     return () => { current = false; };
   }, [profile.dataUpdatedAt, profile.data, profile.isSuccess, profile.isFetching, profile.isPaused, refetchMatches, utils]);
 
-  const preferences = savedMatchingPreferences(profile.data?.assessmentData);
+  // Read answers through the profile so the rating shown and prefilled is the
+  // profile's current rating (also set on the dashboard), never a stale copy.
+  const preferences = savedMatchingPreferences(profile.data);
   const paused = profile.isPaused || matches.isPaused;
   const currentSnapshot = snapshot?.profileVersion === profile.dataUpdatedAt ? snapshot : null;
   const busy = profile.isPending || profile.isFetching || matches.isFetching || (profile.isSuccess && !!profile.data && !currentSnapshot);
@@ -62,7 +64,7 @@ export default function StudentMatchingPanel() {
 
   if (editing) return <CoachMatchingAssessment
     mode="edit"
-    initialData={editableSavedAssessment(profile.data?.assessmentData)}
+    initialData={editableSavedAssessment(profile.data)}
     onClose={() => { setEditing(false); requestAnimationFrame(() => document.getElementById("edit-matching-answers")?.focus()); }}
     onSaved={async () => {
       setSnapshot(null);

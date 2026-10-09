@@ -8,6 +8,10 @@
  * All numeric inputs are coerced and clamped defensively: the assessment can
  * arrive un-schema-validated (the waitlist→profile migration JSON.parses a
  * blob captured by a public endpoint), so this function never trusts types.
+ *
+ * mapAssessmentToProfile builds a complete NEW profile (defaults included).
+ * Saving answers onto an existing profile goes through
+ * assessmentProfileUpdate.ts instead, so an edit never resets stored values.
  */
 
 import { z } from "zod";
@@ -42,6 +46,14 @@ export interface AssessmentData {
   credentialImportance: string;
 }
 
+/** Upper bound for any stored rating (assessment answer or profile column). */
+export const MAX_RATING = 4000;
+
+/** A usable rating: a finite number within the bounds the schema accepts. */
+export function isValidRating(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= MAX_RATING;
+}
+
 /**
  * Boundary schema for assessment submissions. Coerces numerics, bounds string
  * and array sizes, and STRIPS unknown keys (default zod behavior) so a client
@@ -49,7 +61,7 @@ export interface AssessmentData {
  * every entry point (saveQuizResults, waitlist.join, migration).
  */
 export const assessmentDataSchema = z.object({
-  rating: z.coerce.number().min(0).max(4000).optional(),
+  rating: z.coerce.number().min(0).max(MAX_RATING).optional(),
   ratingSystem: z.string().max(32).optional(),
   yearsPlaying: z.string().max(64).optional(),
   competitiveExperience: z.array(z.string().max(128)).max(20).optional(),
@@ -76,7 +88,7 @@ export const assessmentDataSchema = z.object({
 
 export type ValidatedAssessmentData = z.infer<typeof assessmentDataSchema>;
 
-type SkillLevel = "beginner" | "intermediate" | "advanced" | "expert";
+export type SkillLevel = "beginner" | "intermediate" | "advanced" | "expert";
 type PrimaryGoal = "rating_improvement" | "tournament_prep" | "openings" | "tactics" | "endgames" | "general";
 type PlayingStyle = "aggressive" | "positional" | "balanced" | "defensive";
 type LearningStyle = "visual" | "interactive" | "analytical" | "competitive";
@@ -100,6 +112,28 @@ export interface MappedProfile {
   assessmentVersion: number;
 }
 
+/**
+ * Profile columns that each come from exactly one questionnaire answer. The
+ * rating columns (currentRating, skillLevel, targetRating) and the stored
+ * assessment itself are handled separately, because the current rating also
+ * changes outside the questionnaire. Typed as a full Record so a new mapped
+ * column cannot be added without naming the answer it comes from.
+ */
+export type PreferenceColumn = Exclude<
+  keyof MappedProfile,
+  "skillLevel" | "currentRating" | "targetRating" | "assessmentData" | "assessmentCompletedAt" | "assessmentVersion"
+>;
+export const PREFERENCE_COLUMN_SOURCES: Record<PreferenceColumn, keyof AssessmentData> = {
+  primaryGoal: "primaryGoal",
+  playingStyle: "styleIcon",
+  learningStyle: "teachingArchetype",
+  practiceSchedule: "lessonFrequency",
+  budgetMinCents: "budgetMin",
+  budgetMaxCents: "budgetMax",
+  credentialImportance: "credentialImportance",
+  improvementAreas: "improvementAreas",
+};
+
 const ASSESSMENT_VERSION = 1;
 
 const SKILL_LEVEL_THRESHOLDS: [number, SkillLevel][] = [
@@ -108,6 +142,11 @@ const SKILL_LEVEL_THRESHOLDS: [number, SkillLevel][] = [
   [1000, "intermediate"],
   [0, "beginner"],
 ];
+
+/** The skill band for a rating. The only place skill levels are derived. */
+export function skillLevelForRating(rating: number): SkillLevel {
+  return SKILL_LEVEL_THRESHOLDS.find(([threshold]) => rating >= threshold)?.[1] ?? "beginner";
+}
 
 const GOAL_MAP: Record<string, PrimaryGoal> = {
   rating: "rating_improvement",
@@ -157,12 +196,12 @@ function clamp(value: number, min: number, max: number): number {
 
 export function mapAssessmentToProfile(data: Partial<AssessmentData> | ValidatedAssessmentData): MappedProfile {
   const d = (data ?? {}) as Partial<AssessmentData>;
-  const rating = clamp(num(d.rating, 1200), 0, 4000);
+  const rating = clamp(num(d.rating, 1200), 0, MAX_RATING);
   const targetImprovement = clamp(num(d.targetImprovement, 200), 0, 2000);
   const budgetMin = clamp(num(d.budgetMin, 50), 0, 100000);
   const budgetMax = clamp(num(d.budgetMax, 100), 0, 100000);
 
-  const skillLevel = SKILL_LEVEL_THRESHOLDS.find(([threshold]) => rating >= threshold)?.[1] ?? "beginner";
+  const skillLevel = skillLevelForRating(rating);
   const improvementAreas = Array.isArray(d.improvementAreas)
     ? d.improvementAreas.filter((x) => typeof x === "string")
     : [];

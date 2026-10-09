@@ -47,6 +47,7 @@ import { ENV } from './_core/env';
 import { verifyPreviewDatabase } from './_core/previewDatabase';
 import { computeCancellationRefund } from "@shared/cancellationPolicy";
 import { COACH_PENDING_STATUSES, buildCoachEarningsSummary } from "@shared/coachEarnings";
+import { ratingChangesForProfile } from "@shared/assessmentProfileUpdate";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 let previewDatabaseReady: Promise<void> | undefined;
@@ -546,12 +547,21 @@ export async function updateStudentChessProfiles(
   await db.update(studentProfiles).set(data).where(eq(studentProfiles.userId, userId));
 }
 
+/**
+ * The write path for a rating change outside the questionnaire (dashboard
+ * today, synced platform ratings later). Besides currentRating it re-derives
+ * skillLevel and keeps the saved rating answer in step, while the student's
+ * targetRating goal is kept — see ratingChangesForProfile.
+ */
 export async function updateStudentRating(userId: number, currentRating: number) {
   const db = await getDb();
   if (!db) return;
 
+  const profile = await getStudentProfileByUserId(userId);
+  if (!profile) return;
+
   await db.update(studentProfiles)
-    .set({ currentRating })
+    .set(ratingChangesForProfile(profile, currentRating))
     .where(eq(studentProfiles.userId, userId));
 }
 

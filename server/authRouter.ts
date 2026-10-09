@@ -15,6 +15,7 @@ import { stringifySetCookie } from 'cookie/dist/index.js';
 import { COOKIE_NAME, ONE_YEAR_MS } from '@shared/const';
 import * as db from './db';
 import { toAccountUser } from "./accessControl";
+import { importGuestAssessment } from "./studentAssessment";
 
 const JWT_SECRET = new TextEncoder().encode(ENV.cookieSecret);
 
@@ -141,20 +142,15 @@ export const authRouter = router({
 
           // Migrate assessment data from waitlist → student profile.
           // Validate against the bounded schema before mapping — legacy waitlist
-          // rows predate write-time sanitization and may be malformed.
+          // rows predate write-time sanitization and may be malformed. Guest
+          // answers only fill an empty profile; they never replace saved data.
           try {
             const waitlistEntry = await db.getWaitlistEntryByEmail(user.email);
             if (waitlistEntry?.assessmentData) {
-              const { mapAssessmentToProfile, assessmentDataSchema } = await import("@shared/assessmentMapping");
+              const { assessmentDataSchema } = await import("@shared/assessmentMapping");
               const validated = assessmentDataSchema.safeParse(JSON.parse(waitlistEntry.assessmentData));
               if (validated.success) {
-                const mapped = mapAssessmentToProfile(validated.data);
-                const existing = await db.getStudentProfileByUserId(user.id);
-                if (existing) {
-                  await db.updateStudentProfile(user.id, mapped);
-                } else {
-                  await db.createStudentProfile({ userId: user.id, ...mapped });
-                }
+                await importGuestAssessment(user.id, validated.data);
               }
             }
           } catch (e) {
