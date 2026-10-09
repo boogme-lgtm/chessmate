@@ -803,7 +803,8 @@ function StoreItemRow({
   setLocation: (path: string) => void;
   onPaymentsClosed: () => void;
 }) {
-  const purchaseClosed = item.priceCents > 0 && !paymentsOpen;
+  const isFree = !(item.priceCents > 0);
+  const purchaseClosed = !isFree && !paymentsOpen;
 
   const handleBuy = async () => {
     if (!user) {
@@ -812,23 +813,30 @@ function StoreItemRow({
     }
     setCheckoutPending(item.id);
     try {
+      if (isFree) {
+        // Free items skip checkout: they go straight into the library.
+        const { alreadyOwned } = await utils.client.content.claimFree.mutate({
+          contentItemId: item.id,
+        });
+        toast.success(alreadyOwned ? "Already in your library" : "Added to your library");
+        utils.content.listOwned.invalidate();
+        setLocation("/dashboard?section=content-library");
+        return;
+      }
       const { url } = await utils.client.content.createStorefrontCheckout.mutate({
         contentItemId: item.id,
       });
       if (url) window.location.href = url;
       else toast.error("Checkout URL unavailable");
     } catch (err: any) {
-      toast.error(err?.message || "Could not start checkout");
+      toast.error(err?.message || (isFree ? "Could not add this to your library" : "Could not start checkout"));
       if (isCoachNotPayableError(err)) onPaymentsClosed();
     } finally {
       setCheckoutPending(null);
     }
   };
 
-  const price =
-    item.priceCents > 0
-      ? `$${(item.priceCents / 100).toFixed(2)}`
-      : "Free";
+  const price = isFree ? "Free" : `$${(item.priceCents / 100).toFixed(2)}`;
 
   return (
     <div className="flex items-center gap-3 p-3 rounded-lg border border-border/40 hover:border-border/70 transition-colors">
@@ -855,7 +863,7 @@ function StoreItemRow({
       </div>
       <Button
         size="sm"
-        variant={item.priceCents > 0 ? "default" : "outline"}
+        variant={isFree ? "outline" : "default"}
         disabled={checkoutPending === item.id || purchaseClosed}
         onClick={handleBuy}
         className="shrink-0"

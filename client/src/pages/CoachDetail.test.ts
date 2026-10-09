@@ -84,7 +84,7 @@ describe("coach profile paid actions", () => {
     expect(html).toContain(PAYMENTS_PENDING_COPY.purchase);
     expect(button(html, "Subscribe — \\$5/mo")).toMatch(DISABLED_ATTR);
     expect(html).toContain(PAYMENTS_PENDING_COPY.subscription);
-    // Free content stays available.
+    // Free content stays available (what its click does: CoachDetailStore.test.ts).
     expect(button(html, "Free")).not.toMatch(DISABLED_ATTR);
   });
 

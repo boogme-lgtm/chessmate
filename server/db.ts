@@ -1069,9 +1069,13 @@ export async function getPublicUserById(userId: number) {
 }
 
 /**
- * Payout-readiness columns for a batch of users. INTERNAL: feeds the derived
+ * Payout-readiness columns for a batch of coaches. INTERNAL: feeds the derived
  * `acceptingPayments` flag in coachPayability.ts — never return these rows
  * (they carry the Connect account id) from a public endpoint.
+ *
+ * Only users with a coach profile are returned, so the derived flag can never
+ * reveal the Stripe onboarding state of a student (any signed-in user can
+ * start Connect onboarding); every other id reads as not accepting payments.
  */
 export async function getCoachPayoutStates(userIds: number[]): Promise<Array<{
   id: number;
@@ -1089,6 +1093,7 @@ export async function getCoachPayoutStates(userIds: number[]): Promise<Array<{
       deletedAt: users.deletedAt,
     })
     .from(users)
+    .innerJoin(coachProfiles, eq(coachProfiles.userId, users.id))
     .where(inArray(users.id, userIds));
 }
 
@@ -2785,6 +2790,25 @@ export async function clearContentRequestCheckoutSession(requestId: number) {
     .where(eq(contentRequests.id, requestId));
 }
 
+/**
+ * Conditional atomic clear — frees the slot only while it still holds
+ * expectedSessionId, so a concurrent request's claim or new session is never
+ * wiped. Returns true if this call cleared it.
+ */
+export async function clearContentRequestCheckoutSessionIfMatches(
+  requestId: number,
+  expectedSessionId: string
+): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  const result: any = await db.execute(sql`
+    UPDATE content_requests
+    SET stripeCheckoutSessionId = NULL, updatedAt = NOW()
+    WHERE id = ${requestId} AND stripeCheckoutSessionId = ${expectedSessionId}
+  `);
+  return (result[0]?.affectedRows ?? 0) > 0;
+}
+
 // S-CONTENT-2: Mark payment collected -- store payment intent + charge, set status
 export async function markContentRequestPaymentCollected(
   requestId: number,
@@ -3449,6 +3473,28 @@ export async function recordContentPurchase(data: {
     }
     throw err;
   }
+}
+
+/**
+ * Add a free public content item to a user's library: a zero-amount 'free'
+ * unlock row (no PaymentIntent), so the library, downloads and access checks
+ * treat it exactly like a purchased item. Idempotent — the (contentItemId,
+ * userId) unique key turns a repeat claim into a no-op. Returns whether a new
+ * row was added.
+ */
+export async function recordFreeContentUnlock(data: {
+  contentItemId: number;
+  userId: number;
+}): Promise<boolean> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result: any = await db.execute(sql`
+    INSERT IGNORE INTO content_purchases
+      (contentItemId, userId, unlockMethod, amountPaidCents)
+    VALUES
+      (${data.contentItemId}, ${data.userId}, 'free', 0)
+  `);
+  return (result[0]?.affectedRows ?? 0) > 0;
 }
 
 /** Number of content_requests that reference this content item (drives delete safety). */

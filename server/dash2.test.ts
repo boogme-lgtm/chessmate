@@ -11,8 +11,17 @@ vi.mock("./db");
 vi.mock("./emailService");
 vi.mock("./nurtureEmailScheduler");
 vi.mock("./resendWelcomeEmails");
+vi.mock("./stripe");
+vi.mock("./_core/notification");
+// Real welcome-email templates; only the send is stubbed.
+vi.mock("./email", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./email")>()),
+  sendEmail: vi.fn(),
+}));
 
 import * as db from "./db";
+import { sendEmail, getCoachWelcomeEmail } from "./email";
+import { resetCoachPayabilityCache } from "./coachPayability";
 
 const student = { id: 1, role: "user", userType: "student", openId: "s", name: "Stu", email: "s@e.com" };
 const coach = { id: 42, role: "user", userType: "coach", openId: "c", name: "Coach", email: "c@e.com" };
@@ -132,5 +141,50 @@ describe("S-DASH-2 — coach.updateProfile", () => {
     const caller = appRouter.createCaller(ctx(coach));
     const res = await caller.coach.updateProfile({ onboardingCompleted: true });
     expect(res).toBeTruthy();
+  });
+});
+
+// Going live doesn't require Stripe, so the welcome email must not promise
+// bookings the payment gate would refuse.
+describe("coach go-live welcome email", () => {
+  beforeEach(async () => {
+    // Let fire-and-forget emails from earlier tests land before counting.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    vi.mocked(sendEmail).mockClear();
+    resetCoachPayabilityCache();
+    vi.mocked(db.updateUserProfile).mockResolvedValue(undefined as any);
+    vi.mocked(db.updateCoachProfile).mockResolvedValue(undefined as any);
+    vi.mocked(db.getCoachProfileByUserId).mockResolvedValue({ hourlyRateCents: 5000, lessonDurations: JSON.stringify([60]) } as any);
+  });
+
+  async function goLiveEmailHtml(user: Record<string, unknown>): Promise<string> {
+    vi.mocked(db.getUserById).mockResolvedValue({ ...coach, ...user } as any);
+    await appRouter.createCaller(ctx(coach)).coach.updateProfile({ onboardingCompleted: true, profileActive: true });
+    await vi.waitFor(() => expect(sendEmail).toHaveBeenCalled());
+    const [params] = vi.mocked(sendEmail).mock.calls[0];
+    expect(params).toMatchObject({ to: "c@e.com", subject: "Welcome to BooGMe, Coach!" });
+    return params.html;
+  }
+
+  it.each([
+    ["no Stripe account", { stripeConnectAccountId: null, stripeConnectOnboarded: false }],
+    ["unfinished Stripe onboarding", { stripeConnectAccountId: "acct_test_coach_1", stripeConnectOnboarded: false }],
+  ])("tells a coach with %s that bookings open once payout setup is done", async (_label, user) => {
+    const html = await goLiveEmailHtml(user);
+    expect(html).not.toContain("book lessons immediately");
+    expect(html).toContain("bookings and payments open as soon as you finish your Stripe payout setup");
+    expect(html).toContain("Finish Payout Setup");
+  });
+
+  it("promises immediate bookings only to a coach students can already pay", async () => {
+    const html = await goLiveEmailHtml({ stripeConnectAccountId: "acct_test_coach_1", stripeConnectOnboarded: true });
+    expect(html).toContain("book lessons immediately");
+    expect(html).not.toContain("Finish Payout Setup");
+  });
+
+  it("escapes the coach's name", () => {
+    const html = getCoachWelcomeEmail(`<img src=x onerror=alert(1)>`, { acceptingPayments: true });
+    expect(html).not.toContain("<img src=x");
+    expect(html).toContain("&lt;img src=x onerror=alert(1)&gt;");
   });
 });

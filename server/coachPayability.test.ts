@@ -5,12 +5,16 @@
  * Covers the coachPayability helper (every branch), every gated money-flow
  * procedure (rejects a non-payable coach without creating a Stripe Checkout
  * Session and without leaving a claimed checkout slot; a payable coach still
- * works), the self-heal, the public `acceptingPayments` flag (never the
+ * works), the self-heal (bounded by a timeout, with an expiring negative
+ * cache), expiry of an already-open checkout for a coach who can no longer be
+ * paid, free storefront claims, the public `acceptingPayments` flag (never the
  * account id), and the coach-side payout-setup reminder.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { TRPCError } from "@trpc/server";
+import { TRPCClientError } from "@trpc/client";
+import { isCoachNotPayableError } from "@shared/coachPayments";
 
 vi.mock("./db");
 vi.mock("./stripe");
@@ -29,11 +33,13 @@ import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
 import {
   COACH_NOT_PAYABLE_MESSAGE,
+  LIVE_CHECK_TIMEOUT_MS,
   checkCoachPayability,
   getAcceptingPaymentsByCoachId,
   hasCompletedPayoutSetup,
   needsPayoutSetupReminder,
   requirePayableCoach,
+  requirePayableCoachForOpenCheckout,
   resetCoachPayabilityCache,
 } from "./coachPayability";
 
@@ -137,7 +143,8 @@ describe("checkCoachPayability", () => {
     stripeSays(true, true);
     const res = await checkCoachPayability(42);
     expect(res).toMatchObject({ payable: true, connectAccountId: "acct_1PayableCoach42" });
-    expect(stripeService.getConnectAccountStatus).toHaveBeenCalledWith("acct_1PayableCoach42");
+    // Bounded: a degraded Stripe API can't hold a payment or the dashboard.
+    expect(stripeService.getConnectAccountStatus).toHaveBeenCalledWith("acct_1PayableCoach42", { timeoutMs: LIVE_CHECK_TIMEOUT_MS });
     expect(db.updateUserStripeConnectAccount).toHaveBeenCalledWith(42, "acct_1PayableCoach42", true);
   });
 
@@ -197,6 +204,43 @@ describe("checkCoachPayability", () => {
     expect(await checkCoachPayability(42)).toMatchObject({ payable: true });
     expect(stripeService.getConnectAccountStatus).toHaveBeenCalledTimes(2);
   });
+
+  describe("with a clock", () => {
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    it("a cached negative result expires after 30s, so a coach whose webhook was lost still self-heals", async () => {
+      useCoach(pendingCoach);
+      expect(await checkCoachPayability(42)).toMatchObject({ payable: false, reason: "onboarding_incomplete" });
+
+      // Stripe finishes verifying the account, but the account.updated webhook is lost.
+      stripeSays(true, true);
+      vi.advanceTimersByTime(29_999);
+      expect(await checkCoachPayability(42)).toMatchObject({ payable: false });
+      expect(stripeService.getConnectAccountStatus).toHaveBeenCalledTimes(1);
+
+      vi.advanceTimersByTime(2);
+      expect(await checkCoachPayability(42)).toMatchObject({ payable: true, connectAccountId: "acct_1PayableCoach42" });
+      expect(stripeService.getConnectAccountStatus).toHaveBeenCalledTimes(2);
+      expect(db.updateUserStripeConnectAccount).toHaveBeenCalledWith(42, "acct_1PayableCoach42", true);
+    });
+
+    it("a hung Stripe call fails closed after the live-check timeout instead of hanging", async () => {
+      useCoach(pendingCoach);
+      vi.mocked(stripeService.getConnectAccountStatus).mockReturnValue(new Promise(() => {}));
+      const pending = checkCoachPayability(42);
+      await vi.advanceTimersByTimeAsync(LIVE_CHECK_TIMEOUT_MS);
+      expect(await pending).toMatchObject({ payable: false, reason: "stripe_unavailable" });
+      expect(db.updateUserStripeConnectAccount).not.toHaveBeenCalled();
+
+      // The money gate rejects with the friendly message, not a hang or a raw error.
+      resetCoachPayabilityCache();
+      const gate = requirePayableCoach(42).then(() => null, (e) => e);
+      await vi.advanceTimersByTimeAsync(LIVE_CHECK_TIMEOUT_MS);
+      const err = await gate;
+      expect(err).toMatchObject({ code: "PRECONDITION_FAILED", message: COACH_NOT_PAYABLE_MESSAGE });
+    });
+  });
 });
 
 describe("requirePayableCoach", () => {
@@ -221,6 +265,52 @@ describe("requirePayableCoach", () => {
   it("throws NOT_FOUND for an unknown coach", async () => {
     useCoach(null);
     await expect(requirePayableCoach(42)).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("is recognised by the client (which refreshes stale flags on it) — and nothing else is", async () => {
+    useCoach(pendingCoach);
+    const serverErr = await requirePayableCoach(42).then(() => null, (e) => e);
+    expect(isCoachNotPayableError(serverErr)).toBe(true);
+    // As the browser sees it after the tRPC round trip.
+    expect(isCoachNotPayableError(new TRPCClientError(serverErr.message))).toBe(true);
+    for (const other of [
+      new TRPCClientError("Coach not found"),
+      new Error("Failed to fetch"),
+      { message: undefined },
+      null,
+      undefined,
+    ]) {
+      expect(isCoachNotPayableError(other)).toBe(false);
+    }
+  });
+});
+
+describe("requirePayableCoachForOpenCheckout", () => {
+  it("leaves the open session alone for a payable coach", async () => {
+    expect(await requirePayableCoachForOpenCheckout(42, "cs_open")).toMatchObject({ connectAccountId: "acct_1PayableCoach42" });
+    expect(stripeService.expireCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["no Stripe account", noAccountCoach],
+    ["abandoned Stripe onboarding", pendingCoach],
+    ["a closed account", { ...payableCoach, deletedAt: new Date() }],
+  ])("expires the open session for a coach with %s, then rejects", async (_label, coach) => {
+    useCoach(coach);
+    await expect(requirePayableCoachForOpenCheckout(42, "cs_open")).rejects.toBeInstanceOf(TRPCError);
+    expect(stripeService.expireCheckoutSession).toHaveBeenCalledWith("cs_open");
+  });
+
+  it("still rejects with the friendly message when the expiry itself fails", async () => {
+    useCoach(pendingCoach);
+    vi.mocked(stripeService.expireCheckoutSession).mockRejectedValue(new Error("Stripe error: session cs_open is complete"));
+    await expectNotPayable(requirePayableCoachForOpenCheckout(42, "cs_open"));
+  });
+
+  it("does not expire anything on an unexpected failure that says nothing about the coach", async () => {
+    vi.mocked(db.getUserById).mockRejectedValue(new Error("db down"));
+    await expect(requirePayableCoachForOpenCheckout(42, "cs_open")).rejects.toThrow("db down");
+    expect(stripeService.expireCheckoutSession).not.toHaveBeenCalled();
   });
 });
 
@@ -360,14 +450,35 @@ describe("payment.createCheckout (lesson)", () => {
     expect(db.updateUserStripeConnectAccount).toHaveBeenCalledWith(42, "acct_1PayableCoach42", true);
   });
 
-  it("never hands back an existing open session once the coach is no longer payable", async () => {
+  it("never hands back an existing open session once the coach is no longer payable — and expires it at Stripe", async () => {
     useCoach(pendingCoach);
     vi.mocked(db.getLessonById).mockResolvedValue({ ...lesson, stripeCheckoutSessionId: "cs_open_old" } as any);
     vi.mocked(stripeService.retrieveCheckoutSession).mockResolvedValue({ id: "cs_open_old", status: "open", url: "https://checkout.stripe.com/old" } as any);
     await expectNotPayable(appRouter.createCaller(ctx(student)).payment.createCheckout({ lessonId: 100 }));
+    // The link can't be paid from another tab or the browser history either.
+    expect(stripeService.expireCheckoutSession).toHaveBeenCalledWith("cs_open_old");
+    // The slot keeps the session id; the next attempt replaces the expired session.
     expect(db.clearLessonCheckoutSessionIfMatches).not.toHaveBeenCalled();
     expect(db.claimLessonCheckoutSlot).not.toHaveBeenCalled();
     expect(stripeService.createLessonCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  it("replaces the expired session with a fresh one once the coach can be paid again", async () => {
+    slot = "cs_open_old";
+    vi.mocked(db.getLessonById).mockResolvedValue({ ...lesson, stripeCheckoutSessionId: "cs_open_old" } as any);
+    vi.mocked(stripeService.retrieveCheckoutSession).mockResolvedValue({ id: "cs_open_old", status: "expired", url: null } as any);
+    vi.mocked(db.clearLessonCheckoutSessionIfMatches).mockImplementation(async (_id, expected) => {
+      if (slot !== expected) return { cleared: false, checkoutAttempt: 0 };
+      slot = null;
+      return { cleared: true, checkoutAttempt: 1 };
+    });
+    const res = await appRouter.createCaller(ctx(student)).payment.createCheckout({ lessonId: 100 });
+    expect(res.url).toBe("https://checkout.stripe.com/new");
+    // A new attempt number → a new idempotency key, never a replay of the expired session.
+    expect(stripeService.createLessonCheckoutSession).toHaveBeenCalledWith(
+      expect.objectContaining({ idempotencyKey: "lesson_checkout_100_v1" }),
+    );
+    expect(slot).toBe("cs_new");
   });
 
   it("still returns an existing open session for a payable coach", async () => {
@@ -375,6 +486,7 @@ describe("payment.createCheckout (lesson)", () => {
     vi.mocked(stripeService.retrieveCheckoutSession).mockResolvedValue({ id: "cs_open_old", status: "open", url: "https://checkout.stripe.com/old" } as any);
     const res = await appRouter.createCaller(ctx(student)).payment.createCheckout({ lessonId: 100 });
     expect(res.url).toBe("https://checkout.stripe.com/old");
+    expect(stripeService.expireCheckoutSession).not.toHaveBeenCalled();
   });
 });
 
@@ -426,6 +538,55 @@ describe("content.createStorefrontCheckout", () => {
   it("works for a payable coach", async () => {
     const res = await appRouter.createCaller(ctx(student)).content.createStorefrontCheckout({ contentItemId: 100 });
     expect(res.url).toBe("https://checkout.stripe.com/item");
+  });
+});
+
+describe("content.claimFree (free storefront items stay open)", () => {
+  const freeItem = { id: 101, coachId: 42, title: "Free sampler", accessType: "public", published: true, priceCents: 0, currency: "USD" };
+
+  beforeEach(() => {
+    vi.mocked(db.getContentItemById).mockResolvedValue({ ...freeItem } as any);
+    vi.mocked(db.userHasContentAccess).mockResolvedValue(false);
+    vi.mocked(db.recordFreeContentUnlock).mockResolvedValue(true);
+  });
+
+  it.each([
+    ["no Stripe account", noAccountCoach],
+    ["abandoned Stripe onboarding", pendingCoach],
+  ])("adds a free item to the library even while the coach has %s — no money, no Stripe", async (_label, coach) => {
+    useCoach(coach);
+    const res = await appRouter.createCaller(ctx(student)).content.claimFree({ contentItemId: 101 });
+    expect(res).toEqual({ alreadyOwned: false });
+    expect(db.recordFreeContentUnlock).toHaveBeenCalledWith({ contentItemId: 101, userId: 1 });
+    expect(stripeService.createContentItemCheckoutSession).not.toHaveBeenCalled();
+    expect(stripeService.getConnectAccountStatus).not.toHaveBeenCalled();
+  });
+
+  it("is idempotent for an item the student can already open", async () => {
+    vi.mocked(db.userHasContentAccess).mockResolvedValue(true);
+    expect(await appRouter.createCaller(ctx(student)).content.claimFree({ contentItemId: 101 })).toEqual({ alreadyOwned: true });
+    expect(db.recordFreeContentUnlock).not.toHaveBeenCalled();
+
+    // A concurrent claim that won the race.
+    vi.mocked(db.userHasContentAccess).mockResolvedValue(false);
+    vi.mocked(db.recordFreeContentUnlock).mockResolvedValue(false);
+    expect(await appRouter.createCaller(ctx(student)).content.claimFree({ contentItemId: 101 })).toEqual({ alreadyOwned: true });
+  });
+
+  it.each([
+    ["a paid item", { priceCents: 2900 }],
+    ["an unpublished item", { published: false }],
+    ["a private item", { accessType: "student_only" }],
+  ])("refuses %s", async (_label, override) => {
+    vi.mocked(db.getContentItemById).mockResolvedValue({ ...freeItem, ...override } as any);
+    await expect(appRouter.createCaller(ctx(student)).content.claimFree({ contentItemId: 101 }))
+      .rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(db.recordFreeContentUnlock).not.toHaveBeenCalled();
+  });
+
+  it("requires a session", async () => {
+    await expect(appRouter.createCaller(ctx(null)).content.claimFree({ contentItemId: 101 }))
+      .rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
 });
 
@@ -484,19 +645,61 @@ describe("contentRequest", () => {
       expect(stripeService.createContentRequestCheckoutSession).not.toHaveBeenCalled();
     });
 
-    it("never hands back an existing open session once the coach is no longer payable", async () => {
+    it("never hands back an existing open session once the coach is no longer payable — and expires it at Stripe", async () => {
       useCoach(pendingCoach);
       vi.mocked(db.getContentRequestById).mockResolvedValue({ ...pending, stripeCheckoutSessionId: "cs_open_old" } as any);
       vi.mocked(stripeService.retrieveCheckoutSession).mockResolvedValue({ status: "open", url: "https://checkout.stripe.com/old" } as any);
       await expectNotPayable(appRouter.createCaller(ctx(student)).contentRequest.createCheckout({ requestId: 10 }));
+      expect(stripeService.expireCheckoutSession).toHaveBeenCalledWith("cs_open_old");
+      expect(db.clearContentRequestCheckoutSessionIfMatches).not.toHaveBeenCalled();
       expect(stripeService.createContentRequestCheckoutSession).not.toHaveBeenCalled();
+    });
+
+    it("still returns an existing open session for a payable coach", async () => {
+      vi.mocked(db.getContentRequestById).mockResolvedValue({ ...pending, stripeCheckoutSessionId: "cs_open_old" } as any);
+      vi.mocked(stripeService.retrieveCheckoutSession).mockResolvedValue({ status: "open", url: "https://checkout.stripe.com/old" } as any);
+      const res = await appRouter.createCaller(ctx(student)).contentRequest.createCheckout({ requestId: 10 });
+      expect(res.url).toBe("https://checkout.stripe.com/old");
+      expect(stripeService.expireCheckoutSession).not.toHaveBeenCalled();
+    });
+
+    it("replaces an expired session with a fresh one (its own idempotency key, so Stripe can't replay the expired one)", async () => {
+      slot = "cs_open_old";
+      vi.mocked(db.getContentRequestById).mockResolvedValue({ ...pending, stripeCheckoutSessionId: "cs_open_old" } as any);
+      vi.mocked(stripeService.retrieveCheckoutSession).mockResolvedValue({ status: "expired", url: null } as any);
+      vi.mocked(db.clearContentRequestCheckoutSessionIfMatches).mockImplementation(async (_id, expected) => {
+        if (slot !== expected) return false;
+        slot = null;
+        return true;
+      });
+      const res = await appRouter.createCaller(ctx(student)).contentRequest.createCheckout({ requestId: 10 });
+      expect(res.url).toBe("https://checkout.stripe.com/cr");
+      expect(db.clearContentRequestCheckoutSessionIfMatches).toHaveBeenCalledWith(10, "cs_open_old");
+      expect(stripeService.createContentRequestCheckoutSession).toHaveBeenCalledWith(
+        expect.objectContaining({ idempotencyKey: "content_request_checkout_10_after_cs_open_old" }),
+      );
+      expect(slot).toBe("cs_cr");
+    });
+
+    it("does not create a second session when a concurrent request already replaced the expired one", async () => {
+      slot = "cs_concurrent";
+      vi.mocked(db.getContentRequestById).mockResolvedValue({ ...pending, stripeCheckoutSessionId: "cs_open_old" } as any);
+      vi.mocked(stripeService.retrieveCheckoutSession).mockResolvedValue({ status: "expired", url: null } as any);
+      vi.mocked(db.clearContentRequestCheckoutSessionIfMatches).mockResolvedValue(false);
+      await expect(appRouter.createCaller(ctx(student)).contentRequest.createCheckout({ requestId: 10 }))
+        .rejects.toMatchObject({ code: "CONFLICT" });
+      expect(stripeService.createContentRequestCheckoutSession).not.toHaveBeenCalled();
+      expect(slot).toBe("cs_concurrent");
     });
 
     it("works for a payable coach with the verified account id", async () => {
       const res = await appRouter.createCaller(ctx(student)).contentRequest.createCheckout({ requestId: 10 });
       expect(res.url).toBe("https://checkout.stripe.com/cr");
       expect(stripeService.createContentRequestCheckoutSession).toHaveBeenCalledWith(
-        expect.objectContaining({ coachConnectAccountId: "acct_1PayableCoach42" }),
+        expect.objectContaining({
+          coachConnectAccountId: "acct_1PayableCoach42",
+          idempotencyKey: "content_request_checkout_10",
+        }),
       );
       expect(slot).toBe("cs_cr");
     });
@@ -596,10 +799,13 @@ describe("public coach data exposes acceptingPayments (stored state, no Stripe c
     expectNoPayoutSecrets(res);
   });
 
-  it("coach.getProfile", async () => {
-    vi.mocked(db.getCoachWithUser).mockResolvedValue(rows[1] as any);
-    const res = await appRouter.createCaller(ctx(null)).coach.getProfile({ userId: 7 });
-    expect(res.acceptingPayments).toBe(false);
+  it.each([
+    [rows[0], true],
+    [rows[1], false],
+  ])("coach.getProfile (coach %#)", async (row, expected) => {
+    vi.mocked(db.getCoachWithUser).mockResolvedValue(row as any);
+    const res = await appRouter.createCaller(ctx(null)).coach.getProfile({ userId: row.users.id });
+    expect(res.acceptingPayments).toBe(expected);
     expectNoPayoutSecrets(res);
   });
 
@@ -614,11 +820,28 @@ describe("public coach data exposes acceptingPayments (stored state, no Stripe c
     expect(stripeService.getConnectAccountStatus).not.toHaveBeenCalled();
   });
 
-  it("coach.acceptingPayments (dashboard batch lookup)", async () => {
-    const res = await appRouter.createCaller(ctx(null)).coach.acceptingPayments({ coachIds: [42, 43, 44] });
+  it("coach.getById reports a coach who abandoned Stripe onboarding as not accepting payments", async () => {
+    // Has a Connect account id (the pre-sprint rule would have said "payable"),
+    // but Stripe never confirmed charges + payouts.
+    vi.mocked(db.getUserById).mockImplementation(async (id: number) =>
+      id === 43 ? ({ ...pendingCoach, id: 43, stripeConnectAccountId: "acct_1PendingCoach43" } as any) : undefined);
+    vi.mocked(db.getPublicUserById).mockResolvedValue({ id: 43, name: "Pending", bio: "IM" } as any);
+    vi.mocked(db.getCoachProfileByUserId).mockResolvedValue({ userId: 43, hourlyRateCents: 6000 } as any);
+    const res = await appRouter.createCaller(ctx(null)).coach.getById({ id: 43 });
+    expect(res?.acceptingPayments).toBe(false);
+    expectNoPayoutSecrets(res);
+    expect(stripeService.getConnectAccountStatus).not.toHaveBeenCalled();
+  });
+
+  it("coach.acceptingPayments (dashboard batch lookup) needs a session", async () => {
+    const caller = appRouter.createCaller(ctx(student));
+    const res = await caller.coach.acceptingPayments({ coachIds: [42, 43, 44] });
     expect(res).toEqual({ 42: true, 43: false, 44: false });
-    await expect(appRouter.createCaller(ctx(null)).coach.acceptingPayments({ coachIds: [] })).rejects.toThrow();
-    await expect(appRouter.createCaller(ctx(null)).coach.acceptingPayments({ coachIds: Array.from({ length: 101 }, (_, i) => i + 1) })).rejects.toThrow();
+    await expect(caller.coach.acceptingPayments({ coachIds: [] })).rejects.toThrow();
+    await expect(caller.coach.acceptingPayments({ coachIds: Array.from({ length: 101 }, (_, i) => i + 1) })).rejects.toThrow();
+    // No anonymous enumeration of who finished Stripe onboarding.
+    await expect(appRouter.createCaller(ctx(null)).coach.acceptingPayments({ coachIds: [42] }))
+      .rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
 
   it("content.list (storefront listing)", async () => {
@@ -632,11 +855,14 @@ describe("public coach data exposes acceptingPayments (stored state, no Stripe c
     expectNoPayoutSecrets(res);
   });
 
-  it("content.getById (item detail)", async () => {
-    const execute = vi.fn().mockResolvedValue([[{ id: 2, coachId: 43, priceCents: 900, storageKey: "k" }]]);
+  it.each([
+    [42, true],
+    [43, false],
+  ])("content.getById (item detail, coach %i)", async (coachId, expected) => {
+    const execute = vi.fn().mockResolvedValue([[{ id: 2, coachId, priceCents: 900, storageKey: "k" }]]);
     vi.mocked(db.getDb).mockResolvedValue({ execute } as any);
     const res = await appRouter.createCaller(ctx(null)).content.getById({ id: 2 });
-    expect(res.acceptingPayments).toBe(false);
+    expect(res.acceptingPayments).toBe(expected);
     expect(res.storageKey).toBeUndefined();
   });
 
@@ -714,6 +940,21 @@ describe("coach payout-setup status", () => {
     live(true);
     expect(await coachCaller().coach.getEarnings()).toMatchObject({ acceptingPayments: true, needsOnboarding: false });
     expect(db.updateUserStripeConnectAccount).toHaveBeenCalledWith(42, "acct_1PayableCoach42", true);
+  });
+
+  it("the dashboard still answers (fail closed) when Stripe hangs", async () => {
+    vi.useFakeTimers();
+    try {
+      useCoach(pendingCoach);
+      vi.mocked(stripeService.getConnectAccountStatus).mockReturnValue(new Promise(() => {}));
+      earnings(false);
+      live(true);
+      const pending = coachCaller().coach.getEarnings();
+      await vi.advanceTimersByTimeAsync(LIVE_CHECK_TIMEOUT_MS);
+      expect(await pending).toMatchObject({ acceptingPayments: false, needsOnboarding: true });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("confirmStripeOnboarded keeps the stored flag in step with Stripe in both directions", async () => {

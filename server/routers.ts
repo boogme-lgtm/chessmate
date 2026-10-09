@@ -42,9 +42,11 @@ import { releaseLessonPayoutToCoach, releaseAllEligiblePayouts } from "./payoutS
 import {
   checkCoachPayability,
   requirePayableCoach,
+  requirePayableCoachForOpenCheckout,
   getAcceptingPaymentsByCoachId,
   withAcceptingPayments,
   needsPayoutSetupReminder,
+  isConnectAccountFullyEnabled,
 } from "./coachPayability";
 
 /**
@@ -782,11 +784,12 @@ export const appRouter = router({
       }),
 
     /**
-     * Public: which of these coaches can take student payments right now
-     * (stored state, no Stripe call). Lets dashboards gate tip / pay / request
-     * buttons for coaches the student already works with.
+     * Which of these coaches can take student payments right now (stored
+     * state, no Stripe call). Lets dashboards gate tip / pay / request buttons
+     * for coaches the student already works with, so it needs a session; ids
+     * without a coach profile always map to false.
      */
-    acceptingPayments: publicProcedure
+    acceptingPayments: protectedProcedure
       .input(z.object({ coachIds: z.array(z.number().int().positive()).min(1).max(100) }))
       .query(async ({ input }) => {
         const byCoach = await getAcceptingPaymentsByCoachId(input.coachIds);
@@ -957,8 +960,9 @@ export const appRouter = router({
       if (!user?.stripeConnectAccountId) {
         return { onboarded: false };
       }
-      const status = await stripeService.getConnectAccountStatus(user.stripeConnectAccountId);
-      const onboarded = status.chargesEnabled && status.payoutsEnabled;
+      // Same bounded live check as the payment gate and the account.updated
+      // webhook, so every writer of the flag reads Stripe the same way.
+      const onboarded = await isConnectAccountFullyEnabled(user.stripeConnectAccountId);
       // Keep the stored flag in step with Stripe in both directions — it is
       // what gates student payments (see coachPayability.ts).
       if (onboarded !== !!user.stripeConnectOnboarded) {
@@ -1119,10 +1123,16 @@ export const appRouter = router({
           Promise.allSettled([
             (async () => {
               try {
+                // Going live doesn't require Stripe, so only promise bookings
+                // when the payment gate would actually let students pay.
+                const acceptingPayments = await checkCoachPayability(ctx.user.id).then(
+                  (res) => res.payable,
+                  () => false,
+                );
                 await sendSimpleEmail({
                   to: ctx.user.email,
                   subject: "Welcome to BooGMe, Coach!",
-                  html: getCoachWelcomeEmail(coachName),
+                  html: getCoachWelcomeEmail(coachName, { acceptingPayments }),
                 });
               } catch (err) {
                 console.error("[Email] Failed to send coach welcome email:", err);
@@ -2886,6 +2896,26 @@ export const appRouter = router({
 
         return { url: session.url };
       }),
+
+    /**
+     * Student: add a free public storefront item to their library (the free
+     * counterpart of createStorefrontCheckout). Moves no money, so it is open
+     * whatever the coach's payout state. Idempotent.
+     */
+    claimFree: protectedProcedure
+      .input(z.object({ contentItemId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const item = await db.getContentItemById(input.contentItemId);
+        if (!item || !item.published || item.accessType !== "public" || item.priceCents > 0) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Content item is not available for free" });
+        }
+        // Owners, targeted students and earlier claims already have access.
+        if (await db.userHasContentAccess(ctx.user.id, item.id)) {
+          return { alreadyOwned: true };
+        }
+        const added = await db.recordFreeContentUnlock({ contentItemId: item.id, userId: ctx.user.id });
+        return { alreadyOwned: !added };
+      }),
   }),
 
   // ============ PAYMENT OPERATIONS ============
@@ -2943,8 +2973,10 @@ export const appRouter = router({
               // Session is still payable — return it instead of creating a new
               // one, but never hand back a payment link for a coach who can no
               // longer be paid (e.g. Stripe disabled the account after the
-              // session was created). Its TRPCError is re-thrown below as-is.
-              await requirePayableCoach(lesson.coachId);
+              // session was created): the session is expired instead, and the
+              // next attempt replaces it via the expired branch below. Its
+              // TRPCError is re-thrown below as-is.
+              await requirePayableCoachForOpenCheckout(lesson.coachId, expectedSessionId);
               return { url: existingSession.url };
             }
             if (existingSession.status === "complete") {
@@ -3315,16 +3347,30 @@ export const appRouter = router({
         if (request.status !== "pending_payment") {
           throw new TRPCError({ code: "PRECONDITION_FAILED", message: `Cannot checkout: request is in '${request.status}' state (must be 'pending_payment')` });
         }
+        // Set when an expired session is being replaced: the new session needs
+        // its own idempotency key, or Stripe would replay the expired one.
+        let replacedSessionId: string | null = null;
         if (request.stripeCheckoutSessionId && request.stripeCheckoutSessionId !== "__pending__") {
-          let openSession: { url: string | null } | null = null;
+          const existingSessionId = request.stripeCheckoutSessionId;
+          let existingStatus: string | null = null;
+          let existingUrl: string | null = null;
           try {
-            const existing = await retrieveCheckoutSession(request.stripeCheckoutSessionId);
-            if (existing.status === "open") openSession = { url: existing.url };
+            const existing = await retrieveCheckoutSession(existingSessionId);
+            existingStatus = existing.status;
+            existingUrl = existing.url;
           } catch { /* fall through */ }
-          if (openSession) {
-            // Never hand back a payment link for a coach who can no longer be paid.
-            await requirePayableCoach(request.coachId);
-            return openSession;
+          if (existingStatus === "open") {
+            // Never hand back a payment link for a coach who can no longer be
+            // paid — the session is expired instead and replaced next time.
+            await requirePayableCoachForOpenCheckout(request.coachId, existingSessionId);
+            return { url: existingUrl };
+          }
+          if (existingStatus === "expired") {
+            // Stripe can no longer take payment on it, so free the slot for a
+            // replacement (only if no concurrent request got there first).
+            if (await db.clearContentRequestCheckoutSessionIfMatches(request.id, existingSessionId)) {
+              replacedSessionId = existingSessionId;
+            }
           }
         }
         // Recover an orphaned "__pending__" slot left by a crashed prior attempt:
@@ -3365,7 +3411,9 @@ export const appRouter = router({
             requestTitle: request.title,
             successUrl: `${baseUrl}/dashboard?section=content-requests&payment=success`,
             cancelUrl: `${baseUrl}/dashboard?section=content-requests&payment=cancelled`,
-            idempotencyKey: `content_request_checkout_${request.id}`,
+            idempotencyKey: replacedSessionId
+              ? `content_request_checkout_${request.id}_after_${replacedSessionId}`
+              : `content_request_checkout_${request.id}`,
           });
           await db.setContentRequestCheckoutSession(request.id, session.id);
           return { url: session.url };

@@ -48,8 +48,39 @@ export async function sendEmail(params: EmailParams): Promise<void> {
   }
 }
 
-export function getCoachWelcomeEmail(coachName: string): string {
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+/**
+ * Sent when a coach goes live. Going live doesn't require Stripe, so the copy
+ * follows whether students can actually pay the coach yet (coachPayability):
+ * bookings are only promised once payout setup is confirmed.
+ */
+export function getCoachWelcomeEmail(
+  coachName: string,
+  { acceptingPayments }: { acceptingPayments: boolean },
+): string {
   const dashboardUrl = `${ENV.frontendUrl || "https://boogme.com"}/coach/dashboard`;
+  const liveCopy = acceptingPayments
+    ? `Your coach profile is now <strong>live</strong> on BooGMe! Students can find you, view your availability, and book lessons immediately.`
+    : `Your coach profile is now <strong>live</strong> on BooGMe! Students can find you and view your profile and availability.`;
+  const payoutStep = acceptingPayments
+    ? ""
+    : `
+              <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">
+                <strong>One step left:</strong> bookings and payments open as soon as you finish your Stripe payout setup from your dashboard. It only takes a few minutes.
+              </p>`;
+  const ctaLabel = acceptingPayments ? "Go to Your Dashboard" : "Finish Payout Setup";
+  const payoutListItem = acceptingPayments
+    ? ""
+    : `
+                <li style="margin-bottom: 8px; font-size: 15px; line-height: 1.6;">Finish Stripe payout setup so students can book and pay you</li>`;
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -73,20 +104,20 @@ export function getCoachWelcomeEmail(coachName: string): string {
           <tr>
             <td style="padding: 0 40px 40px 40px;">
               <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">
-                Hi ${coachName},
+                Hi ${escapeHtml(coachName)},
               </p>
               <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">
-                Your coach profile is now <strong>live</strong> on BooGMe! Students can find you, view your availability, and book lessons immediately.
-              </p>
+                ${liveCopy}
+              </p>${payoutStep}
               <div style="text-align: center; margin: 30px 0;">
                 <a href="${dashboardUrl}" style="display: inline-block; padding: 14px 28px; background-color: #8b4513; color: #ffffff; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">
-                  Go to Your Dashboard
+                  ${ctaLabel}
                 </a>
               </div>
               <p style="margin: 0 0 15px 0; font-size: 15px; line-height: 1.6; color: #e0e0e0;">
                 From your dashboard you can:
               </p>
-              <ul style="margin: 0 0 30px 0; padding-left: 20px; color: #e0e0e0;">
+              <ul style="margin: 0 0 30px 0; padding-left: 20px; color: #e0e0e0;">${payoutListItem}
                 <li style="margin-bottom: 8px; font-size: 15px; line-height: 1.6;">Update your availability and hourly rate</li>
                 <li style="margin-bottom: 8px; font-size: 15px; line-height: 1.6;">Manage incoming lesson requests</li>
                 <li style="margin-bottom: 8px; font-size: 15px; line-height: 1.6;">Track your earnings and payouts</li>

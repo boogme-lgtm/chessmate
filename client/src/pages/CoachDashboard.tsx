@@ -174,8 +174,11 @@ export function CoachDashboardContent({ user }: { user: any }) {
   });
 
   // ── Earnings ──────────────────────────────────────────────────────────────
+  // May run a live Stripe check (payout-setup self-heal), so it skips the
+  // request batch: the rest of the dashboard never waits on Stripe.
   const { data: earnings } = trpc.coach.getEarnings.useQuery(undefined, {
     enabled: !!user,
+    trpc: { context: { skipBatch: true } },
   });
 
   // ── Lessons ───────────────────────────────────────────────────────────────

@@ -608,7 +608,8 @@ function CancellationDialog({
 // Lesson Detail Dialog (tip flow)
 // ─────────────────────────────────────────────────────────────────────────────
 
-function LessonDetailDialog({
+/** Exported for tests (tip gating). */
+export function LessonDetailDialog({
   open,
   onOpenChange,
   lesson,
@@ -1819,7 +1820,8 @@ function ContentRequestsModule({
   );
 }
 
-function NewContentRequestDialog({
+/** Exported for tests (request gating). */
+export function NewContentRequestDialog({
   open,
   onOpenChange,
   coaches,

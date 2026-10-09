@@ -15,11 +15,12 @@
  *  - closed (soft-deleted) account        → not payable
  *  - no stripeConnectAccountId            → not payable
  *  - stripeConnectOnboarded flag set      → payable (the account.updated
- *    webhook keeps it current, including flipping it back to false)
+ *    webhook keeps it current in both directions, from Stripe's live account
+ *    state rather than the event snapshot — see isConnectAccountFullyEnabled)
  *  - account id present but flag not set  → live Stripe check. Charges AND
  *    payouts enabled → persist the flag (self-heal for a missed webhook) and
- *    treat as payable. Anything else, including a Stripe error → NOT payable
- *    (fail closed).
+ *    treat as payable. Anything else, including a Stripe error or timeout →
+ *    NOT payable (fail closed).
  *
  * Public list endpoints use hasCompletedPayoutSetup() /
  * getAcceptingPaymentsByCoachId(): stored state only, never a Stripe call per
@@ -56,9 +57,41 @@ const NEGATIVE_CHECK_TTL_MS = 30_000;
 const NEGATIVE_CHECK_MAX_ENTRIES = 1_000;
 const negativeChecks = new Map<string, { reason: CoachNotPayableReason; expiresAt: number }>();
 
+/**
+ * Upper bound on one live Stripe account check. A payment gate, the coach
+ * dashboard or a webhook delivery must never hang on a degraded Stripe API
+ * (the SDK default is 80s per attempt, with retries).
+ */
+export const LIVE_CHECK_TIMEOUT_MS = 5_000;
+
 /** Test hook: forget cached negative live-check results. */
 export function resetCoachPayabilityCache(): void {
   negativeChecks.clear();
+}
+
+/**
+ * Stripe's current answer to "can this Connect account take charges AND pay
+ * out?" — the one live check behind the payment gate's self-heal and the
+ * account.updated webhook. Bounded by LIVE_CHECK_TIMEOUT_MS. Throws on a Stripe
+ * error or timeout: callers decide how to fail closed.
+ */
+export async function isConnectAccountFullyEnabled(accountId: string): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`Stripe account status check timed out after ${LIVE_CHECK_TIMEOUT_MS}ms`)),
+      LIVE_CHECK_TIMEOUT_MS,
+    );
+  });
+  try {
+    const status = await Promise.race([
+      stripeService.getConnectAccountStatus(accountId, { timeoutMs: LIVE_CHECK_TIMEOUT_MS }),
+      deadline,
+    ]);
+    return !!status?.chargesEnabled && !!status?.payoutsEnabled;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export type CoachPayoutState = {
@@ -114,8 +147,7 @@ export async function checkCoachPayability(coachUserId: number): Promise<CoachPa
 
   let enabled: boolean;
   try {
-    const status = await stripeService.getConnectAccountStatus(accountId);
-    enabled = !!status?.chargesEnabled && !!status?.payoutsEnabled;
+    enabled = await isConnectAccountFullyEnabled(accountId);
   } catch (err: any) {
     console.error(`[coachPayability] Stripe status check failed for coach ${coach.id}: ${err?.message ?? err}`);
     rememberNegative(accountId, "stripe_unavailable");
@@ -163,6 +195,35 @@ export async function requirePayableCoach(
   }
   console.warn(`[coachPayability] Blocked a payment to coach ${coachUserId} (${result.reason})`);
   throw new TRPCError({ code: "PRECONDITION_FAILED", message: COACH_NOT_PAYABLE_MESSAGE });
+}
+
+/**
+ * Gate for handing back a Checkout Session that is already open (created while
+ * the coach was still payable). On rejection the session is expired at Stripe
+ * so it can't be paid from another tab or the browser history either, then the
+ * student-safe error is rethrown. Expiry is best effort; the caller's stored
+ * session id is left alone, and its next checkout attempt sees the session
+ * expired and replaces it.
+ */
+export async function requirePayableCoachForOpenCheckout(
+  coachUserId: number,
+  checkoutSessionId: string,
+): Promise<{ coach: User; connectAccountId: string }> {
+  try {
+    return await requirePayableCoach(coachUserId);
+  } catch (err) {
+    // Only a definite "not payable" answer; an unexpected failure (e.g. the
+    // database) says nothing about the coach.
+    if (err instanceof TRPCError) {
+      try {
+        await stripeService.expireCheckoutSession(checkoutSessionId);
+        console.warn(`[coachPayability] Expired open checkout ${checkoutSessionId} for non-payable coach ${coachUserId}`);
+      } catch (expireErr: any) {
+        console.error(`[coachPayability] Could not expire open checkout ${checkoutSessionId}: ${expireErr?.message ?? expireErr}`);
+      }
+    }
+    throw err;
+  }
 }
 
 /**

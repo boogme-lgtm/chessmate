@@ -5,6 +5,7 @@ import { MySqlDialect } from "drizzle-orm/mysql-core";
 import { ENV } from "./_core/env";
 import { handleStripeWebhook } from "./webhooks";
 import * as db from "./db";
+import { getConnectAccountStatus } from "./stripe";
 import { transferToCoach } from "./stripeConnect";
 import { sendEmail } from "./emailService";
 import { SAFE_EVENT_TYPES } from "../scripts/stripe-webhook-ops.mjs";
@@ -13,6 +14,12 @@ vi.mock("./db");
 vi.mock("./stripeConnect");
 vi.mock("./emailService");
 vi.mock("./_core/notification");
+// Signature verification stays real; only the live account read is stubbed.
+vi.mock("./stripe", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./stripe")>()),
+  getConnectAccountStatus: vi.fn(),
+  createRefund: vi.fn(),
+}));
 
 // Use Stripe's real signing and verification code with synthetic local secrets.
 const stripe = new Stripe("sk_test_dummy");
@@ -51,6 +58,18 @@ async function dispatch(event: unknown, secret = connectSecret) {
   return res;
 }
 
+/** An account.updated event whose snapshot carries these flags. */
+function accountEvent(flags: { charges_enabled?: boolean; payouts_enabled?: boolean }) {
+  return { ...connectEvent, data: { object: { ...connectEvent.data.object, ...flags } } };
+}
+
+/** What Stripe reports for the account right now (the handler's source of truth). */
+function liveAccount(chargesEnabled: boolean, payoutsEnabled: boolean) {
+  vi.mocked(getConnectAccountStatus).mockResolvedValue({
+    id: "acct_coach_unit", chargesEnabled, payoutsEnabled, detailsSubmitted: true, requirements: null,
+  } as any);
+}
+
 beforeEach(() => {
   vi.resetAllMocks();
   ENV.stripeWebhookSecret = platformSecret;
@@ -58,6 +77,7 @@ beforeEach(() => {
   execute.mockResolvedValue([[{ id: 42, stripeConnectOnboarded: false }]]);
   vi.mocked(db.getDb).mockResolvedValue({ execute } as any);
   vi.mocked(db.updateUserStripeConnectAccount).mockResolvedValue(undefined);
+  liveAccount(true, true);
 });
 
 afterAll(() => Object.assign(ENV, originalSecrets));
@@ -86,6 +106,8 @@ describe("destination signing secrets", () => {
     expect(db.updateUserStripeConnectAccount).toHaveBeenCalledWith(42, "acct_coach_unit", true);
     const query = new MySqlDialect().sqlToQuery(execute.mock.calls[0][0]);
     expect(query.params).toEqual(["acct_coach_unit"]);
+    // The live state is read for the event's own (verified) account.
+    expect(getConnectAccountStatus).toHaveBeenCalledWith("acct_coach_unit", expect.anything());
     expect(db.getLessonById).not.toHaveBeenCalled();
   });
 
@@ -196,6 +218,7 @@ describe("event scope and Connect account identity", () => {
     const res = await dispatch(connectEvent);
     expect(res.json).toHaveBeenCalledWith({ received: true });
     expect(db.updateUserStripeConnectAccount).not.toHaveBeenCalled();
+    expect(getConnectAccountStatus).not.toHaveBeenCalled();
   });
 
   it("leaves already-onboarded accounts unchanged on repeat delivery", async () => {
@@ -205,11 +228,12 @@ describe("event scope and Connect account identity", () => {
     expect(db.updateUserStripeConnectAccount).not.toHaveBeenCalled();
   });
 
-  // The not-enabled path now reads the coach row (to decide whether a verified
+  // The not-enabled path reads the coach row (to decide whether a verified
   // coach must be flipped back to not-onboarded), but a coach who never
   // finished onboarding is still left untouched.
   it("leaves a coach who never finished onboarding unchanged", async () => {
-    const res = await dispatch({ ...connectEvent, data: { object: { ...connectEvent.data.object, payouts_enabled: false } } });
+    liveAccount(true, false);
+    const res = await dispatch(accountEvent({ payouts_enabled: false }));
     expect(res.json).toHaveBeenCalledWith({ received: true });
     expect(db.updateUserStripeConnectAccount).not.toHaveBeenCalled();
   });
@@ -219,7 +243,8 @@ describe("event scope and Connect account identity", () => {
     ["payouts", { payouts_enabled: false }],
   ])("fails closed when Stripe disables %s on an onboarded coach", async (_label, disabled) => {
     execute.mockResolvedValue([[{ id: 42, stripeConnectOnboarded: 1 }]]);
-    const res = await dispatch({ ...connectEvent, data: { object: { ...connectEvent.data.object, ...disabled } } });
+    liveAccount(disabled.charges_enabled ?? true, disabled.payouts_enabled ?? true);
+    const res = await dispatch(accountEvent(disabled));
     expect(res.status).not.toHaveBeenCalled();
     expect(res.json).toHaveBeenCalledWith({ received: true });
     expect(db.updateUserStripeConnectAccount).toHaveBeenCalledWith(42, "acct_coach_unit", false);
@@ -230,16 +255,18 @@ describe("event scope and Connect account identity", () => {
 
   it("is idempotent when a disabled account is delivered again", async () => {
     execute.mockResolvedValue([[{ id: 42, stripeConnectOnboarded: 0 }]]);
-    const res = await dispatch({ ...connectEvent, data: { object: { ...connectEvent.data.object, charges_enabled: false } } });
+    liveAccount(false, true);
+    const res = await dispatch(accountEvent({ charges_enabled: false }));
     expect(res.json).toHaveBeenCalledWith({ received: true });
     expect(db.updateUserStripeConnectAccount).not.toHaveBeenCalled();
   });
 
   it.each(["unavailable", "write failure"])("does not acknowledge a lost disable on database %s", async (failure) => {
     execute.mockResolvedValue([[{ id: 42, stripeConnectOnboarded: true }]]);
+    liveAccount(true, false);
     if (failure === "unavailable") vi.mocked(db.getDb).mockResolvedValue(null);
     if (failure === "write failure") vi.mocked(db.updateUserStripeConnectAccount).mockRejectedValue(new Error("Simulated database write failure"));
-    const res = await dispatch({ ...connectEvent, data: { object: { ...connectEvent.data.object, payouts_enabled: false } } });
+    const res = await dispatch(accountEvent({ payouts_enabled: false }));
     expect(res.status).toHaveBeenCalledWith(400);
     expect(res.json).not.toHaveBeenCalledWith({ received: true });
   });
@@ -251,5 +278,67 @@ describe("event scope and Connect account identity", () => {
     const res = await dispatch(connectEvent);
     expect(res.status).toHaveBeenCalledWith(400);
     expect(res.json).not.toHaveBeenCalledWith({ received: true });
+  });
+});
+
+// Stripe doesn't guarantee event order and retries failed deliveries for days,
+// so the flag must follow the account's live state, never the event snapshot.
+describe("account.updated follows Stripe's live account state, not the event snapshot", () => {
+  it("a stale 'disabled' snapshot never flips a payable coach to not-onboarded", async () => {
+    execute.mockResolvedValue([[{ id: 42, stripeConnectOnboarded: 1 }]]);
+    liveAccount(true, true);
+    const res = await dispatch(accountEvent({ payouts_enabled: false }));
+    expect(res.json).toHaveBeenCalledWith({ received: true });
+    expect(db.updateUserStripeConnectAccount).not.toHaveBeenCalled();
+  });
+
+  it("a stale 'enabled' snapshot never re-opens payments Stripe has disabled", async () => {
+    execute.mockResolvedValue([[{ id: 42, stripeConnectOnboarded: 0 }]]);
+    liveAccount(true, false);
+    const res = await dispatch(connectEvent);
+    expect(res.json).toHaveBeenCalledWith({ received: true });
+    expect(db.updateUserStripeConnectAccount).not.toHaveBeenCalled();
+  });
+
+  it("closes payments when Stripe has disabled the account, whatever the snapshot says", async () => {
+    execute.mockResolvedValue([[{ id: 42, stripeConnectOnboarded: true }]]);
+    liveAccount(false, true);
+    await dispatch(connectEvent);
+    expect(db.updateUserStripeConnectAccount).toHaveBeenCalledWith(42, "acct_coach_unit", false);
+  });
+
+  it("opens payments when Stripe has enabled the account, whatever the snapshot says", async () => {
+    liveAccount(true, true);
+    await dispatch(accountEvent({ charges_enabled: false, payouts_enabled: false }));
+    expect(db.updateUserStripeConnectAccount).toHaveBeenCalledWith(42, "acct_coach_unit", true);
+  });
+
+  it("does not acknowledge the event when Stripe can't be asked, so it is retried", async () => {
+    execute.mockResolvedValue([[{ id: 42, stripeConnectOnboarded: true }]]);
+    vi.mocked(getConnectAccountStatus).mockRejectedValue(new Error("Stripe API unavailable"));
+    const res = await dispatch(accountEvent({ payouts_enabled: false }));
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(db.updateUserStripeConnectAccount).not.toHaveBeenCalled();
+  });
+
+  it("a retried intermediate onboarding event can't undo a completed onboarding", async () => {
+    // In-memory users row behind the handler's read and write.
+    let onboarded = false;
+    execute.mockImplementation(async () => [[{ id: 42, stripeConnectOnboarded: onboarded }]]);
+    vi.mocked(db.updateUserStripeConnectAccount).mockImplementation(async (_id, _acct, value) => { onboarded = !!value; });
+    const e1 = { ...accountEvent({ payouts_enabled: false }), id: "evt_e1" };
+    const e2 = { ...connectEvent, id: "evt_e2" };
+
+    // E1 (charges only) hits a database blip and is left for Stripe to retry.
+    vi.mocked(db.getDb).mockResolvedValueOnce(null);
+    expect((await dispatch(e1)).status).toHaveBeenCalledWith(400);
+    // E2 (fully enabled) completes onboarding.
+    liveAccount(true, true);
+    await dispatch(e2);
+    expect(onboarded).toBe(true);
+    // Stripe retries E1 hours later; the account is still fully enabled.
+    const res = await dispatch(e1);
+    expect(res.json).toHaveBeenCalledWith({ received: true });
+    expect(onboarded).toBe(true);
   });
 });

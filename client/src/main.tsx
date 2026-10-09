@@ -1,7 +1,7 @@
 import { trpc } from "@/lib/trpc";
 import { UNAUTHED_ERR_MSG } from '@shared/const';
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { httpBatchLink, TRPCClientError } from "@trpc/client";
+import { httpBatchLink, httpLink, splitLink, TRPCClientError } from "@trpc/client";
 import { createRoot } from "react-dom/client";
 import superjson from "superjson";
 import App from "./App";
@@ -37,17 +37,26 @@ queryClient.getMutationCache().subscribe(event => {
   }
 });
 
+const transport = {
+  url: "/api/trpc",
+  transformer: superjson,
+  fetch(input: RequestInfo | URL, init?: RequestInit) {
+    return globalThis.fetch(input, {
+      ...(init ?? {}),
+      credentials: "include",
+    });
+  },
+};
+
 const trpcClient = trpc.createClient({
   links: [
-    httpBatchLink({
-      url: "/api/trpc",
-      transformer: superjson,
-      fetch(input, init) {
-        return globalThis.fetch(input, {
-          ...(init ?? {}),
-          credentials: "include",
-        });
-      },
+    // A batch answers only when its slowest call does, so a query that can
+    // wait on a third party (e.g. a live Stripe check) opts out with
+    // `trpc: { context: { skipBatch: true } }` and never holds back the page.
+    splitLink({
+      condition: (op) => op.context.skipBatch === true,
+      true: httpLink(transport),
+      false: httpBatchLink(transport),
     }),
   ],
 });

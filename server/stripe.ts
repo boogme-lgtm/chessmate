@@ -80,10 +80,17 @@ export async function createConnectLoginLink(accountId: string) {
 }
 
 /**
- * Check if a Connect account has completed onboarding
+ * Check if a Connect account has completed onboarding.
+ *
+ * `timeoutMs` bounds each attempt (and allows a single retry) for callers that
+ * must not hang on a degraded Stripe API; omit it for the SDK defaults.
  */
-export async function getConnectAccountStatus(accountId: string) {
-  const account = await stripe.accounts.retrieve(accountId);
+export async function getConnectAccountStatus(accountId: string, options: { timeoutMs?: number } = {}) {
+  const account = await stripe.accounts.retrieve(
+    accountId,
+    {},
+    options.timeoutMs ? { timeout: options.timeoutMs, maxNetworkRetries: 1 } : undefined,
+  );
   return {
     id: account.id,
     chargesEnabled: account.charges_enabled,
@@ -624,6 +631,14 @@ export async function createInstantPayout(
 // R3-2: Retrieve a checkout session to check its status
 export async function retrieveCheckoutSession(sessionId: string) {
   return stripe.checkout.sessions.retrieve(sessionId);
+}
+
+/**
+ * Expire an open Checkout Session so it can no longer be paid (Stripe rejects
+ * this for a session that is already complete or expired).
+ */
+export async function expireCheckoutSession(sessionId: string) {
+  return stripe.checkout.sessions.expire(sessionId);
 }
 
 export { stripe };

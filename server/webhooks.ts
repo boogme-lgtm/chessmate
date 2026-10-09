@@ -15,6 +15,7 @@ import { sendEmail, getStudentBookingConfirmationEmail, getCoachBookingNotificat
 import { ENV } from './_core/env';
 import { getTierFeePercent, DEFAULT_PRICING_TIER } from '@shared/pricing';
 import { notifyOwner } from './_core/notification';
+import { isConnectAccountFullyEnabled } from './coachPayability';
 
 // Use the shared Stripe instance from stripe.ts — do not create a duplicate
 
@@ -475,14 +476,18 @@ async function handlePaymentFailed(event: Stripe.Event) {
  * stored stripeConnectOnboarded flag gates every student payment (see
  * coachPayability.ts), so it must follow Stripe in both directions.
  *
+ * The event is only a signal. Stripe doesn't guarantee delivery order and
+ * retries failed deliveries for days, so a stale or reordered snapshot must
+ * never decide the flag: the account's live state does, and the flag is
+ * written only when it differs.
+ *
  * Receive this through a Connected accounts destination with a dedicated
  * STRIPE_CONNECT_WEBHOOK_SECRET. The router verifies event.account first.
  */
 async function handleAccountUpdated(event: Stripe.Event) {
   const account = event.data.object as Stripe.Account;
-  const fullyEnabled = !!account.charges_enabled && !!account.payouts_enabled;
 
-  console.log(`[Webhook] account.updated: ${account.id} (charges=${account.charges_enabled}, payouts=${account.payouts_enabled})`);
+  console.log(`[Webhook] account.updated: ${account.id} (event snapshot: charges=${account.charges_enabled}, payouts=${account.payouts_enabled})`);
 
   // Propagate database failures so Stripe can retry the account update.
   const dbInstance = await db.getDb();
@@ -500,25 +505,22 @@ async function handleAccountUpdated(event: Stripe.Event) {
     return;
   }
 
-  if (!fullyEnabled) {
-    if (!user.stripeConnectOnboarded) {
-      // Onboarding not finished yet — nothing to change.
-      return;
-    }
+  // Throws on a Stripe error or timeout, so the delivery fails and Stripe
+  // retries it rather than the flag being decided without Stripe's answer.
+  const fullyEnabled = await isConnectAccountFullyEnabled(account.id);
+  if (fullyEnabled === !!user.stripeConnectOnboarded) {
+    console.log(`[Webhook] User ${user.id} stripeConnectOnboarded already ${fullyEnabled}, skipping`);
+    return;
+  }
+
+  await db.updateUserStripeConnectAccount(user.id, account.id, fullyEnabled);
+  if (fullyEnabled) {
+    console.log(`[Webhook] User ${user.id} stripeConnectOnboarded set to true via account.updated`);
+  } else {
     // Stripe disabled charges or payouts on a verified account: fail closed so
     // students can't pay a coach who can no longer receive the money.
-    await db.updateUserStripeConnectAccount(user.id, account.id, false);
-    console.warn(`[Webhook] User ${user.id} stripeConnectOnboarded set to false via account.updated (charges=${account.charges_enabled}, payouts=${account.payouts_enabled})`);
-    return;
+    console.warn(`[Webhook] User ${user.id} stripeConnectOnboarded set to false via account.updated (live account no longer fully enabled)`);
   }
-
-  if (user.stripeConnectOnboarded) {
-    console.log(`[Webhook] User ${user.id} already marked onboarded, skipping`);
-    return;
-  }
-
-  await db.updateUserStripeConnectAccount(user.id, account.id, true);
-  console.log(`[Webhook] User ${user.id} stripeConnectOnboarded set to true via account.updated`);
 }
 
 /**
