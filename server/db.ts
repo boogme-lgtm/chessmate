@@ -50,6 +50,7 @@ import { computeCancellationRefund } from "@shared/cancellationPolicy";
 import { COACH_PENDING_STATUSES, buildCoachEarningsSummary } from "@shared/coachEarnings";
 import { ratingChangesForProfile, STORED_PROFILE_INPUTS } from "@shared/assessmentProfileUpdate";
 import { normalizeDisplayName } from "@shared/displayName";
+import { isDuplicateKeyError } from "./dbErrors";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 let previewDatabaseReady: Promise<void> | undefined;
@@ -1261,13 +1262,7 @@ export async function addToWaitlist(entry: InsertWaitlist) {
     await db.insert(waitlist).values(entry);
     return { success: true };
   } catch (error: any) {
-    // Check for duplicate entry errors (MySQL error codes)
-    if (error.code === 'ER_DUP_ENTRY' || error.errno === 1062) {
-      return { success: false, error: "This email is already on the waitlist" };
-    }
-    // Check if error message contains duplicate-related keywords
-    const errorMsg = error.message || String(error);
-    if (errorMsg.includes('Duplicate') || errorMsg.includes('duplicate') || errorMsg.includes('unique constraint')) {
+    if (isDuplicateKeyError(error)) {
       return { success: false, error: "This email is already on the waitlist" };
     }
     // Log unexpected errors for debugging
@@ -3166,7 +3161,7 @@ export async function subscribeToCoach(subscriberId: number, coachId: number, mo
     return result[0]?.insertId ?? 0;
   } catch (err: any) {
     // Handle race condition: concurrent subscribe → duplicate key
-    if (err?.errno === 1062 || err?.code === "ER_DUP_ENTRY") {
+    if (isDuplicateKeyError(err)) {
       const refetched = await db.select().from(coachSubscriptions)
         .where(and(
           eq(coachSubscriptions.subscriberId, subscriberId),
@@ -3548,7 +3543,7 @@ export async function recordContentPurchase(data: {
     `);
     return "inserted";
   } catch (err: any) {
-    if (err?.errno === 1062 || err?.code === "ER_DUP_ENTRY") {
+    if (isDuplicateKeyError(err)) {
       // A row already exists for this (item, user). Determine whether it's the
       // same PaymentIntent (true retry) or a different one (double-purchase).
       const existing: any = await db.execute(sql`

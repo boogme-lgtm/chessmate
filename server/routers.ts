@@ -54,6 +54,7 @@ import {
   needsPayoutSetupReminder,
   isConnectAccountFullyEnabled,
 } from "./coachPayability";
+import { isDuplicateKeyError } from "./dbErrors";
 
 /**
  * Send cancellation confirmation emails to both student and coach.
@@ -344,8 +345,7 @@ export const appRouter = router({
         try {
           await db.createReferral({ referralCodeId: ref.id, referredUserId: ctx.user.id });
         } catch (err: any) {
-          // MySQL duplicate entry error (ER_DUP_ENTRY = 1062)
-          if (err?.errno === 1062 || err?.code === 'ER_DUP_ENTRY') {
+          if (isDuplicateKeyError(err)) {
             return { success: true, alreadyReferred: true };
           }
           throw err;
@@ -2662,8 +2662,7 @@ export const appRouter = router({
               (${input.contentItemId}, ${ctx.user.id}, 'purchase', ${amountPaidCents}, ${input.stripePaymentIntentId})
           `);
         } catch (insertErr: any) {
-          // MySQL duplicate entry error code: ER_DUP_ENTRY (1062)
-          if (insertErr?.errno === 1062 || insertErr?.code === 'ER_DUP_ENTRY') {
+          if (isDuplicateKeyError(insertErr)) {
             return { success: true, alreadyOwned: true };
           }
           throw insertErr;

@@ -35,6 +35,13 @@ import * as db from "./db";
 import * as stripeService from "./stripe";
 import * as stripeConnect from "./stripeConnect";
 import type { TrpcContext } from "./_core/context";
+import { DrizzleQueryError } from "drizzle-orm";
+
+/** A mysql2 ER_DUP_ENTRY error as drizzle 0.45 throws it: wrapped, with the driver error on `.cause`. */
+function wrappedDuplicateKeyError() {
+  const driverError = Object.assign(new Error("Duplicate entry 'x' for key 'uq'"), { errno: 1062, code: "ER_DUP_ENTRY" });
+  return new DrizzleQueryError("insert into `t` values (?)", ["x"], driverError);
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -1104,8 +1111,8 @@ describe("content.recordPurchase", () => {
         .mockResolvedValueOnce([[]])
         // Second call: content item lookup
         .mockResolvedValueOnce([[{ priceCents: 1999, currency: "USD" }]])
-        // Third call: insert throws duplicate entry
-        .mockRejectedValueOnce({ errno: 1062, code: "ER_DUP_ENTRY" }),
+        // Third call: insert throws duplicate entry, wrapped the way drizzle 0.45 does
+        .mockRejectedValueOnce(wrappedDuplicateKeyError()),
     };
     vi.mocked(db.getDb).mockResolvedValue(mockDatabase as any);
     const { stripe } = await import("./stripe");
@@ -1162,7 +1169,7 @@ describe("referral.recordSignup", () => {
       id: 10, coachId: 2, code: "DUP123", isActive: true, totalUses: 3,
       createdAt: new Date(), updatedAt: new Date(),
     } as any);
-    vi.mocked(db.createReferral).mockRejectedValue({ errno: 1062, code: "ER_DUP_ENTRY" });
+    vi.mocked(db.createReferral).mockRejectedValue(wrappedDuplicateKeyError());
 
     const caller = appRouter.createCaller(createContext({ id: 7 }));
     const result = await caller.referral.recordSignup({ code: "DUP123" });
