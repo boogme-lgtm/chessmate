@@ -5,7 +5,7 @@ import { MySqlDialect } from "drizzle-orm/mysql-core";
 import { ENV } from "./_core/env";
 import { handleStripeWebhook } from "./webhooks";
 import * as db from "./db";
-import { getConnectAccountStatus } from "./stripe";
+import { expireCheckoutSession, getConnectAccountStatus } from "./stripe";
 import { transferToCoach } from "./stripeConnect";
 import { sendEmail } from "./emailService";
 import { notifyOwner } from "./_core/notification";
@@ -20,6 +20,7 @@ vi.mock("./stripe", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./stripe")>()),
   getConnectAccountStatus: vi.fn(),
   createRefund: vi.fn(),
+  expireCheckoutSession: vi.fn(),
 }));
 
 // Use Stripe's real signing and verification code with synthetic local secrets.
@@ -298,6 +299,50 @@ describe("event scope and Connect account identity", () => {
     // Still matched on the event's own account id.
     const query = new MySqlDialect().sqlToQuery(execute.mock.calls[0][0]);
     expect(query.params).toEqual(["acct_coach_unit"]);
+  });
+
+  describe("closing payment links when a coach becomes unpayable", () => {
+    it("expires every stored open checkout once Stripe disables the account", async () => {
+      execute.mockResolvedValue([[{ id: 42, stripeConnectOnboarded: 1 }]]);
+      liveAccount(true, false);
+      vi.mocked(db.getOpenCheckoutSessionIdsForCoach).mockResolvedValue(["cs_lesson", "cs_request", "cs_tip"]);
+      const res = await dispatch(accountEvent({ payouts_enabled: false }));
+      expect(res.json).toHaveBeenCalledWith({ received: true });
+      expect(db.getOpenCheckoutSessionIdsForCoach).toHaveBeenCalledWith(42);
+      expect(vi.mocked(expireCheckoutSession).mock.calls.map(c => c[0])).toEqual(["cs_lesson", "cs_request", "cs_tip"]);
+    });
+
+    it("retries expiry on a redelivery even though the flag is already off", async () => {
+      execute.mockResolvedValue([[{ id: 42, stripeConnectOnboarded: 0 }]]);
+      liveAccount(false, true);
+      vi.mocked(db.getOpenCheckoutSessionIdsForCoach).mockResolvedValue(["cs_left_open"]);
+      await dispatch(accountEvent({ charges_enabled: false }));
+      expect(db.updateUserStripeConnectAccount).not.toHaveBeenCalled();
+      expect(expireCheckoutSession).toHaveBeenCalledWith("cs_left_open");
+    });
+
+    it("never expires checkouts for a fully enabled account", async () => {
+      execute.mockResolvedValue([[{ id: 42, stripeConnectOnboarded: 0 }]]);
+      liveAccount(true, true);
+      await dispatch(accountEvent({}));
+      expect(db.updateUserStripeConnectAccount).toHaveBeenCalledWith(42, "acct_coach_unit", true);
+      expect(db.getOpenCheckoutSessionIdsForCoach).not.toHaveBeenCalled();
+      expect(expireCheckoutSession).not.toHaveBeenCalled();
+    });
+
+    it("acknowledges the event and keeps going when a session can't be expired", async () => {
+      execute.mockResolvedValue([[{ id: 42, stripeConnectOnboarded: 1 }]]);
+      liveAccount(false, false);
+      vi.mocked(db.getOpenCheckoutSessionIdsForCoach).mockResolvedValue(["cs_already_complete", "cs_open"]);
+      vi.mocked(expireCheckoutSession).mockRejectedValueOnce(new Error("Only open sessions can be expired"));
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const res = await dispatch(accountEvent({ charges_enabled: false, payouts_enabled: false }));
+      warn.mockRestore();
+      expect(res.status).not.toHaveBeenCalled();
+      expect(res.json).toHaveBeenCalledWith({ received: true });
+      expect(db.updateUserStripeConnectAccount).toHaveBeenCalledWith(42, "acct_coach_unit", false);
+      expect(expireCheckoutSession).toHaveBeenCalledWith("cs_open");
+    });
   });
 
   it("is idempotent when a disabled account is delivered again", async () => {

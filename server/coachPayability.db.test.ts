@@ -27,6 +27,7 @@ vi.mock("drizzle-orm/mysql2", async (importOriginal) => {
 import {
   clearContentRequestCheckoutSessionIfMatches,
   getCoachPayoutStates,
+  getOpenCheckoutSessionIdsForCoach,
   recordFreeContentUnlock,
 } from "./db";
 
@@ -87,5 +88,33 @@ describe("clearContentRequestCheckoutSessionIfMatches", () => {
   it("reports a lost race (a concurrent request replaced the session) as not cleared", async () => {
     respond({ affectedRows: 0 });
     expect(await clearContentRequestCheckoutSessionIfMatches(10, "cs_old")).toBe(false);
+  });
+});
+
+describe("getOpenCheckoutSessionIdsForCoach", () => {
+  it("reads only this coach's unpaid lessons, content requests and tips, skipping claim placeholders", async () => {
+    client.query.mockImplementation(async (query: any) => {
+      const text = typeof query === "string" ? query : query.sql;
+      if (/from `lessons`/i.test(text)) return [[["cs_lesson"], ["cs_shared"]], []];
+      if (/from `content_requests`/i.test(text)) return [[["cs_request"], ["cs_shared"]], []];
+      if (/from `tips`/i.test(text)) return [[["cs_tip"]], []];
+      throw new Error(`unexpected query: ${text}`);
+    });
+    const ids = await getOpenCheckoutSessionIdsForCoach(42);
+    expect(ids.sort()).toEqual(["cs_lesson", "cs_request", "cs_shared", "cs_tip"]);
+
+    expect(queries).toHaveLength(3);
+    const lessonQuery = queries.find(q => /from `lessons`/i.test(q.sql))!;
+    const requestQuery = queries.find(q => /from `content_requests`/i.test(q.sql))!;
+    const tipQuery = queries.find(q => /from `tips`/i.test(q.sql))!;
+    for (const q of [lessonQuery, requestQuery]) {
+      expect(q.sql).toMatch(/`coachId` = \?/);
+      expect(q.sql).toMatch(/`status` = \?/);
+      expect(q.sql).toMatch(/`stripeCheckoutSessionId` is not null/i);
+      expect(q.sql).toMatch(/`stripeCheckoutSessionId` <> \?/);
+      expect(q.params).toEqual([42, "pending_payment", "__pending__"]);
+    }
+    expect(tipQuery.sql).toMatch(/`stripeCheckoutSessionId` is not null/i);
+    expect(tipQuery.params).toEqual([42, "pending"]);
   });
 });

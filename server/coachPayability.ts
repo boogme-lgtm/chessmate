@@ -227,6 +227,45 @@ export async function requirePayableCoachForOpenCheckout(
 }
 
 /**
+ * Expire every stored, still-open Checkout Session for a coach who can no
+ * longer receive money (Stripe disabled their account, or it was closed), so
+ * links already handed to students — other tabs, browser history — can't be
+ * paid. Stored session ids are deliberately left in place: each checkout path
+ * already sees the session expired on its next attempt and replaces it under a
+ * new idempotency key, where the payment gate then blocks it. Clearing them
+ * here would let lesson checkout reuse the old key and get the expired session
+ * back from Stripe.
+ *
+ * Best effort and never throws: a session that already completed or timed out
+ * is refused by Stripe and simply logged, and the open-checkout gate still
+ * covers the in-app path.
+ */
+export async function expireOpenCheckoutsForCoach(coachUserId: number): Promise<{ expired: number; failed: number }> {
+  let sessionIds: string[];
+  try {
+    sessionIds = (await db.getOpenCheckoutSessionIdsForCoach(coachUserId)) ?? [];
+  } catch (err: any) {
+    console.error(`[coachPayability] Could not list open checkouts for coach ${coachUserId}: ${err?.message ?? err}`);
+    return { expired: 0, failed: 0 };
+  }
+  let expired = 0;
+  let failed = 0;
+  for (const sessionId of sessionIds) {
+    try {
+      await stripeService.expireCheckoutSession(sessionId);
+      expired++;
+    } catch (err: any) {
+      failed++;
+      console.warn(`[coachPayability] Could not expire checkout ${sessionId} for coach ${coachUserId}: ${err?.message ?? err}`);
+    }
+  }
+  if (sessionIds.length > 0) {
+    console.warn(`[coachPayability] Coach ${coachUserId} is not payable: expired ${expired} open checkout(s), ${failed} not expirable`);
+  }
+  return { expired, failed };
+}
+
+/**
  * Batch, stored-state-only lookup for public listings (browse, profile,
  * storefront, matching). Unknown ids map to false. A lookup failure degrades
  * to "not accepting payments" rather than failing the listing — the payment

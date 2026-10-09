@@ -21,7 +21,7 @@ Each sprint was built, reviewed by four independent lenses (correctness, securit
 ## Owner decisions requested
 
 - Paid coach subscriptions record a price but never charge (recurring billing TODO). Disable paid subscriptions until billing exists?
-- Lessons/content requests already in `pending_payment` for unpayable coaches: auto-cancel or notify? Expire old Checkout Sessions for those coaches?
+- Lessons/content requests already in `pending_payment` for unpayable coaches: auto-cancel or notify? (Their open Checkout Sessions are now expired automatically — see Follow-ups done.)
 - Rank unpayable-but-live coaches lower in browse/matching? (Currently same position + badge.)
 - Dashboard rating has no rating-system choice (FIDE/Lichess/Chess.com) while matching interprets it via the questionnaire's system; and once set it can only be changed via Find Another Coach. Add a selector / editing / lichess+chess.com sync?
 - First questionnaire save without a rating still writes 1200 (unchanged behaviour). Leave rating empty instead?
@@ -32,7 +32,12 @@ Each sprint was built, reviewed by four independent lenses (correctness, securit
 ## Recommended next sprints
 
 1. **CSRF hardening for tRPC:** tRPC v11 accepts `multipart/form-data` POSTs, which any site can send cross-origin; with the `SameSite=None` OAuth session cookie, 8 no-input mutations are reachable. Reject non-JSON POSTs to `/api/trpc` or require a custom header.
-2. **Pre-existing bugs found during the sprints:** `contentRequest.createCheckout` never clears an expired session (permanent CONFLICT); `tip.createCheckout` deletes a pending tip whose session may still be payable (orphaned payment); soft-deleted coaches still appear in browse; drizzle 0.45 wraps MySQL errors, so duplicate-key checks in `recordContentPurchase` / `subscribeToCoach` / `addToWaitlist` never fire; "Pay only after your lesson" copy contradicts the upfront-escrow model.
+2. **Pre-existing bugs found during the sprints:** `contentRequest.createCheckout` never clears an expired session (permanent CONFLICT); `tip.createCheckout` deletes a pending tip whose session may still be payable (orphaned payment); soft-deleted coaches still appear in browse; "Pay only after your lesson" copy contradicts the upfront-escrow model.
 3. **DB indexes + class-title column** (from the main audit) — needs a migration; rehearse on the isolated preview DB first, never `pnpm db:push` on production.
 4. **Merge `astra/security-headers-1`** after confirming whether Manus frames the site.
 5. Add a DOM test environment (jsdom/testing-library) so client flows (BookingModal, Register) get component tests.
+
+## Follow-ups done after the sprints
+
+- **Duplicate-key detection** (`server/dbErrors.ts`): drizzle 0.45 wraps mysql2 errors in `DrizzleQueryError` (driver error on `.cause`), so every `errno === 1062` check silently missed — double storefront purchases weren't refunded, concurrent subscribes threw, repeat waitlist signups returned 500s. `isDuplicateKeyError` walks the cause chain and is used at all five sites.
+- **Expire open checkouts when a coach becomes unpayable** (`expireOpenCheckoutsForCoach` in `server/coachPayability.ts`): runs when `account.updated` reports the account not fully enabled (also on redelivery), when `confirmStripeOnboarded` flips a coach to unpayable, and when a coach deletes their account. Covers lessons and content requests awaiting payment and pending tips. Stored session ids are intentionally kept so the existing "expired → replace" path bumps the idempotency key. Storefront sessions aren't stored, so they still rely on the webhook backstop (owed-payout alert). Still an owner decision: what `checkout.session.completed` should do if a payment slips through for an unpayable coach (lesson funds stay in escrow either way).

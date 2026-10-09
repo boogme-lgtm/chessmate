@@ -885,6 +885,40 @@ export async function clearLessonCheckoutSessionIfMatches(
   return { cleared: true, checkoutAttempt: row?.checkoutAttempt ?? 0 };
 }
 
+/**
+ * Stored Checkout Session ids that may still be payable for a coach: lessons
+ * and content requests awaiting payment, and pending tips. Used to expire them
+ * at Stripe when the coach can no longer receive money. Excludes the
+ * "__pending__" claim placeholder (no session exists yet).
+ */
+export async function getOpenCheckoutSessionIdsForCoach(coachId: number): Promise<string[]> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [lessonRows, requestRows, tipRows] = await Promise.all([
+    db.select({ sessionId: lessons.stripeCheckoutSessionId }).from(lessons).where(and(
+      eq(lessons.coachId, coachId),
+      eq(lessons.status, "pending_payment"),
+      isNotNull(lessons.stripeCheckoutSessionId),
+      ne(lessons.stripeCheckoutSessionId, "__pending__"),
+    )),
+    db.select({ sessionId: contentRequests.stripeCheckoutSessionId }).from(contentRequests).where(and(
+      eq(contentRequests.coachId, coachId),
+      eq(contentRequests.status, "pending_payment"),
+      isNotNull(contentRequests.stripeCheckoutSessionId),
+      ne(contentRequests.stripeCheckoutSessionId, "__pending__"),
+    )),
+    db.select({ sessionId: tips.stripeCheckoutSessionId }).from(tips).where(and(
+      eq(tips.coachId, coachId),
+      eq(tips.status, "pending"),
+      isNotNull(tips.stripeCheckoutSessionId),
+    )),
+  ]);
+  const ids = [...lessonRows, ...requestRows, ...tipRows]
+    .map(row => row.sessionId)
+    .filter((id): id is string => !!id && id !== "__pending__");
+  return Array.from(new Set(ids));
+}
+
 // R7-1: Unconditional clear for webhook use (after payment succeeds, we know the session is ours).
 // Used only by the webhook handler where we own the session and there's no race concern.
 export async function clearLessonCheckoutSession(lessonId: number): Promise<number> {

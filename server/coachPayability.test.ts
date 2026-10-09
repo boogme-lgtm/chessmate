@@ -41,6 +41,7 @@ import {
   requirePayableCoach,
   requirePayableCoachForOpenCheckout,
   resetCoachPayabilityCache,
+  expireOpenCheckoutsForCoach,
 } from "./coachPayability";
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
@@ -974,5 +975,48 @@ describe("coach payout-setup status", () => {
     useCoach(payableCoach);
     await coachCaller().coach.confirmStripeOnboarded();
     expect(db.updateUserStripeConnectAccount).not.toHaveBeenCalled();
+  });
+
+  it("confirmStripeOnboarded expires open checkouts only when the coach flips to unpayable", async () => {
+    vi.mocked(db.getOpenCheckoutSessionIdsForCoach).mockResolvedValue(["cs_open_lesson"]);
+    stripeSays(true, false);
+    await coachCaller().coach.confirmStripeOnboarded();
+    expect(db.getOpenCheckoutSessionIdsForCoach).toHaveBeenCalledWith(42);
+    expect(stripeService.expireCheckoutSession).toHaveBeenCalledWith("cs_open_lesson");
+
+    // Becoming payable never expires anything.
+    vi.mocked(db.getOpenCheckoutSessionIdsForCoach).mockClear();
+    vi.mocked(stripeService.expireCheckoutSession).mockClear();
+    useCoach(pendingCoach);
+    stripeSays(true, true);
+    await coachCaller().coach.confirmStripeOnboarded();
+    expect(db.getOpenCheckoutSessionIdsForCoach).not.toHaveBeenCalled();
+    expect(stripeService.expireCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  it("deleting a coach account expires the coach's open checkouts", async () => {
+    useCoach({ ...payableCoach, password: null } as any);
+    vi.mocked(db.getOpenCheckoutSessionIdsForCoach).mockResolvedValue(["cs_open_tip"]);
+    await expect(coachCaller().user.deleteAccount({})).resolves.toEqual({ success: true });
+    expect(db.softDeleteUser).toHaveBeenCalledWith(42);
+    expect(stripeService.expireCheckoutSession).toHaveBeenCalledWith("cs_open_tip");
+  });
+
+  it("expireOpenCheckoutsForCoach never throws: lookup and per-session failures are logged", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      vi.mocked(db.getOpenCheckoutSessionIdsForCoach).mockRejectedValueOnce(new Error("db down"));
+      await expect(expireOpenCheckoutsForCoach(42)).resolves.toEqual({ expired: 0, failed: 0 });
+
+      vi.mocked(db.getOpenCheckoutSessionIdsForCoach).mockResolvedValueOnce(["cs_done", "cs_open"]);
+      vi.mocked(stripeService.expireCheckoutSession)
+        .mockRejectedValueOnce(new Error("Only open sessions can be expired"))
+        .mockResolvedValueOnce({} as any);
+      await expect(expireOpenCheckoutsForCoach(42)).resolves.toEqual({ expired: 1, failed: 1 });
+    } finally {
+      warn.mockRestore();
+      error.mockRestore();
+    }
   });
 });

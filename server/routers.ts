@@ -53,6 +53,7 @@ import {
   withAcceptingPayments,
   needsPayoutSetupReminder,
   isConnectAccountFullyEnabled,
+  expireOpenCheckoutsForCoach,
 } from "./coachPayability";
 import { isDuplicateKeyError } from "./dbErrors";
 
@@ -309,6 +310,10 @@ export const appRouter = router({
           }
         }
         await db.softDeleteUser(ctx.user.id);
+        // A closed coach account can't be paid (coachPayability): close any
+        // payment links students already hold. Sessions only exist for coaches
+        // who had a Connect account.
+        if (user.stripeConnectAccountId) await expireOpenCheckoutsForCoach(ctx.user.id);
         return { success: true };
       }),
   }),
@@ -970,6 +975,8 @@ export const appRouter = router({
       // what gates student payments (see coachPayability.ts).
       if (onboarded !== !!user.stripeConnectOnboarded) {
         await db.updateUserStripeConnectAccount(ctx.user.id, user.stripeConnectAccountId, onboarded);
+        // Became unpayable: close any payment links students already hold.
+        if (!onboarded) await expireOpenCheckoutsForCoach(ctx.user.id);
       }
       return { onboarded };
     }),

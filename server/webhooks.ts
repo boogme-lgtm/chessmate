@@ -15,7 +15,7 @@ import { sendEmail, getStudentBookingConfirmationEmail, getCoachBookingNotificat
 import { ENV } from './_core/env';
 import { getTierFeePercent, DEFAULT_PRICING_TIER } from '@shared/pricing';
 import { notifyOwner } from './_core/notification';
-import { isConnectAccountFullyEnabled } from './coachPayability';
+import { expireOpenCheckoutsForCoach, isConnectAccountFullyEnabled } from './coachPayability';
 
 // Use the shared Stripe instance from stripe.ts — do not create a duplicate
 
@@ -542,16 +542,21 @@ async function handleAccountUpdated(event: Stripe.Event) {
   const fullyEnabled = await isConnectAccountFullyEnabled(account.id);
   if (fullyEnabled === !!user.stripeConnectOnboarded) {
     console.log(`[Webhook] User ${user.id} stripeConnectOnboarded already ${fullyEnabled}, skipping`);
-    return;
+  } else {
+    await db.updateUserStripeConnectAccount(user.id, account.id, fullyEnabled);
+    if (fullyEnabled) {
+      console.log(`[Webhook] User ${user.id} stripeConnectOnboarded set to true via account.updated`);
+    } else {
+      // Stripe disabled charges or payouts on a verified account: fail closed so
+      // students can't pay a coach who can no longer receive the money.
+      console.warn(`[Webhook] User ${user.id} stripeConnectOnboarded set to false via account.updated (live account no longer fully enabled)`);
+    }
   }
 
-  await db.updateUserStripeConnectAccount(user.id, account.id, fullyEnabled);
-  if (fullyEnabled) {
-    console.log(`[Webhook] User ${user.id} stripeConnectOnboarded set to true via account.updated`);
-  } else {
-    // Stripe disabled charges or payouts on a verified account: fail closed so
-    // students can't pay a coach who can no longer receive the money.
-    console.warn(`[Webhook] User ${user.id} stripeConnectOnboarded set to false via account.updated (live account no longer fully enabled)`);
+  // Close payment links already handed out. Also runs when the flag was
+  // already false, so a redelivered event retries any expiry that failed.
+  if (!fullyEnabled) {
+    await expireOpenCheckoutsForCoach(user.id);
   }
 }
 
