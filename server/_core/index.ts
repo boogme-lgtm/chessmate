@@ -2,13 +2,10 @@ import "dotenv/config";
 import express from "express";
 import { createServer } from "http";
 import net from "net";
-import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthCallbackRoutes, registerOAuthStartRoutes } from "./oauth";
-import { appRouter } from "../routers";
-import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
-import { backgroundJobsEnabled, startBackgroundJobs } from "./backgroundJobs";
-import { registerTrpcRateLimits } from "./rateLimits";
+import { autoReleasePayoutsEnabled, backgroundJobsEnabled, startBackgroundJobs } from "./backgroundJobs";
+import { registerTrpcApi } from "./trpcApi";
 import { ENV } from "./env";
 import { getDb } from "../db";
 import { verifyStorageIsolation } from "../storage";
@@ -33,9 +30,11 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 }
 
 async function startServer() {
-  // Validate job ownership before anything listens: an unrecognized flag must
-  // fail the deploy with a clear message, not crash-loop a serving process.
+  // Validate the job flags before anything listens: an unrecognized value must
+  // fail the deploy with a clear message, not crash-loop a serving process or
+  // silently hold coach payouts.
   backgroundJobsEnabled();
+  autoReleasePayoutsEnabled();
   if (ENV.preview) {
     await getDb();
     await verifyStorageIsolation();
@@ -93,19 +92,11 @@ async function startServer() {
     // Redirect to homepage with cache-busting parameter
     res.redirect("/?logout=" + Date.now());
   });
-  // Rate limiting: credential and email-sending procedures get 10 requests per
-  // minute per IP — including when batched with other calls — and every other
-  // tRPC call 200/min. The procedure list lives in rateLimits.ts.
-  registerTrpcRateLimits(app);
-
-  // tRPC API
-  app.use(
-    "/api/trpc",
-    createExpressMiddleware({
-      router: appRouter,
-      createContext,
-    })
-  );
+  // tRPC API, behind its rate limits: credential and email-sending procedures
+  // get 10 requests per minute per IP each — including when batched with other
+  // calls — and every other tRPC call 200/min. The procedure list lives in
+  // rateLimits.ts. Mount tRPC only through registerTrpcApi.
+  registerTrpcApi(app);
   // development mode uses Vite, production mode uses static files
   if (process.env.NODE_ENV === "development") {
     await setupVite(app, server);

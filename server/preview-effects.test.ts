@@ -10,6 +10,7 @@ vi.mock("resend", () => ({ Resend: vi.fn(() => { throw new Error("External email
 import { sendEmail as authEmail } from "./email";
 import { sendEmail as serviceEmail } from "./emailService";
 import { notifyOwner } from "./_core/notification";
+import { capturePreviewEmail } from "./_core/previewEmail";
 import { createStripeCustomer } from "./stripe";
 import { createConnectAccount } from "./stripeConnect";
 
@@ -42,6 +43,14 @@ describe("all outbound email paths in preview", () => {
     expect(await serviceEmail(message)).toMatchObject({ success: false });
     expect(await notifyOwner({ title: "Unit", content: "Unit" })).toBe(false);
     expect(fetchMock.mock.calls.every(([url]) => url === "http://127.0.0.1:8025/api/v1/send")).toBe(true);
+  });
+  it("keeps every captured subject to one header line, including the owner notice's title", async () => {
+    // notifyOwner passes its title straight to the capture inbox, so the
+    // capture itself must strip CR/LF (Sprint 3).
+    await capturePreviewEmail({ to: "owner@example.com", subject: "New application\r\nBcc: victim@example.com", html: "<p>x</p>" });
+    expect(await notifyOwner({ title: "Coach application: Eve\nBcc: victim@example.com", content: "x" })).toBe(true);
+    const subjects = fetchMock.mock.calls.map(([, request]) => JSON.parse(request.body).Subject);
+    expect(subjects).toEqual(["New application Bcc: victim@example.com", "Coach application: Eve Bcc: victim@example.com"]);
   });
   it("requires an actual capture receipt", async () => {
     fetchMock.mockResolvedValue(new Response("{}"));

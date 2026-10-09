@@ -4,7 +4,12 @@ import { eq } from "drizzle-orm";
 import { getDb } from "./db";
 import { users } from "../drizzle/schema";
 import { sendEmail } from "./email";
-import { escapeHtml } from "./emailSafety";
+import {
+  getAccountVerificationEmail,
+  getAccountVerifiedEmail,
+  getPasswordResetEmail,
+  getVerificationResendEmail,
+} from "./emailService";
 import { ENV } from "./_core/env";
 import { normalizeDisplayName } from "@shared/displayName";
 
@@ -100,14 +105,7 @@ export async function registerUser(params: {
   await sendEmail({
     to: params.email,
     subject: "Verify your BooGMe account",
-    html: `
-      <h1>Welcome to BooGMe!</h1>
-      <p>Hi ${escapeHtml(name)},</p>
-      <p>Thank you for registering. Please verify your email address by clicking the link below:</p>
-      <p><a href="${verificationUrl}">Verify Email</a></p>
-      <p>This link will expire in 24 hours.</p>
-      <p>If you didn't create this account, please ignore this email.</p>
-    `,
+    html: getAccountVerificationEmail({ name, verificationUrl }),
   });
 
   return { success: true, userId: newUser.insertId };
@@ -149,14 +147,7 @@ export async function resendVerificationEmail(
   void sendEmail({
     to: email,
     subject: "Verify your BooGMe account",
-    html: `
-      <h1>Verify your email</h1>
-      <p>Hi ${escapeHtml(user.name || "there")},</p>
-      <p>Here's a fresh link to verify your BooGMe account:</p>
-      <p><a href="${verificationUrl}">Verify Email</a></p>
-      <p>This link will expire in 24 hours.</p>
-      <p>If you didn't request this, you can ignore this email.</p>
-    `,
+    html: getVerificationResendEmail({ name: user.name, verificationUrl }),
   }).catch((e) => console.error("[resendVerificationEmail] send failed:", e));
 
   return { success: true };
@@ -214,14 +205,7 @@ export async function verifyEmail(token: string): Promise<{
   await sendEmail({
     to: user.email,
     subject: "Welcome to BooGMe - Your account is verified!",
-    html: `
-      <h1>Welcome to BooGMe!</h1>
-      <p>Hi ${escapeHtml(user.name || "there")},</p>
-      <p>Your email has been successfully verified. You can now start booking lessons with elite chess coaches!</p>
-      <p><a href="${ENV.frontendUrl}/coaches">Browse Coaches</a></p>
-      <p>Happy learning!</p>
-      <p>The BooGMe Team</p>
-    `,
+    html: getAccountVerifiedEmail({ name: user.name, browseCoachesUrl: `${ENV.frontendUrl}/coaches` }),
   });
 
   return { success: true, userId: user.id };
@@ -335,14 +319,7 @@ export async function requestPasswordReset(email: string): Promise<{
   await sendEmail({
     to: email,
     subject: "Reset your BooGMe password",
-    html: `
-      <h1>Password Reset Request</h1>
-      <p>Hi ${escapeHtml(user.name || "there")},</p>
-      <p>You requested to reset your password. Click the link below to create a new password:</p>
-      <p><a href="${resetUrl}">Reset Password</a></p>
-      <p>This link will expire in 24 hours.</p>
-      <p>If you didn't request this, please ignore this email.</p>
-    `,
+    html: getPasswordResetEmail({ name: user.name, resetUrl }),
   });
 
   return { success: true };

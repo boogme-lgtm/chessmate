@@ -11,8 +11,7 @@ import { z } from "zod";
 import { router, protectedProcedure } from "./_core/trpc";
 import { TRPCError } from "@trpc/server";
 import * as db from "./db";
-import { sendEmail } from "./emailService";
-import { escapeHtml } from "./emailSafety";
+import { getAnnotatedGameEmail, sendEmail } from "./emailService";
 
 export const analysisRouter = router({
   // Create a new analysis session — coaches AND students can create.
@@ -118,7 +117,7 @@ export const analysisRouter = router({
           await sendEmail({
             to: recipient.email,
             subject: `${senderLabel} sent you an annotated game`,
-            html: `<p>${escapeHtml(senderLabel)} sent you an annotated game: <strong>${escapeHtml(analysis!.title)}</strong>.</p><p>Open your lesson chat to review it on the analysis board.</p>`,
+            html: getAnnotatedGameEmail({ senderName: senderLabel, analysisTitle: analysis!.title }),
           });
         } catch (err) {
           console.error(`[analysis.sendToCoach] recipient email failed for analysis ${input.id}:`, err);

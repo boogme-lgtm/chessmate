@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { trpc } from "@/lib/trpc";
 import { Loader2, CheckCircle2, Eye, EyeOff } from "lucide-react";
+import { DISPLAY_NAME_MAX_LENGTH, displayNameProblem } from "@shared/displayName";
 
 export default function Register() {
   const [, setLocation] = useLocation();
@@ -54,6 +55,13 @@ export default function Register() {
       return;
     }
 
+    // The server trims the name and caps its length; explain that here.
+    const nameProblem = displayNameProblem(name);
+    if (nameProblem) {
+      setError(nameProblem);
+      return;
+    }
+
     if (password !== confirmPassword) {
       setError("Passwords do not match");
       return;
@@ -72,7 +80,7 @@ export default function Register() {
     registerMutation.mutate({
       email,
       password,
-      name,
+      name: name.trim(),
     });
   };
 
@@ -163,6 +171,7 @@ export default function Register() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 disabled={registerMutation.isPending}
+                maxLength={DISPLAY_NAME_MAX_LENGTH}
                 required
               />
             </div>

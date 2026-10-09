@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { refreshUnreadMessageViews } from "@/lib/unreadMessageViews";
 import { useAuth } from "@/_core/hooks/useAuth";
 import {
   Dialog,
@@ -85,21 +86,15 @@ export default function MessageThread({
       setDraft("");
       setContentType("text");
       utils.messages.getForLesson.invalidate({ lessonId });
-      utils.messages.getUnreadCounts.invalidate();
-      utils.messages.getUnreadTotal.invalidate();
       utils.messages.getSummaries.invalidate();
-      utils.messages.getClasses.invalidate();
+      refreshUnreadMessageViews(utils);
     },
     onError: (err) => toast.error(err.message),
   });
 
   useEffect(() => {
-    if (open && thread.data) {
-      // Opening the thread marked it read: refresh every unread view together.
-      utils.messages.getUnreadCounts.invalidate();
-      utils.messages.getUnreadTotal.invalidate();
-      utils.messages.getClasses.invalidate();
-    }
+    // Loading the open thread marked it read.
+    if (open && thread.data) refreshUnreadMessageViews(utils);
   }, [open, thread.data, utils]);
 
   // Auto-scroll to the latest message when new messages arrive

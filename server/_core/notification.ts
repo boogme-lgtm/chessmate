@@ -1,7 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import { ENV } from "./env";
 import { capturePreviewEmail } from "./previewEmail";
-import { escapeHtml } from "../emailSafety";
+import { getOwnerNotificationEmail } from "../emailService";
 
 export type NotificationPayload = {
   title: string;
@@ -72,7 +72,7 @@ export async function notifyOwner(
 
   if (ENV.preview) {
     try {
-      await capturePreviewEmail({ to: "owner@boogme-preview.invalid", subject: title, html: `<pre>${escapeHtml(content)}</pre>` });
+      await capturePreviewEmail({ to: "owner@boogme-preview.invalid", subject: title, html: getOwnerNotificationEmail({ content }) });
       return true;
     } catch { return false; }
   }

@@ -35,8 +35,8 @@ import {
   getNewSubscriberEmail,
   getCoachApplicationAdminEmail,
   getCoachApprovedEmail,
+  getWaitlistBroadcastEmail,
 } from "./emailService";
-import { escapeHtml, escapeHtmlWithLineBreaks } from "./emailSafety";
 import { DISPLAY_NAME_MAX_LENGTH, normalizeDisplayName } from "@shared/displayName";
 import { sendNurtureEmails, sendNurtureEmailsManual } from "./nurtureEmailScheduler";
 import { resendWelcomeEmails } from "./resendWelcomeEmails";
@@ -541,7 +541,8 @@ export const appRouter = router({
     submit: publicProcedure
       .input(z.object({
         // Personal Information — the name becomes the provisioned account name.
-        fullName: z.string().trim().min(2).max(DISPLAY_NAME_MAX_LENGTH),
+        fullName: z.string().trim().min(2, "Full name must be at least 2 characters")
+          .max(DISPLAY_NAME_MAX_LENGTH, `Full name must be at most ${DISPLAY_NAME_MAX_LENGTH} characters`),
         email: z.string().email(),
         phone: z.string().optional(),
         country: z.string().min(2),
@@ -3960,73 +3961,14 @@ export const appRouter = router({
           let successCount = 0;
           let failCount = 0;
           
-          // The subject and message are plain text; recipients' names are user input.
-          const subjectHtml = escapeHtml(input.subject);
-          const messageHtml = escapeHtmlWithLineBreaks(input.message);
           for (const entry of activeSubscribers) {
             try {
-              const emailHtml = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${subjectHtml}</title>
-</head>
-<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #0a0a0a;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #0a0a0a;">
-    <tr>
-      <td align="center" style="padding: 40px 20px;">
-        <table width="600" cellpadding="0" cellspacing="0" style="background-color: #1a1a1a; border-radius: 8px; overflow: hidden;">
-          <!-- Header -->
-          <tr>
-            <td style="padding: 40px 40px 20px 40px; text-align: center;">
-              <img src="https://files.manuscdn.com/user_upload_by_module/session_file/310519663188415081/xRYfqyUGHSJUlDcu.png" alt="BooGMe" style="height: 48px; width: auto; margin-bottom: 20px;" />
-              <h1 style="margin: 0; font-size: 32px; font-weight: 300; color: #ffffff; letter-spacing: -0.5px;">
-                ${subjectHtml}
-              </h1>
-            </td>
-          </tr>
-          
-          <!-- Content -->
-          <tr>
-            <td style="padding: 0 40px 40px 40px;">
-              <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">
-                Hi ${escapeHtml(normalizeDisplayName(entry.name) || entry.email.split('@')[0])},
-              </p>
-              
-              <div style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">
-                ${messageHtml}
-              </div>
-              
-              <p style="margin: 20px 0 0 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">
-                Best regards,<br>
-                The BooGMe Team
-              </p>
-            </td>
-          </tr>
-          
-          <!-- Footer -->
-          <tr>
-            <td style="padding: 30px 40px; background-color: #0f0f0f; text-align: center;">
-              <p style="margin: 0 0 10px 0; font-size: 14px; color: #808080;">
-                BooGMe - AI-Powered Chess Coaching Marketplace
-              </p>
-              <p style="margin: 0; font-size: 12px; color: #606060;">
-                You're receiving this because you joined our waitlist.
-              </p>
-              <p style="margin: 10px 0 0 0; font-size: 11px; color: #505050;">
-                <a href="${process.env.VITE_FRONTEND_URL || 'http://localhost:3000'}/unsubscribe?email=${encodeURIComponent(entry.email)}" style="color: #808080; text-decoration: underline;">Unsubscribe</a>
-              </p>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>
-              `;
+              const emailHtml = getWaitlistBroadcastEmail({
+                subject: input.subject,
+                message: input.message,
+                recipientName: normalizeDisplayName(entry.name) || entry.email.split('@')[0],
+                email: entry.email,
+              });
               
               const result = await sendEmail({
                 to: entry.email,

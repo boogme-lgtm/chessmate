@@ -187,4 +187,24 @@ describe("autoReleasePayouts", () => {
     expect(db.getCompletedLessonsReadyForPayout).not.toHaveBeenCalled();
     expect(transferToCoach).not.toHaveBeenCalled();
   });
+
+  // Sprint 3: only the exact string "true" used to enable the job, so the
+  // spellings BACKGROUND_JOBS_ENABLED accepts silently held every payout.
+  it.each(["TRUE", "1", "yes", " on "])("S33-7b: runs when the flag is the accepted true spelling %j", async setting => {
+    process.env.AUTO_RELEASE_PAYOUTS_ENABLED = setting;
+    vi.mocked(db.getCompletedLessonsReadyForPayout).mockResolvedValue([]);
+
+    await autoReleasePayouts();
+
+    expect(db.getCompletedLessonsReadyForPayout).toHaveBeenCalledOnce();
+  });
+
+  it("S33-7c: does nothing, and reports the configuration error, for an unrecognized value", async () => {
+    process.env.AUTO_RELEASE_PAYOUTS_ENABLED = "ture";
+
+    await expect(autoReleasePayouts()).rejects.toThrow("AUTO_RELEASE_PAYOUTS_ENABLED must be true or false");
+
+    expect(db.getCompletedLessonsReadyForPayout).not.toHaveBeenCalled();
+    expect(transferToCoach).not.toHaveBeenCalled();
+  });
 });

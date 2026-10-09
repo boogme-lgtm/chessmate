@@ -17,6 +17,7 @@ import {
 } from "./db";
 import { releaseLessonPayoutToCoach } from "./payoutService";
 import { releaseAllEligibleContentRequestPayouts } from "./contentRequestPayoutService";
+import { autoReleasePayoutsEnabled } from "./_core/backgroundJobs";
 import {
   sendEmail,
   getStudentLessonReminderEmail,
@@ -996,15 +997,15 @@ export async function sendContentRequestDeadlineReminders(): Promise<void> {
  * has expired and whose payout has not yet been released, attempts to transfer
  * the coach payout via the shared releaseLessonPayoutToCoach helper.
  *
- * Controlled by the AUTO_RELEASE_PAYOUTS_ENABLED env var (default: false).
+ * Controlled by the AUTO_RELEASE_PAYOUTS_ENABLED env var (default: false),
+ * read with the shared boolean parser and validated before the server listens.
  * An overlap guard prevents concurrent runs within the same process.
  */
 let _autoReleaseRunning = false;
 
 export async function autoReleasePayouts(): Promise<void> {
-  const enabled = process.env.AUTO_RELEASE_PAYOUTS_ENABLED === "true";
-  if (!enabled) {
-    console.log("[Auto-Release Payouts] Disabled (AUTO_RELEASE_PAYOUTS_ENABLED != true). Skipping.");
+  if (!autoReleasePayoutsEnabled()) {
+    console.log("[Auto-Release Payouts] Disabled (AUTO_RELEASE_PAYOUTS_ENABLED is off). Skipping.");
     return;
   }
 

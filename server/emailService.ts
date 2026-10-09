@@ -1,7 +1,7 @@
 import { Resend } from 'resend';
 import { ENV } from './_core/env';
 import { capturePreviewEmail } from './_core/previewEmail';
-import { escapeHtml, sanitizeEmailSubject, truncateText } from './emailSafety';
+import { escapeHtml, escapeHtmlWithLineBreaks, sanitizeEmailSubject, truncateText } from './emailSafety';
 
 // Initialize Resend client
 let resend: Resend | undefined;
@@ -2128,4 +2128,157 @@ export function getCoachApprovedEmail(params: { fullName: string; setPasswordUrl
     <p>Questions? Just reply to this email.</p>
     <p>— The BooGMe team</p>
   `;
+}
+
+// ─── Accounts ───────────────────────────────────────────────────────────────
+// Sent through email.ts's sender (auth.ts); built here with every other
+// template so the escaping test covers them.
+
+/** Sign-up verification link. A missing name falls back to "there". */
+export function getAccountVerificationEmail(params: { name?: string | null; verificationUrl: string }): string {
+  const name = escapeHtml(params.name || "there");
+  const verificationUrl = escapeHtml(params.verificationUrl);
+  return `
+      <h1>Welcome to BooGMe!</h1>
+      <p>Hi ${name},</p>
+      <p>Thank you for registering. Please verify your email address by clicking the link below:</p>
+      <p><a href="${verificationUrl}">Verify Email</a></p>
+      <p>This link will expire in 24 hours.</p>
+      <p>If you didn't create this account, please ignore this email.</p>
+    `;
+}
+
+/** A fresh verification link for an account that has not verified yet. */
+export function getVerificationResendEmail(params: { name?: string | null; verificationUrl: string }): string {
+  const name = escapeHtml(params.name || "there");
+  const verificationUrl = escapeHtml(params.verificationUrl);
+  return `
+      <h1>Verify your email</h1>
+      <p>Hi ${name},</p>
+      <p>Here's a fresh link to verify your BooGMe account:</p>
+      <p><a href="${verificationUrl}">Verify Email</a></p>
+      <p>This link will expire in 24 hours.</p>
+      <p>If you didn't request this, you can ignore this email.</p>
+    `;
+}
+
+/** Welcome once the address is verified. */
+export function getAccountVerifiedEmail(params: { name?: string | null; browseCoachesUrl: string }): string {
+  const name = escapeHtml(params.name || "there");
+  const browseCoachesUrl = escapeHtml(params.browseCoachesUrl);
+  return `
+      <h1>Welcome to BooGMe!</h1>
+      <p>Hi ${name},</p>
+      <p>Your email has been successfully verified. You can now start booking lessons with elite chess coaches!</p>
+      <p><a href="${browseCoachesUrl}">Browse Coaches</a></p>
+      <p>Happy learning!</p>
+      <p>The BooGMe Team</p>
+    `;
+}
+
+/** Password reset link. */
+export function getPasswordResetEmail(params: { name?: string | null; resetUrl: string }): string {
+  const name = escapeHtml(params.name || "there");
+  const resetUrl = escapeHtml(params.resetUrl);
+  return `
+      <h1>Password Reset Request</h1>
+      <p>Hi ${name},</p>
+      <p>You requested to reset your password. Click the link below to create a new password:</p>
+      <p><a href="${resetUrl}">Reset Password</a></p>
+      <p>This link will expire in 24 hours.</p>
+      <p>If you didn't request this, please ignore this email.</p>
+    `;
+}
+
+// ─── Analysis, Broadcasts & Owner Notices ──────────────────────────────────
+
+/** A coach or student sent the other an annotated game from the analysis board. */
+export function getAnnotatedGameEmail(params: { senderName: string; analysisTitle: string }): string {
+  const { senderName, analysisTitle } = escapeTextFields(params);
+  return `<p>${senderName} sent you an annotated game: <strong>${analysisTitle}</strong>.</p><p>Open your lesson chat to review it on the analysis board.</p>`;
+}
+
+/**
+ * Admin broadcast to one waitlist subscriber. The subject and message are the
+ * admin's plain text (line breaks kept); the recipient's name is user input.
+ */
+export function getWaitlistBroadcastEmail(params: {
+  subject: string;
+  message: string;
+  recipientName: string;
+  email: string;
+}): string {
+  const subject = escapeHtml(params.subject);
+  const message = escapeHtmlWithLineBreaks(params.message);
+  const recipientName = escapeHtml(params.recipientName);
+  const unsubscribeUrl = escapeHtml(
+    `${process.env.VITE_FRONTEND_URL || 'http://localhost:3000'}/unsubscribe?email=${encodeURIComponent(params.email)}`,
+  );
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #0a0a0a;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #0a0a0a;">
+    <tr>
+      <td align="center" style="padding: 40px 20px;">
+        <table width="600" cellpadding="0" cellspacing="0" style="background-color: #1a1a1a; border-radius: 8px; overflow: hidden;">
+          <!-- Header -->
+          <tr>
+            <td style="padding: 40px 40px 20px 40px; text-align: center;">
+              <img src="https://files.manuscdn.com/user_upload_by_module/session_file/310519663188415081/xRYfqyUGHSJUlDcu.png" alt="BooGMe" style="height: 48px; width: auto; margin-bottom: 20px;" />
+              <h1 style="margin: 0; font-size: 32px; font-weight: 300; color: #ffffff; letter-spacing: -0.5px;">
+                ${subject}
+              </h1>
+            </td>
+          </tr>
+
+          <!-- Content -->
+          <tr>
+            <td style="padding: 0 40px 40px 40px;">
+              <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">
+                Hi ${recipientName},
+              </p>
+
+              <div style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">
+                ${message}
+              </div>
+
+              <p style="margin: 20px 0 0 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">
+                Best regards,<br>
+                The BooGMe Team
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding: 30px 40px; background-color: #0f0f0f; text-align: center;">
+              <p style="margin: 0 0 10px 0; font-size: 14px; color: #808080;">
+                BooGMe - AI-Powered Chess Coaching Marketplace
+              </p>
+              <p style="margin: 0; font-size: 12px; color: #606060;">
+                You're receiving this because you joined our waitlist.
+              </p>
+              <p style="margin: 10px 0 0 0; font-size: 11px; color: #505050;">
+                <a href="${unsubscribeUrl}" style="color: #808080; text-decoration: underline;">Unsubscribe</a>
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+              `;
+}
+
+/** Preview stand-in for an owner push notice: its content is plain text that may quote users. */
+export function getOwnerNotificationEmail(params: { content: string }): string {
+  return `<pre>${escapeHtml(params.content)}</pre>`;
 }

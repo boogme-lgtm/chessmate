@@ -1,10 +1,18 @@
 import { NOT_ADMIN_ERR_MSG, UNAUTHED_ERR_MSG } from '@shared/const';
 import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
+import { ZodError } from "zod";
 import type { TrpcContext } from "./context";
 
 const t = initTRPC.context<TrpcContext>().create({
   transformer: superjson,
+  errorFormatter({ shape, error }) {
+    // An input validation failure's message is zod's issue list as JSON, which
+    // pages showing err.message would print verbatim. Send the first issue's
+    // own message instead; schemas give user-facing fields readable messages.
+    const issue = error.cause instanceof ZodError ? error.cause.issues[0] : undefined;
+    return issue ? { ...shape, message: issue.message } : shape;
+  },
 });
 
 export const router = t.router;

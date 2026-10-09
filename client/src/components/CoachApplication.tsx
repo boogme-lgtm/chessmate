@@ -32,6 +32,7 @@ import {
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { COUNTRIES, getCountryName } from "@shared/countries";
+import { DISPLAY_NAME_MAX_LENGTH, displayNameProblem } from "@shared/displayName";
 
 interface ApplicationData {
   // Step 1: About You
@@ -218,6 +219,12 @@ export function CoachApplication() {
           !formData.yearsExperience
         ) {
           toast.error("Please fill in all required fields");
+          return false;
+        }
+        // The name becomes the coach account's name: the server's rules apply.
+        const fullNameProblem = displayNameProblem(formData.fullName, { label: "Full name", minLength: 2 });
+        if (fullNameProblem) {
+          toast.error(fullNameProblem);
           return false;
         }
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
@@ -496,6 +503,7 @@ function Step1AboutYou({
               value={formData.fullName}
               onChange={(e) => updateField("fullName", e.target.value)}
               placeholder="John Doe"
+              maxLength={DISPLAY_NAME_MAX_LENGTH}
             />
           </div>
           <div>

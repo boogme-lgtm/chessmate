@@ -31,6 +31,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Loader2, Shield, Trash2, User, Bell } from "lucide-react";
 import { COUNTRIES } from "@shared/countries";
+import { DISPLAY_NAME_MAX_LENGTH, normalizeDisplayName } from "@shared/displayName";
 
 const TIMEZONES = [
   "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles",
@@ -75,9 +76,15 @@ export default function Settings() {
 }
 
 function ProfileSection() {
+  const utils = trpc.useUtils();
   const { data: profile, isLoading } = trpc.user.getProfile.useQuery();
   const updateProfile = trpc.user.updateProfile.useMutation({
-    onSuccess: () => toast.success("Profile updated"),
+    onSuccess: () => {
+      toast.success("Profile updated");
+      // Show what was stored (the name trimmed), here and wherever the name appears.
+      utils.user.getProfile.invalidate();
+      utils.auth.me.invalidate();
+    },
     onError: (err) => toast.error(err.message),
   });
 
@@ -97,6 +104,10 @@ function ProfileSection() {
 
   if (isLoading) return <SettingsSkeleton />;
 
+  // The server treats a blank name as "no change", so saving one would report
+  // success while keeping the old name. Ask for a name instead.
+  const blankName = !!normalizeDisplayName(profile?.name) && !normalizeDisplayName(name);
+
   return (
     <Card className="border-border/40">
       <CardHeader className="pb-4">
@@ -112,7 +123,14 @@ function ProfileSection() {
         </div>
         <div>
           <Label>Display name</Label>
-          <Input value={name} onChange={(e) => setName(e.target.value)} className="mt-1" />
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            maxLength={DISPLAY_NAME_MAX_LENGTH}
+            aria-invalid={blankName}
+            className="mt-1"
+          />
+          {blankName && <p className="text-xs text-destructive mt-1">Display name can't be blank</p>}
         </div>
         <div>
           <Label>Bio</Label>
@@ -149,8 +167,8 @@ function ProfileSection() {
         </div>
         <div className="flex justify-end pt-2">
           <Button
-            onClick={() => updateProfile.mutate({ name: name || undefined, bio: bio || undefined, country: country || undefined, timezone: timezone || undefined })}
-            disabled={updateProfile.isPending}
+            onClick={() => updateProfile.mutate({ name: normalizeDisplayName(name), bio: bio || undefined, country: country || undefined, timezone: timezone || undefined })}
+            disabled={updateProfile.isPending || blankName}
           >
             {updateProfile.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
             Save Changes

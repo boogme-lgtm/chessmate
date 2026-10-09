@@ -21,6 +21,24 @@ export function backgroundJobsEnabled(
   return enabled ?? true;
 }
 
+/**
+ * Whether the job runner releases coach payouts automatically once a lesson's
+ * issue window closes. Off unless set; parsed like BACKGROUND_JOBS_ENABLED, so
+ * "TRUE" or "1" cannot leave payouts silently held, and an unrecognized value
+ * throws (call it before the server listens). Preview is always off.
+ */
+export function autoReleasePayoutsEnabled(
+  setting = process.env.AUTO_RELEASE_PAYOUTS_ENABLED,
+  environment = process.env.APP_ENV,
+): boolean {
+  const enabled = parseBooleanSetting("AUTO_RELEASE_PAYOUTS_ENABLED", setting);
+  if (explicitAppEnvironment(environment) === "preview") {
+    if (enabled) throw new Error("AUTO_RELEASE_PAYOUTS_ENABLED must be false in preview");
+    return false;
+  }
+  return enabled ?? false;
+}
+
 /** A second app process must not also run reminders, recovery, and settlement. */
 export async function startBackgroundJobs(
   setting = process.env.BACKGROUND_JOBS_ENABLED,
