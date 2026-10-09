@@ -7,6 +7,10 @@ import { useEffect, useState } from "react";
 import { CoachMatchingAssessment } from "./CoachMatchingAssessment";
 import { editableSavedAssessment } from "@shared/editableSavedAssessment";
 import type { MatchResult } from "@shared/coachMatching";
+import { PAYMENTS_PENDING_BADGE } from "@shared/coachPayments";
+
+/** Matching never hides a coach; it only says whether booking is open yet. */
+type RecommendedCoach = MatchResult & { acceptingPayments?: boolean };
 
 export default function StudentMatchingPanel() {
   const utils = trpc.useUtils();
@@ -22,7 +26,7 @@ export default function StudentMatchingPanel() {
   });
   const [snapshot, setSnapshot] = useState<{
     profileVersion: number;
-    data: MatchResult[];
+    data: RecommendedCoach[];
     error: boolean;
   } | null>(null);
   const refetchMatches = matches.refetch;
@@ -124,6 +128,9 @@ export default function StudentMatchingPanel() {
                   <ul className="text-sm text-bone-muted space-y-2">
                     {match.reasons.map(reason => <li key={reason}>{reason}</li>)}
                   </ul>
+                  {match.acceptingPayments === false && (
+                    <p className="text-xs text-bone-muted">{PAYMENTS_PENDING_BADGE}</p>
+                  )}
                   <Link href={`/coach/${match.coachUserId}`} className="inline-block text-sm text-ember underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-ember">View profile<span className="sr-only"> for {match.coachName}</span></Link>
                 </li>
               ))}

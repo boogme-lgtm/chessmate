@@ -57,6 +57,8 @@ import OrganizedMessages from "@/components/OrganizedMessages";
 import DashShell from "@/components/DashShell";
 import { Skeleton } from "@/components/ui/skeleton";
 import { differenceInMinutes } from "date-fns";
+import { useCoachAcceptsPayments, useCoachesAcceptPayments } from "@/hooks/useCoachAcceptsPayments";
+import { PAYMENTS_PENDING_COPY, isCoachNotPayableError } from "@shared/coachPayments";
 
 /**
  * StudentDashboard (S-DASH-1 redesign)
@@ -627,12 +629,18 @@ function LessonDetailDialog({
   const [showTipForm, setShowTipForm] = useState(false);
   const [retryingTip, setRetryingTip] = useState(false);
   const [customAmount, setCustomAmount] = useState("");
+  const utils = trpc.useUtils();
+  // Tips are closed while the coach's Stripe payout setup isn't confirmed.
+  const tipsClosed = useCoachAcceptsPayments(open ? lesson.coachId : null) === false;
   const tipMutation = trpc.tip.createCheckout.useMutation({
     onSuccess: (data) => {
       if (data.url) window.open(data.url, "_blank");
       refetchTip();
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => {
+      toast.error(err.message);
+      if (isCoachNotPayableError(err)) utils.coach.acceptingPayments.invalidate();
+    },
   });
 
   const handleTip = (amountCents: number) => {
@@ -763,6 +771,8 @@ function LessonDetailDialog({
                   Retry
                 </Button>
               </div>
+            ) : tipsClosed ? (
+              <p className="text-sm text-muted-foreground">{PAYMENTS_PENDING_COPY.tip}</p>
             ) : showTipForm ? (
               <div className="space-y-2">
                 <div className="flex gap-2">
@@ -903,8 +913,14 @@ function NextLessonCard({ lesson, unreadCount }: NextLessonCardProps) {
         toast.error("Failed to start payment");
       }
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => {
+      toast.error(err.message);
+      if (isCoachNotPayableError(err)) utils.coach.acceptingPayments.invalidate();
+    },
   });
+  // A reserved lesson can't be paid while the coach's payout setup is unconfirmed.
+  const paymentClosed =
+    useCoachAcceptsPayments(lesson.status === "pending_payment" ? lesson.coachId : null) === false;
 
   // ── All time-gated state is derived from `now` (updated every 30 s) ─────
   const hoursUntilLesson = differenceInHours(
@@ -1072,7 +1088,8 @@ function NextLessonCard({ lesson, unreadCount }: NextLessonCardProps) {
               <Button
                 size="sm"
                 className="gap-2 bg-ember hover:bg-ember/90 text-white rounded-sm"
-                disabled={createCheckout.isPending}
+                disabled={createCheckout.isPending || paymentClosed}
+                title={paymentClosed ? PAYMENTS_PENDING_COPY.payment : undefined}
                 onClick={() => createCheckout.mutate({ lessonId: lesson.id })}
               >
                 <DollarSign className="h-4 w-4" />
@@ -1141,6 +1158,9 @@ function NextLessonCard({ lesson, unreadCount }: NextLessonCardProps) {
               </Button>
             )}
           </div>
+          {lesson.status === "pending_payment" && paymentClosed && (
+            <p className="mt-2 text-xs text-bone-muted">{PAYMENTS_PENDING_COPY.payment}</p>
+          )}
         </CardContent>
       </Card>
 
@@ -1467,7 +1487,10 @@ function ContentRequestsModule({
       toast.success("Quote accepted! Proceeding to payment...");
       utils.contentRequest.listForStudent.invalidate();
     },
-    onError: (err: any) => toast.error(err.message),
+    onError: (err: any) => {
+      toast.error(err.message);
+      if (isCoachNotPayableError(err)) utils.coach.acceptingPayments.invalidate();
+    },
   });
 
   const rejectQuote = trpc.contentRequest.rejectQuote.useMutation({
@@ -1484,8 +1507,18 @@ function ContentRequestsModule({
         window.location.href = data.url;
       }
     },
-    onError: (err: any) => toast.error(err.message),
+    onError: (err: any) => {
+      toast.error(err.message);
+      if (isCoachNotPayableError(err)) utils.coach.acceptingPayments.invalidate();
+    },
   });
+
+  // Paying (or accepting a quote) is closed while a coach's payout setup is unconfirmed.
+  const coachAcceptsPayments = useCoachesAcceptPayments(
+    ((contentRequests || []) as any[])
+      .filter((r) => r.status === "quoted" || r.status === "pending_payment")
+      .map((r) => r.coachId),
+  );
 
   const proposeDeadlineExtension = trpc.contentRequest.proposeDeadlineExtension.useMutation({
     onSuccess: () => {
@@ -1642,7 +1675,7 @@ function ContentRequestsModule({
                         <Button
                           size="sm"
                           className="bg-ember hover:bg-ember/90 text-white rounded-sm text-xs h-7"
-                          disabled={acceptQuote.isPending || createCheckout.isPending}
+                          disabled={acceptQuote.isPending || createCheckout.isPending || coachAcceptsPayments(req.coachId) === false}
                           onClick={() => handleAcceptAndPay(req.id)}
                         >
                           {acceptQuote.isPending || createCheckout.isPending ? "Processing..." : "ACCEPT & PAY"}
@@ -1662,7 +1695,7 @@ function ContentRequestsModule({
                       <Button
                         size="sm"
                         className="bg-ember hover:bg-ember/90 text-white rounded-sm text-xs h-7"
-                        disabled={createCheckout.isPending}
+                        disabled={createCheckout.isPending || coachAcceptsPayments(req.coachId) === false}
                         onClick={() => createCheckout.mutate({ requestId: req.id })}
                       >
                         COMPLETE PAYMENT
@@ -1709,6 +1742,12 @@ function ContentRequestsModule({
                 {req.status === "cancelled" && req.coachNote && (
                   <div className="mt-2 pt-2 border-t border-border/20 text-xs text-bone-muted italic">
                     Coach: {req.coachNote}
+                  </div>
+                )}
+                {(req.status === "quoted" || req.status === "pending_payment") &&
+                  coachAcceptsPayments(req.coachId) === false && (
+                  <div className="mt-2 pt-2 border-t border-border/20 text-xs text-bone-muted">
+                    {PAYMENTS_PENDING_COPY.payment}
                   </div>
                 )}
               </div>
@@ -1807,10 +1846,16 @@ function NewContentRequestDialog({
       setDescription("");
       onOpenChange(false);
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => {
+      toast.error(err.message);
+      if (isCoachNotPayableError(err)) utils.coach.acceptingPayments.invalidate();
+    },
   });
 
-  const canSubmit = coachId !== null && title.trim().length >= 3 && !createMutation.isPending;
+  // Every request ends in a paid quote, so requests are closed while the
+  // selected coach's payout setup is unconfirmed.
+  const requestsClosed = useCoachAcceptsPayments(open ? coachId : null) === false;
+  const canSubmit = coachId !== null && title.trim().length >= 3 && !createMutation.isPending && !requestsClosed;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1835,6 +1880,9 @@ function NewContentRequestDialog({
                 ))}
               </select>
             </div>
+          )}
+          {requestsClosed && (
+            <p className="text-xs text-bone-muted">{PAYMENTS_PENDING_COPY.contentRequest}</p>
           )}
           <div>
             <label className="text-xs text-bone-muted mb-1 block">What do you need? (required)</label>

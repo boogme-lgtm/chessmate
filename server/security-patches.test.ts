@@ -163,6 +163,11 @@ describe("payment.createCheckout", () => {
       status: "open",
       url: "https://checkout.stripe.com/existing",
     } as any);
+    // Reusing an open session is also gated on the coach still being payable.
+    vi.mocked(db.getUserById).mockResolvedValue({
+      id: 2, name: "Coach", email: "coach@test.com",
+      stripeConnectAccountId: "acct_coach123", stripeConnectOnboarded: true,
+    } as any);
 
     const caller = appRouter.createCaller(createContext());
     const result = await caller.payment.createCheckout({ lessonId: 100 });
@@ -186,7 +191,7 @@ describe("payment.createCheckout", () => {
     vi.mocked(db.claimLessonCheckoutSlot).mockResolvedValue(true);
     vi.mocked(db.getUserById).mockResolvedValue({
       id: 2, name: "Coach", email: "coach@test.com",
-      stripeConnectAccountId: "acct_coach123",
+      stripeConnectAccountId: "acct_coach123", stripeConnectOnboarded: true,
     } as any);
     vi.mocked(db.getCoachProfileByUserId).mockResolvedValue({ pricingTier: "standard" } as any);
     vi.mocked(stripeService.createLessonCheckoutSession).mockResolvedValue({
@@ -211,7 +216,7 @@ describe("payment.createCheckout", () => {
     vi.mocked(db.claimLessonCheckoutSlot).mockResolvedValue(true);
     vi.mocked(db.getUserById).mockResolvedValue({
       id: 2, name: "Coach", email: "coach@test.com",
-      stripeConnectAccountId: "acct_coach123",
+      stripeConnectAccountId: "acct_coach123", stripeConnectOnboarded: true,
     } as any);
     vi.mocked(db.getCoachProfileByUserId).mockResolvedValue({ pricingTier: "standard" } as any);
     vi.mocked(stripeService.createLessonCheckoutSession).mockResolvedValue({
@@ -301,7 +306,7 @@ describe("payment.createCheckout", () => {
     vi.mocked(db.claimLessonCheckoutSlot).mockResolvedValue(true);
     vi.mocked(db.getUserById).mockResolvedValue({
       id: 2, name: "Coach", email: "coach@test.com",
-      stripeConnectAccountId: "acct_coach123",
+      stripeConnectAccountId: "acct_coach123", stripeConnectOnboarded: true,
     } as any);
     vi.mocked(db.getCoachProfileByUserId).mockResolvedValue({ pricingTier: "standard" } as any);
     vi.mocked(stripeService.createLessonCheckoutSession).mockResolvedValue({
@@ -325,7 +330,7 @@ describe("payment.createCheckout", () => {
     vi.mocked(db.claimLessonCheckoutSlot).mockResolvedValue(true);
     vi.mocked(db.getUserById).mockResolvedValue({
       id: 2, name: "Coach", email: "coach@test.com",
-      stripeConnectAccountId: "acct_coach123",
+      stripeConnectAccountId: "acct_coach123", stripeConnectOnboarded: true,
     } as any);
     vi.mocked(db.getCoachProfileByUserId).mockResolvedValue({ pricingTier: "standard" } as any);
     vi.mocked(stripeService.createLessonCheckoutSession).mockResolvedValue({
@@ -370,7 +375,7 @@ describe("payment.createCheckout", () => {
     vi.mocked(db.claimLessonCheckoutSlot).mockResolvedValue(true);
     vi.mocked(db.getUserById).mockResolvedValue({
       id: 2, name: "Coach", email: "coach@test.com",
-      stripeConnectAccountId: "acct_coach123",
+      stripeConnectAccountId: "acct_coach123", stripeConnectOnboarded: true,
     } as any);
     vi.mocked(db.getCoachProfileByUserId).mockResolvedValue({ pricingTier: "standard" } as any);
     vi.mocked(stripeService.createLessonCheckoutSession).mockResolvedValue({
@@ -404,7 +409,7 @@ describe("payment.createCheckout", () => {
     vi.mocked(db.claimLessonCheckoutSlot).mockResolvedValue(true);
     vi.mocked(db.getUserById).mockResolvedValue({
       id: 2, name: "Coach", email: "coach@test.com",
-      stripeConnectAccountId: "acct_coach123",
+      stripeConnectAccountId: "acct_coach123", stripeConnectOnboarded: true,
     } as any);
     vi.mocked(db.getCoachProfileByUserId).mockResolvedValue({ pricingTier: "standard" } as any);
     vi.mocked(stripeService.createLessonCheckoutSession).mockResolvedValue({
@@ -431,7 +436,7 @@ describe("payment.createCheckout", () => {
     vi.mocked(db.claimLessonCheckoutSlot).mockResolvedValue(true);
     vi.mocked(db.getUserById).mockResolvedValue({
       id: 2, name: "Coach", email: "coach@test.com",
-      stripeConnectAccountId: "acct_coach123",
+      stripeConnectAccountId: "acct_coach123", stripeConnectOnboarded: true,
     } as any);
     vi.mocked(db.getCoachProfileByUserId).mockResolvedValue({ pricingTier: "standard" } as any);
     vi.mocked(stripeService.createLessonCheckoutSession).mockResolvedValue({
@@ -599,7 +604,7 @@ describe("payment.createCheckout", () => {
     vi.mocked(db.claimLessonCheckoutSlot).mockResolvedValue(true);
     vi.mocked(db.getUserById).mockResolvedValue({
       id: 2, name: "Coach", email: "coach@test.com",
-      stripeConnectAccountId: "acct_coach123",
+      stripeConnectAccountId: "acct_coach123", stripeConnectOnboarded: true,
     } as any);
     vi.mocked(db.getCoachProfileByUserId).mockResolvedValue({ pricingTier: "standard" } as any);
     vi.mocked(stripeService.createLessonCheckoutSession).mockResolvedValue({

@@ -470,20 +470,19 @@ async function handlePaymentFailed(event: Stripe.Event) {
  *
  * Fired when a Connect account's verification status changes. This catches
  * the case where Stripe finishes verifying a coach *after* they returned to
- * the wizard (e.g. KYC documents processed hours later).
+ * the wizard (e.g. KYC documents processed hours later), and the reverse:
+ * Stripe disabling charges or payouts on a previously verified account. The
+ * stored stripeConnectOnboarded flag gates every student payment (see
+ * coachPayability.ts), so it must follow Stripe in both directions.
  *
  * Receive this through a Connected accounts destination with a dedicated
  * STRIPE_CONNECT_WEBHOOK_SECRET. The router verifies event.account first.
  */
 async function handleAccountUpdated(event: Stripe.Event) {
   const account = event.data.object as Stripe.Account;
+  const fullyEnabled = !!account.charges_enabled && !!account.payouts_enabled;
 
   console.log(`[Webhook] account.updated: ${account.id} (charges=${account.charges_enabled}, payouts=${account.payouts_enabled})`);
-
-  if (!account.charges_enabled || !account.payouts_enabled) {
-    // Not fully onboarded yet — nothing to do
-    return;
-  }
 
   // Propagate database failures so Stripe can retry the account update.
   const dbInstance = await db.getDb();
@@ -498,6 +497,18 @@ async function handleAccountUpdated(event: Stripe.Event) {
   const user = result[0]?.[0];
   if (!user) {
     console.log(`[Webhook] No user found for Connect account ${account.id}`);
+    return;
+  }
+
+  if (!fullyEnabled) {
+    if (!user.stripeConnectOnboarded) {
+      // Onboarding not finished yet — nothing to change.
+      return;
+    }
+    // Stripe disabled charges or payouts on a verified account: fail closed so
+    // students can't pay a coach who can no longer receive the money.
+    await db.updateUserStripeConnectAccount(user.id, account.id, false);
+    console.warn(`[Webhook] User ${user.id} stripeConnectOnboarded set to false via account.updated (charges=${account.charges_enabled}, payouts=${account.payouts_enabled})`);
     return;
   }
 

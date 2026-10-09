@@ -381,8 +381,8 @@ function WhyCoachHere() {
     },
     {
       icon: Shield,
-      title: "Earn first, connect payouts later",
-      body: "Go live and start getting booked immediately. Connect Stripe when you’re ready to withdraw — it’s never a blocker.",
+      title: "Go live first, connect payouts in minutes",
+      body: "Publish your profile right away. Students can book and pay you as soon as your Stripe setup is complete — it only takes a few minutes.",
     },
     {
       icon: Play,
@@ -475,7 +475,7 @@ function HowItWorks() {
     {
       icon: Shield,
       title: "Get paid",
-      body: "Payouts release after lessons. Connect Stripe when you’re ready to withdraw — no upfront payment details required.",
+      body: "Connect Stripe once and students can book and pay you. Payouts release after each lesson — no upfront fees.",
     },
   ];
 
@@ -589,7 +589,7 @@ function FAQ() {
   const faqs = [
     {
       q: "When do I need to provide payment details?",
-      a: "Not until you’re ready to withdraw. You can go live, get booked, and earn — Stripe setup is only needed to transfer money out.",
+      a: "Before students can pay you. You can go live and publish your profile without it, but bookings, purchases and tips open as soon as your Stripe setup is complete — it only takes a few minutes.",
     },
     {
       q: "What’s the platform fee?",

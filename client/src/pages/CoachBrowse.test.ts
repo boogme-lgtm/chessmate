@@ -50,3 +50,30 @@ describe("coach browse navigation", () => {
     }
   );
 });
+
+describe("coach browse payment-readiness badge", () => {
+  function renderWith(coaches: unknown[]) {
+    listActive.mockReturnValue({ data: coaches, isLoading: false });
+    return renderToStaticMarkup(createElement(CoachBrowse));
+  }
+
+  it("lists a coach without confirmed payout setup, with a subtle badge", () => {
+    const html = renderWith([
+      { users: { id: 1, name: "Payable Coach" }, coach_profiles: {}, acceptingPayments: true },
+      { users: { id: 2, name: "Pending Coach" }, coach_profiles: {}, acceptingPayments: false },
+    ]);
+    // Never hidden from browse.
+    expect(html).toContain("Payable Coach");
+    expect(html).toContain("Pending Coach");
+    expect(html.match(/data-testid="payments-pending-badge"/g)).toHaveLength(1);
+    expect(html).toContain("Booking opens soon");
+  });
+
+  it("shows no badge when the flag is true or absent", () => {
+    const html = renderWith([
+      { users: { id: 1, name: "Payable Coach" }, coach_profiles: {}, acceptingPayments: true },
+      { users: { id: 3, name: "Legacy Row" }, coach_profiles: {} },
+    ]);
+    expect(html).not.toContain("payments-pending-badge");
+  });
+});

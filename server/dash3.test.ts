@@ -170,7 +170,8 @@ describe("S-DASH-3 — contentRequest.create notifications", () => {
     vi.mocked(db.createContentRequest).mockResolvedValue(99);
     vi.mocked(db.getUserById).mockImplementation(async (id: number) => {
       if (id === 1) return student as any;
-      if (id === 42) return coach as any;
+      // Content requests are gated on a payable coach (Stripe-confirmed payout setup).
+      if (id === 42) return { ...coach, stripeConnectAccountId: "acct_42", stripeConnectOnboarded: true } as any;
       return undefined;
     });
     vi.mocked(db.createNotification).mockResolvedValue(1);

@@ -24,7 +24,7 @@ import * as stripeService from "./stripe";
 import * as stripeConnect from "./stripeConnect";
 
 const student = { id: 1, role: "user", userType: "student", openId: "s", name: "Stu", email: "s@e.com" };
-const coach = { id: 42, role: "user", userType: "coach", openId: "c", name: "Coach", email: "c@e.com", stripeConnectAccountId: "acct_coach_42" };
+const coach = { id: 42, role: "user", userType: "coach", openId: "c", name: "Coach", email: "c@e.com", stripeConnectAccountId: "acct_coach_42", stripeConnectOnboarded: true };
 const outsider = { id: 99, role: "user", userType: "student", openId: "x", name: "X", email: "x@e.com" };
 const completedLesson = { id: 7, studentId: 1, coachId: 42, status: "completed", amountCents: 5000, coachPayoutCents: 4250, currency: "USD" };
 const pendingLesson = { id: 8, studentId: 1, coachId: 42, status: "pending_payment", amountCents: 5000 };

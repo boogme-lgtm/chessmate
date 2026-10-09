@@ -287,9 +287,12 @@ export function CoachDashboardContent({ user }: { user: any }) {
 
   return (
     <div className="space-y-8">
-      {/* ── Stripe Onboarding Banner ───────────────────────────────────────── */}
+      {/* ── Stripe Onboarding Banner ─────────────────────────────────────────
+          Students can't book, buy, tip or subscribe until Stripe confirms the
+          coach's payout account (server: coachPayability). A live coach in that
+          state is turning students away, so this is shown prominently. */}
       {earnings?.needsOnboarding && (
-        <Card className="bg-ink-raised border-ember/30 rounded-sm">
+        <Card data-testid="payout-setup-banner" className="bg-ink-raised border-ember/30 rounded-sm">
           <CardContent className="p-6">
             <div className="flex items-start gap-4">
               <div className="w-10 h-10 rounded-sm bg-ember/20 flex items-center justify-center shrink-0">
@@ -297,11 +300,26 @@ export function CoachDashboardContent({ user }: { user: any }) {
               </div>
               <div className="flex-1">
                 <h3 className="font-semibold text-bone mb-1">
-                  Complete Your Payment Setup
+                  {earnings.profileLive
+                    ? "Students can't book or pay you yet"
+                    : "Complete Your Payment Setup"}
                 </h3>
                 <p className="text-sm text-bone-muted mb-4">
-                  You've reached the $100 earnings threshold. Complete your
-                  Stripe setup to receive payouts.
+                  {earnings.profileLive ? (
+                    <>
+                      Your profile is live, but bookings, purchases and tips
+                      open only once Stripe confirms your payout account.{" "}
+                      {earnings.payoutSetupStarted
+                        ? "Pick up where you left off"
+                        : "Set it up now"}{" "}
+                      — it only takes a few minutes.
+                    </>
+                  ) : (
+                    <>
+                      You've reached the $100 earnings threshold. Complete your
+                      Stripe setup to receive payouts.
+                    </>
+                  )}
                 </p>
                 <Button
                   className="bg-ember hover:bg-ember/90 text-white rounded-sm"
@@ -311,7 +329,7 @@ export function CoachDashboardContent({ user }: { user: any }) {
                   {startOnboarding.isPending && (
                     <Timer className="w-4 h-4 animate-spin mr-2" />
                   )}
-                  Set Up Payments
+                  {earnings.payoutSetupStarted ? "Finish Stripe Setup" : "Set Up Payments"}
                 </Button>
               </div>
             </div>
@@ -319,10 +337,10 @@ export function CoachDashboardContent({ user }: { user: any }) {
         </Card>
       )}
 
-      {/* ── Soft payout-setup nudge (live, but Stripe not connected yet, pre-threshold) ──
-          Earn-first design: coaches can receive bookings before connecting Stripe;
-          surface payout setup early so they're ready to withdraw, without blocking. */}
-      {earnings && !earnings.stripeOnboarded && !earnings.needsOnboarding && (
+      {/* ── Soft payout-setup nudge (not live yet, pre-threshold) ──────────────
+          Going live doesn't require Stripe, but students can only book and pay
+          once payout setup is confirmed — surface it early, without blocking. */}
+      {earnings && !earnings.acceptingPayments && !earnings.needsOnboarding && (
         <Card className="bg-ink-raised border-border/30 rounded-sm">
           <CardContent className="p-5">
             <div className="flex items-start gap-4">
@@ -331,12 +349,12 @@ export function CoachDashboardContent({ user }: { user: any }) {
               </div>
               <div className="flex-1">
                 <h3 className="font-semibold text-bone mb-1">
-                  Set up payouts to withdraw earnings
+                  Set up payouts so students can book you
                 </h3>
                 <p className="text-sm text-bone-muted mb-4">
-                  Your profile is live and can receive bookings. Connect Stripe
-                  now so you're ready to withdraw your earnings — it only takes a
-                  few minutes.
+                  Students can book and pay you as soon as your Stripe setup is
+                  complete. Connect it now so you're ready when your profile
+                  goes live — it only takes a few minutes.
                 </p>
                 <Button
                   variant="outline"

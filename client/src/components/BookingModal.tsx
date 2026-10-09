@@ -14,6 +14,7 @@ import { Shield, Loader2, CheckCircle2 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
+import { isCoachNotPayableError } from "@shared/coachPayments";
 import BookingCalendar from "./BookingCalendar";
 
 interface TimeSlot {
@@ -50,8 +51,17 @@ export default function BookingModal({ open, onOpenChange, coach }: BookingModal
   const [notes, setNotes] = useState("");
   const [bookedLessonId, setBookedLessonId] = useState<number | null>(null);
 
+  const utils = trpc.useUtils();
   const createBooking = trpc.lesson.book.useMutation();
   const createCheckout = trpc.payment.createCheckout.useMutation();
+
+  // The server refused because the coach can't take payments (their payment
+  // state changed after the profile loaded): refresh the profile so its
+  // booking button reflects that, and close — there's nothing to book yet.
+  const handleCoachNotPayable = () => {
+    utils.coach.getById.invalidate({ id: coach.id });
+    handleClose();
+  };
 
   const profile = coach.profile;
   const hourlyRateCents = profile?.hourlyRateCents || 5000;
@@ -97,6 +107,10 @@ export default function BookingModal({ open, onOpenChange, coach }: BookingModal
       setStep("payment");
     } catch (error: any) {
       toast.error(error.message || "Failed to create booking");
+      if (isCoachNotPayableError(error)) {
+        handleCoachNotPayable();
+        return;
+      }
       setStep("details");
     }
   };
@@ -112,6 +126,7 @@ export default function BookingModal({ open, onOpenChange, coach }: BookingModal
       }
     } catch (error: any) {
       toast.error(error.message || "Could not start checkout. Please pay from your dashboard.");
+      if (isCoachNotPayableError(error)) handleCoachNotPayable();
     }
   };
 

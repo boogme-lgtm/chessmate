@@ -271,7 +271,8 @@ describe("content.createStorefrontCheckout (purchase guards)", () => {
   it("starts checkout for an available public item", async () => {
     vi.mocked(db.getContentItemById).mockResolvedValue(publicItem as any);
     vi.mocked(db.userHasContentAccess).mockResolvedValue(false);
-    vi.mocked(db.getUserById).mockResolvedValue({ id: 42, stripeConnectAccountId: "acct_42" } as any);
+    // Payable coach: Connect account AND Stripe-confirmed onboarding.
+    vi.mocked(db.getUserById).mockResolvedValue({ id: 42, stripeConnectAccountId: "acct_42", stripeConnectOnboarded: true } as any);
     vi.mocked(stripe.createContentItemCheckoutSession).mockResolvedValue({ url: "https://stripe/checkout" } as any);
     const caller = appRouter.createCaller(ctx(student));
     const res = await caller.content.createStorefrontCheckout({ contentItemId: 100 });

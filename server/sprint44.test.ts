@@ -28,7 +28,8 @@ import type { TrpcContext } from "./_core/context";
 import type { Request, Response } from "express";
 
 const student = { id: 1, name: "Stu Dent", email: "student@example.com" };
-const coach = { id: 2, name: "Coach Cris", email: "coach@example.com" };
+// Payable coach (lesson.book is gated on Stripe-confirmed payout setup).
+const coach = { id: 2, name: "Coach Cris", email: "coach@example.com", stripeConnectAccountId: "acct_coach_2", stripeConnectOnboarded: true };
 
 function studentCtx(): TrpcContext {
   return {

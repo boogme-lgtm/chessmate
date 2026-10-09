@@ -1,6 +1,7 @@
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { rankCoachesForStudent, toCoachForMatching, parseJsonArray, type StudentForMatching } from "@shared/coachMatching";
+import { PAYMENTS_PENDING_BADGE, PAYMENTS_PENDING_COPY } from "@shared/coachPayments";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -377,6 +378,17 @@ function CoachCard({ coach, viewMode, matchScore }: { coach: any; viewMode: "gri
             )}
             <span>{profile?.totalLessons ?? 0} lessons</span>
             <span>{profile?.totalStudents ?? 0} students</span>
+            {/* Live but Stripe payout setup not confirmed yet — still listed,
+                but booking/payments open once setup completes. */}
+            {coach.acceptingPayments === false && (
+              <span
+                data-testid="payments-pending-badge"
+                title={PAYMENTS_PENDING_COPY.booking}
+                className="text-[11px] px-2 py-0.5 rounded-sm bg-white/5 text-muted-foreground"
+              >
+                {PAYMENTS_PENDING_BADGE}
+              </span>
+            )}
           </div>
           <span className="text-sm text-orange-500 font-medium flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
             View Profile <ChevronRight className="h-3.5 w-3.5" />

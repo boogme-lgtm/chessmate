@@ -31,7 +31,10 @@ const inHours = (h: number) => new Date(Date.now() + h * 60 * 60 * 1000);
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(db.getUserById).mockImplementation(async (id: number) =>
-    (id === 1 ? { id: 1, email: "s@e.com" } : { id: 2, email: "c@e.com" }) as any
+    (id === 1
+      ? { id: 1, email: "s@e.com" }
+      // Payable coach (lesson.book is gated on Stripe-confirmed payout setup).
+      : { id: 2, email: "c@e.com", stripeConnectAccountId: "acct_coach_2", stripeConnectOnboarded: true }) as any
   );
   vi.mocked(db.getCoachProfileByUserId).mockResolvedValue({
     userId: 2, hourlyRateCents: 6000, pricingTier: "free",

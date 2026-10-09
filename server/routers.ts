@@ -39,6 +39,13 @@ import { sendEmail as sendSimpleEmail, getCoachWelcomeEmail } from "./email";
 import { notifyOwner } from "./_core/notification";
 import { transferToCoach } from "./stripeConnect";
 import { releaseLessonPayoutToCoach, releaseAllEligiblePayouts } from "./payoutService";
+import {
+  checkCoachPayability,
+  requirePayableCoach,
+  getAcceptingPaymentsByCoachId,
+  withAcceptingPayments,
+  needsPayoutSetupReminder,
+} from "./coachPayability";
 
 /**
  * Send cancellation confirmation emails to both student and coach.
@@ -110,6 +117,26 @@ async function sendCancellationEmails(
   } catch (err) {
     console.error(`[cancellation email] Failed for lesson ${lessonId}:`, err);
   }
+}
+
+/**
+ * Coach-facing payout-setup status shared by coach.getEarnings and
+ * coach.checkOnboardingRequired. Uses the same authoritative check that gates
+ * student payments, so the dashboard reminder and the gate never disagree.
+ */
+async function getPayoutSetupStatus(coachUserId: number, hasReachedThreshold: boolean) {
+  const [payability, profile] = await Promise.all([
+    checkCoachPayability(coachUserId),
+    db.getCoachProfileByUserId(coachUserId),
+  ]);
+  const acceptingPayments = payability.payable;
+  const profileLive = !!profile?.profileActive;
+  return {
+    acceptingPayments,
+    payoutSetupStarted: !!payability.coach?.stripeConnectAccountId,
+    profileLive,
+    needsReminder: needsPayoutSetupReminder({ acceptingPayments, profileLive, hasReachedThreshold }),
+  };
 }
 
 /**
@@ -714,7 +741,7 @@ export const appRouter = router({
       }).optional())
       .query(async ({ input }) => {
         const coaches = await db.getAvailableCoaches(input?.limit || 20);
-        return coaches;
+        return withAcceptingPayments(coaches, (c) => c.users.id);
       }),
 
     // Get coach profile by user ID
@@ -725,7 +752,8 @@ export const appRouter = router({
         if (!profile) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Coach not found" });
         }
-        return profile;
+        const [withFlag] = await withAcceptingPayments([profile], (p) => p.users.id);
+        return withFlag;
       }),
 
     // Get reviews for a coach
@@ -749,7 +777,20 @@ export const appRouter = router({
           return null;
         }
         const profile = await db.getCoachProfileByUserId(input.id);
-        return { ...coach, profile };
+        const acceptingPayments = (await getAcceptingPaymentsByCoachId([input.id])).get(input.id) === true;
+        return { ...coach, profile, acceptingPayments };
+      }),
+
+    /**
+     * Public: which of these coaches can take student payments right now
+     * (stored state, no Stripe call). Lets dashboards gate tip / pay / request
+     * buttons for coaches the student already works with.
+     */
+    acceptingPayments: publicProcedure
+      .input(z.object({ coachIds: z.array(z.number().int().positive()).min(1).max(100) }))
+      .query(async ({ input }) => {
+        const byCoach = await getAcceptingPaymentsByCoachId(input.coachIds);
+        return Object.fromEntries(byCoach) as Record<number, boolean>;
       }),
 
     // Get coach availability (public)
@@ -812,7 +853,8 @@ export const appRouter = router({
       .query(async ({ input }) => {
         const limit = input?.limit || 20;
         const offset = input?.offset || 0;
-        return await db.getActiveCoaches(limit, offset);
+        const coaches = await db.getActiveCoaches(limit, offset);
+        return withAcceptingPayments(coaches, (c) => c.users.id);
       }),
 
     // Create coach profile (for logged-in users becoming coaches)
@@ -917,8 +959,10 @@ export const appRouter = router({
       }
       const status = await stripeService.getConnectAccountStatus(user.stripeConnectAccountId);
       const onboarded = status.chargesEnabled && status.payoutsEnabled;
-      if (onboarded && !user.stripeConnectOnboarded) {
-        await db.updateUserStripeConnectAccount(ctx.user.id, user.stripeConnectAccountId, true);
+      // Keep the stored flag in step with Stripe in both directions — it is
+      // what gates student payments (see coachPayability.ts).
+      if (onboarded !== !!user.stripeConnectOnboarded) {
+        await db.updateUserStripeConnectAccount(ctx.user.id, user.stripeConnectAccountId, onboarded);
       }
       return { onboarded };
     }),
@@ -951,15 +995,21 @@ export const appRouter = router({
       return { url: loginLink.url };
     }),
 
-    // Get coach earnings summary (for delayed signup flow)
+    // Get coach earnings summary + payout-setup status for the dashboard.
     getEarnings: coachProcedure.query(async ({ ctx }) => {
       const earnings = await db.getCoachEarningsSummary(ctx.user.id);
-      const user = await db.getUserById(ctx.user.id);
-      
+      const setup = await getPayoutSetupStatus(ctx.user.id, earnings.hasReachedThreshold);
+
       return {
         ...earnings,
-        stripeOnboarded: user?.stripeConnectOnboarded || false,
-        needsOnboarding: earnings.hasReachedThreshold && !user?.stripeConnectOnboarded,
+        // Same check that gates student payments (self-heals a missed webhook).
+        stripeOnboarded: setup.acceptingPayments,
+        acceptingPayments: setup.acceptingPayments,
+        payoutSetupStarted: setup.payoutSetupStarted,
+        profileLive: setup.profileLive,
+        // Shown whenever a live coach can't be paid, or (pre-launch) once the
+        // earnings threshold is reached.
+        needsOnboarding: setup.needsReminder,
       };
     }),
 
@@ -1031,16 +1081,10 @@ export const appRouter = router({
           if (!Array.isArray(durations) || durations.length === 0) {
             throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Please select at least one lesson duration" });
           }
-          // Require Stripe Connect before going live — a live coach without a
-          // payout account strands student payments (audit HIGH CoachOnboarding:1057).
-          // NOTE: the Connect account lives on the users row (stripeConnectAccountId),
-          // not on coach_profiles.
-          if (!user.stripeConnectAccountId) {
-            throw new TRPCError({
-              code: "PRECONDITION_FAILED",
-              message: "Please connect your Stripe account to receive payments before going live",
-            });
-          }
+          // Stripe is NOT required to go live (product decision): a live coach is
+          // visible and can share free content, but every paid action is gated
+          // on requirePayableCoach() until Stripe confirms the account, so no
+          // student payment can be stranded.
 
           // Promote userType — if the student has ever booked a lesson, they've
           // acted in both roles, so set "both". Otherwise just "coach".
@@ -1142,12 +1186,15 @@ export const appRouter = router({
 
     // Check if coach needs to complete Stripe onboarding
     checkOnboardingRequired: protectedProcedure.query(async ({ ctx }) => {
-      const user = await db.getUserById(ctx.user.id);
-      if (user?.stripeConnectOnboarded) {
+      const hasReachedThreshold = await db.hasCoachReachedPayoutThreshold(ctx.user.id);
+      const setup = await getPayoutSetupStatus(ctx.user.id, hasReachedThreshold);
+      if (setup.acceptingPayments) {
         return { required: false, reason: "already_onboarded" };
       }
-
-      const hasReachedThreshold = await db.hasCoachReachedPayoutThreshold(ctx.user.id);
+      // A live coach who can't be paid is turning students away — always remind.
+      if (setup.profileLive) {
+        return { required: true, reason: "profile_live" };
+      }
       return {
         required: hasReachedThreshold,
         reason: hasReachedThreshold ? "threshold_reached" : "below_threshold",
@@ -1294,7 +1341,8 @@ export const appRouter = router({
 
     // Get AI coach matches
     getMatches: protectedProcedure.query(async ({ ctx }) => {
-      return await db.getMatchesForStudent(ctx.user.id);
+      const matches = await db.getMatchesForStudent(ctx.user.id);
+      return withAcceptingPayments(matches, (m) => m.users.id);
     }),
   }),
 
@@ -1310,7 +1358,9 @@ export const appRouter = router({
 
       const coaches = await db.getActiveCoaches(500);
       const coachesForMatching = coaches.map(toCoachForMatching);
-      return rankCoachesForStudent(coachesForMatching, profileToStudentForMatching(profile));
+      const ranked = rankCoachesForStudent(coachesForMatching, profileToStudentForMatching(profile));
+      // Matching never hides a coach; it only says whether booking is open yet.
+      return withAcceptingPayments(ranked, (m) => m.coachUserId);
     }),
 
     // Mutation: rank AND persist the top 3 matches. Called once when the
@@ -1345,7 +1395,7 @@ export const appRouter = router({
         }
       }
 
-      return ranked;
+      return withAcceptingPayments(ranked, (m) => m.coachUserId);
     }),
   }),
 
@@ -1373,6 +1423,11 @@ export const appRouter = router({
         if (!coachProfile) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Coach not found" });
         }
+
+        // Payment-first booking: refuse the request up front if the coach can't
+        // be paid, so the student never ends up holding an unpayable
+        // pending_payment reservation.
+        await requirePayableCoach(input.coachId);
 
         // Server-side booking-window enforcement (timezone-independent: absolute
         // instants). Prevents booking sooner/further out than the coach allows.
@@ -2299,6 +2354,8 @@ export const appRouter = router({
         if (!coachProfile) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Coach not found" });
         }
+        // Every participant commits to a paid share — same gate as lesson.book.
+        await requirePayableCoach(input.coachId);
 
         const hourlyRate = coachProfile.hourlyRateCents || 5000;
         const totalAmountCents = Math.round((hourlyRate * input.durationMinutes) / 60);
@@ -2378,6 +2435,8 @@ export const appRouter = router({
         if (lesson.status !== "forming") {
           throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Group lesson is no longer accepting participants" });
         }
+        // Joining commits the student to a paid share of the lesson.
+        await requirePayableCoach(Number(lesson.coachId));
 
         // Check capacity
         const countResult: any = await database.execute(sql`
@@ -2441,7 +2500,9 @@ export const appRouter = router({
           ORDER BY publishedAt DESC
           LIMIT ${limit}
         `);
-        return (result[0] || []) as any[];
+        const items = (result[0] || []) as any[];
+        // acceptingPayments: whether the item's coach can be paid (gates "Buy").
+        return withAcceptingPayments(items, (item) => Number(item.coachId));
       }),
 
     /**
@@ -2478,10 +2539,12 @@ export const appRouter = router({
         // Only expose the raw storage key to unlocked users; otherwise
         // return the preview only.
         const { storageKey, ...publicFields } = item as any;
+        const coachId = Number(item.coachId);
         return {
           ...publicFields,
           unlocked,
           storageKey: unlocked ? storageKey : undefined,
+          acceptingPayments: (await getAcceptingPaymentsByCoachId([coachId])).get(coachId) === true,
         };
       }),
 
@@ -2807,10 +2870,7 @@ export const appRouter = router({
           throw new TRPCError({ code: "CONFLICT", message: "You already own this content" });
         }
 
-        const coach = await db.getUserById(item.coachId);
-        if (!coach?.stripeConnectAccountId) {
-          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Coach is not set up to receive payments" });
-        }
+        await requirePayableCoach(item.coachId);
 
         const baseUrl = process.env.VITE_FRONTEND_URL || "http://localhost:3000";
         const session = await createContentItemCheckoutSession({
@@ -2880,7 +2940,11 @@ export const appRouter = router({
           try {
             const existingSession = await stripeService.retrieveCheckoutSession(expectedSessionId);
             if (existingSession.status === "open") {
-              // Session is still payable — return it instead of creating a new one
+              // Session is still payable — return it instead of creating a new
+              // one, but never hand back a payment link for a coach who can no
+              // longer be paid (e.g. Stripe disabled the account after the
+              // session was created). Its TRPCError is re-thrown below as-is.
+              await requirePayableCoach(lesson.coachId);
               return { url: existingSession.url };
             }
             if (existingSession.status === "complete") {
@@ -2967,16 +3031,17 @@ export const appRouter = router({
         }
 
         try {
-          // Get coach info
-          const coach = await db.getUserById(lesson.coachId);
-          if (!coach?.stripeConnectAccountId) {
-            // Release the slot since we can't proceed
-            await db.clearLessonCheckoutSession(lesson.id);
-            throw new TRPCError({
-              code: "PRECONDITION_FAILED",
-              message: "Coach has not completed payment setup",
-            });
+          // The coach must be verifiably payable before any money moves.
+          let payee: Awaited<ReturnType<typeof requirePayableCoach>>;
+          try {
+            payee = await requirePayableCoach(lesson.coachId);
+          } catch (gateErr) {
+            // Release the slot since we can't proceed. Non-TRPC errors are
+            // released by the outer catch below.
+            if (gateErr instanceof TRPCError) await db.clearLessonCheckoutSession(lesson.id);
+            throw gateErr;
           }
+          const { coach, connectAccountId } = payee;
 
           const student = await db.getUserById(ctx.user.id);
           // Use VITE_FRONTEND_URL which works in both dev and production
@@ -2995,7 +3060,7 @@ export const appRouter = router({
             studentId: ctx.user.id,
             studentEmail: student?.email || "",
             coachName: coach.name || "Coach",
-            coachConnectAccountId: coach.stripeConnectAccountId,
+            coachConnectAccountId: connectAccountId,
             coachPricingTier: coachProfile?.pricingTier,
             successUrl: `${baseUrl}/lessons/${lesson.id}?payment=success`,
             cancelUrl: `${baseUrl}/lessons/${lesson.id}?payment=cancelled`,
@@ -3035,15 +3100,14 @@ export const appRouter = router({
           throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Lesson is not completed" });
         }
         const existing = await db.getTipByLessonAndStudent(input.lessonId, ctx.user.id);
-        if (existing) {
-          if (existing.status === "paid" || existing.status === "transferred") {
-            throw new TRPCError({ code: "CONFLICT", message: "You have already tipped for this lesson" });
-          }
-          await db.deleteTip(existing.id);
+        if (existing && (existing.status === "paid" || existing.status === "transferred")) {
+          throw new TRPCError({ code: "CONFLICT", message: "You have already tipped for this lesson" });
         }
-        const coach = await db.getUserById(lesson.coachId);
-        if (!coach?.stripeConnectAccountId) {
-          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Coach has not completed payment setup" });
+        // Gate before touching the previous pending/failed tip, so a rejected
+        // attempt leaves no side effects.
+        const { coach } = await requirePayableCoach(lesson.coachId);
+        if (existing) {
+          await db.deleteTip(existing.id);
         }
 
         const student = await db.getUserById(ctx.user.id);
@@ -3098,6 +3162,11 @@ export const appRouter = router({
         dueDate: z.string().datetime().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
+        // Every content request ends in a paid quote — refuse it up front if
+        // the coach can't be paid, so the student isn't left with a request
+        // they can never pay for.
+        const { coach } = await requirePayableCoach(input.coachId);
+
         const id = await db.createContentRequest({
           studentId: ctx.user.id,
           coachId: input.coachId,
@@ -3108,7 +3177,6 @@ export const appRouter = router({
         });
 
         // S-DASH-3: Notification + email for coach
-        const coach = await db.getUserById(input.coachId);
         const student = await db.getUserById(ctx.user.id);
 
         await db.createNotification({
@@ -3190,6 +3258,9 @@ export const appRouter = router({
         if (!request) throw new TRPCError({ code: "NOT_FOUND", message: "Content request not found" });
         if (request.studentId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN", message: "Not your content request" });
         if (request.status !== "quoted") throw new TRPCError({ code: "BAD_REQUEST", message: "No active quote to accept" });
+        // Accepting commits the student to pay; keep the quote open (rather
+        // than stranding it in pending_payment) while the coach can't be paid.
+        await requirePayableCoach(request.coachId);
         await db.acceptContentRequestQuote(input.requestId);
         try {
           const student = await db.getUserById(ctx.user.id);
@@ -3245,10 +3316,16 @@ export const appRouter = router({
           throw new TRPCError({ code: "PRECONDITION_FAILED", message: `Cannot checkout: request is in '${request.status}' state (must be 'pending_payment')` });
         }
         if (request.stripeCheckoutSessionId && request.stripeCheckoutSessionId !== "__pending__") {
+          let openSession: { url: string | null } | null = null;
           try {
             const existing = await retrieveCheckoutSession(request.stripeCheckoutSessionId);
-            if (existing.status === "open") return { url: existing.url };
+            if (existing.status === "open") openSession = { url: existing.url };
           } catch { /* fall through */ }
+          if (openSession) {
+            // Never hand back a payment link for a coach who can no longer be paid.
+            await requirePayableCoach(request.coachId);
+            return openSession;
+          }
         }
         // Recover an orphaned "__pending__" slot left by a crashed prior attempt:
         // if it's been stuck for >3 min it can never be a live concurrent request,
@@ -3264,11 +3341,15 @@ export const appRouter = router({
           throw new TRPCError({ code: "CONFLICT", message: "Checkout is already being created. Please try again shortly." });
         }
         try {
-          const coach = await db.getUserById(request.coachId);
-          if (!coach?.stripeConnectAccountId) {
-            await db.clearContentRequestCheckoutSession(request.id);
-            throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Coach has not completed payment setup" });
+          let payee: Awaited<ReturnType<typeof requirePayableCoach>>;
+          try {
+            payee = await requirePayableCoach(request.coachId);
+          } catch (gateErr) {
+            // Release the slot; non-TRPC errors are released by the outer catch.
+            if (gateErr instanceof TRPCError) await db.clearContentRequestCheckoutSession(request.id);
+            throw gateErr;
           }
+          const { coach, connectAccountId } = payee;
           const student = await db.getUserById(ctx.user.id);
           const coachProfile = await db.getCoachProfileByUserId(request.coachId);
           const baseUrl = process.env.VITE_FRONTEND_URL || "http://localhost:3000";
@@ -3279,7 +3360,7 @@ export const appRouter = router({
             studentId: ctx.user.id,
             studentEmail: student?.email || "",
             coachName: coach.name || "Coach",
-            coachConnectAccountId: coach.stripeConnectAccountId,
+            coachConnectAccountId: connectAccountId,
             coachPricingTier: coachProfile?.pricingTier,
             requestTitle: request.title,
             successUrl: `${baseUrl}/dashboard?section=content-requests&payment=success`,
@@ -3507,6 +3588,11 @@ export const appRouter = router({
         const settings = await db.getCoachSubscriptionSettings(input.coachId);
         if (!settings?.enabled) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "This coach does not have subscriptions enabled" });
+        }
+        // A paid subscription commits the student to recurring payments; a free
+        // follow moves no money and stays open to every live coach.
+        if (settings.monthlyPriceCents > 0) {
+          await requirePayableCoach(input.coachId);
         }
         // TODO: Stripe recurring billing integration for paid subscriptions
         const id = await db.subscribeToCoach(ctx.user.id, input.coachId, settings.monthlyPriceCents);

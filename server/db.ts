@@ -1068,6 +1068,30 @@ export async function getPublicUserById(userId: number) {
   return result.length > 0 ? result[0] : undefined;
 }
 
+/**
+ * Payout-readiness columns for a batch of users. INTERNAL: feeds the derived
+ * `acceptingPayments` flag in coachPayability.ts — never return these rows
+ * (they carry the Connect account id) from a public endpoint.
+ */
+export async function getCoachPayoutStates(userIds: number[]): Promise<Array<{
+  id: number;
+  stripeConnectAccountId: string | null;
+  stripeConnectOnboarded: boolean | null;
+  deletedAt: Date | null;
+}>> {
+  const db = await getDb();
+  if (!db || userIds.length === 0) return [];
+  return db
+    .select({
+      id: users.id,
+      stripeConnectAccountId: users.stripeConnectAccountId,
+      stripeConnectOnboarded: users.stripeConnectOnboarded,
+      deletedAt: users.deletedAt,
+    })
+    .from(users)
+    .where(inArray(users.id, userIds));
+}
+
 // ============ COACH EARNINGS OPERATIONS ============
 
 /**

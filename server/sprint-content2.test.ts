@@ -17,7 +17,7 @@ vi.mock("./_core/notification");
 import * as db from "./db";
 
 const student = { id: 1, role: "user", userType: "student", openId: "s", name: "Student", email: "s@e.com" };
-const coach = { id: 42, role: "user", userType: "coach", openId: "c", name: "Coach", email: "c@e.com", stripeConnectAccountId: "acct_42" };
+const coach = { id: 42, role: "user", userType: "coach", openId: "c", name: "Coach", email: "c@e.com", stripeConnectAccountId: "acct_42", stripeConnectOnboarded: true };
 
 function ctx(user: any): TrpcContext {
   return { user, req: { protocol: "https", headers: {} } as any, res: { setHeader: vi.fn() } as any };

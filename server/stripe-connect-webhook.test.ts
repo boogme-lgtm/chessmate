@@ -205,10 +205,43 @@ describe("event scope and Connect account identity", () => {
     expect(db.updateUserStripeConnectAccount).not.toHaveBeenCalled();
   });
 
-  it("retains the current behavior for incomplete onboarding", async () => {
+  // The not-enabled path now reads the coach row (to decide whether a verified
+  // coach must be flipped back to not-onboarded), but a coach who never
+  // finished onboarding is still left untouched.
+  it("leaves a coach who never finished onboarding unchanged", async () => {
     const res = await dispatch({ ...connectEvent, data: { object: { ...connectEvent.data.object, payouts_enabled: false } } });
     expect(res.json).toHaveBeenCalledWith({ received: true });
-    expect(db.getDb).not.toHaveBeenCalled();
+    expect(db.updateUserStripeConnectAccount).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["charges", { charges_enabled: false }],
+    ["payouts", { payouts_enabled: false }],
+  ])("fails closed when Stripe disables %s on an onboarded coach", async (_label, disabled) => {
+    execute.mockResolvedValue([[{ id: 42, stripeConnectOnboarded: 1 }]]);
+    const res = await dispatch({ ...connectEvent, data: { object: { ...connectEvent.data.object, ...disabled } } });
+    expect(res.status).not.toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith({ received: true });
+    expect(db.updateUserStripeConnectAccount).toHaveBeenCalledWith(42, "acct_coach_unit", false);
+    // Still matched on the event's own account id.
+    const query = new MySqlDialect().sqlToQuery(execute.mock.calls[0][0]);
+    expect(query.params).toEqual(["acct_coach_unit"]);
+  });
+
+  it("is idempotent when a disabled account is delivered again", async () => {
+    execute.mockResolvedValue([[{ id: 42, stripeConnectOnboarded: 0 }]]);
+    const res = await dispatch({ ...connectEvent, data: { object: { ...connectEvent.data.object, charges_enabled: false } } });
+    expect(res.json).toHaveBeenCalledWith({ received: true });
+    expect(db.updateUserStripeConnectAccount).not.toHaveBeenCalled();
+  });
+
+  it.each(["unavailable", "write failure"])("does not acknowledge a lost disable on database %s", async (failure) => {
+    execute.mockResolvedValue([[{ id: 42, stripeConnectOnboarded: true }]]);
+    if (failure === "unavailable") vi.mocked(db.getDb).mockResolvedValue(null);
+    if (failure === "write failure") vi.mocked(db.updateUserStripeConnectAccount).mockRejectedValue(new Error("Simulated database write failure"));
+    const res = await dispatch({ ...connectEvent, data: { object: { ...connectEvent.data.object, payouts_enabled: false } } });
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).not.toHaveBeenCalledWith({ received: true });
   });
 
   it.each(["unavailable", "read failure", "write failure"])("does not acknowledge a lost account update on database %s", async (failure) => {

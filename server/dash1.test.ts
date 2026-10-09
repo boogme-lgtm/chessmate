@@ -34,6 +34,10 @@ beforeEach(() => {
 describe("S-DASH-1 — contentRequest.create", () => {
   it("creates a record, returns success + id", async () => {
     vi.mocked(db.createContentRequest).mockResolvedValue(101);
+    // Content requests are gated on a payable coach (Stripe-confirmed payout setup).
+    vi.mocked(db.getUserById).mockImplementation(async (id: number) =>
+      (id === 42 ? { ...coach, stripeConnectAccountId: "acct_42", stripeConnectOnboarded: true } : student) as any
+    );
     const caller = appRouter.createCaller(ctx(student));
     const result = await caller.contentRequest.create({
       coachId: 42,

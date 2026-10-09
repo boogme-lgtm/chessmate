@@ -243,6 +243,10 @@ export default function CoachOnboarding() {
     refetchOnWindowFocus: true,
   });
   const confirmStripeOnboarded = trpc.coach.confirmStripeOnboarded.useMutation();
+  const utils = trpc.useUtils();
+  // Already-live coaches land here when they resume Stripe setup from the
+  // dashboard banner — they don't need to (re)publish.
+  const alreadyLive = !!profileData?.profile?.profileActive;
 
   // ── Save current step and advance ──
   async function saveAndNext() {
@@ -333,7 +337,11 @@ export default function CoachOnboarding() {
       stripeStatus.refetch().then(({ data }) => {
         if (data?.onboarded) {
           confirmStripeOnboarded.mutate(undefined, {
-            onSuccess: () => toast.success("Stripe setup completed! Review your profile and go live."),
+            onSuccess: () => {
+              toast.success("Stripe setup completed! Students can book and pay you once your profile is live.");
+              utils.coach.getMyProfile.invalidate();
+              utils.coach.getEarnings.invalidate();
+            },
             onError: () => toast.success("Stripe setup completed! You can go live now."),
           });
         } else {
@@ -1028,8 +1036,12 @@ export default function CoachOnboarding() {
                 <div className="w-16 h-16 rounded-2xl bg-primary flex items-center justify-center mx-auto">
                   <Zap className="w-8 h-8 text-primary-foreground" />
                 </div>
-                <h2 className="text-2xl font-bold">Almost there!</h2>
-                <p className="text-muted-foreground text-sm">Set up payments and agree to our guidelines to go live.</p>
+                <h2 className="text-2xl font-bold">{alreadyLive ? "Your profile is live" : "Almost there!"}</h2>
+                <p className="text-muted-foreground text-sm">
+                  {alreadyLive
+                    ? "Finish payment setup so students can book and pay you."
+                    : "Agree to our guidelines to go live, and set up payments so students can book and pay you."}
+                </p>
               </div>
 
               {/* Stripe Connect */}
@@ -1038,7 +1050,7 @@ export default function CoachOnboarding() {
                   <CreditCard className="w-5 h-5 text-primary" />
                   <div>
                     <p className="font-medium text-sm">Stripe Connect</p>
-                    <p className="text-xs text-muted-foreground">Needed to withdraw your earnings</p>
+                    <p className="text-xs text-muted-foreground">Needed before students can book and pay you</p>
                   </div>
                   {profileData?.user?.stripeConnectOnboarded ? (
                     <Badge className="ml-auto bg-safe/20 text-safe border-safe/30">Connected</Badge>
@@ -1058,9 +1070,9 @@ export default function CoachOnboarding() {
                       Set Up Stripe Payments
                     </Button>
                     <p className="text-xs text-muted-foreground">
-                      You can go live now and start getting booked — just finish
-                      this before withdrawing your earnings. We'll remind you on
-                      your dashboard.
+                      Going live makes your profile visible right away. Students
+                      can book and pay you as soon as your Stripe setup is
+                      complete — we'll remind you on your dashboard until it is.
                     </p>
                   </>
                 )}
@@ -1084,31 +1096,42 @@ export default function CoachOnboarding() {
                 ))}
               </div>
 
-              {/* Guidelines agreement */}
-              <div className="flex items-start gap-3 p-4 rounded-xl bg-muted/40 border border-border">
-                <Checkbox
-                  id="guidelines"
-                  checked={guidelinesAgreed}
-                  onCheckedChange={(v) => setGuidelinesAgreed(!!v)}
-                  className="border-border mt-0.5"
-                />
-                <Label htmlFor="guidelines" className="text-foreground/80 text-sm cursor-pointer leading-relaxed">
-                  I agree to the{" "}
-                  <a href="/terms" target="_blank" className="text-primary hover:underline">Coach Guidelines</a>
-                  {" "}and{" "}
-                  <a href="/terms" target="_blank" className="text-primary hover:underline">Terms of Service</a>.
-                  I understand that BooGMe takes a flat {PRICING_TIERS[pricingTier].platformFeePercent}% platform fee on all lessons and content sales.
-                </Label>
-              </div>
+              {alreadyLive ? (
+                <Button
+                  onClick={() => navigate("/dashboard?role=coach")}
+                  className="w-full btn-editorial-primary h-12 text-base"
+                >
+                  Back to Dashboard
+                </Button>
+              ) : (
+                <>
+                  {/* Guidelines agreement */}
+                  <div className="flex items-start gap-3 p-4 rounded-xl bg-muted/40 border border-border">
+                    <Checkbox
+                      id="guidelines"
+                      checked={guidelinesAgreed}
+                      onCheckedChange={(v) => setGuidelinesAgreed(!!v)}
+                      className="border-border mt-0.5"
+                    />
+                    <Label htmlFor="guidelines" className="text-foreground/80 text-sm cursor-pointer leading-relaxed">
+                      I agree to the{" "}
+                      <a href="/terms" target="_blank" className="text-primary hover:underline">Coach Guidelines</a>
+                      {" "}and{" "}
+                      <a href="/terms" target="_blank" className="text-primary hover:underline">Terms of Service</a>.
+                      I understand that BooGMe takes a flat {PRICING_TIERS[pricingTier].platformFeePercent}% platform fee on all lessons and content sales.
+                    </Label>
+                  </div>
 
-              <Button
-                onClick={handleGoLive}
-                disabled={saving || !guidelinesAgreed}
-                className="w-full btn-editorial-primary h-12 text-base"
-              >
-                <Star className="w-5 h-5 mr-2" />
-                Go Live — Publish My Profile
-              </Button>
+                  <Button
+                    onClick={handleGoLive}
+                    disabled={saving || !guidelinesAgreed}
+                    className="w-full btn-editorial-primary h-12 text-base"
+                  >
+                    <Star className="w-5 h-5 mr-2" />
+                    Go Live — Publish My Profile
+                  </Button>
+                </>
+              )}
             </div>
           )}
 

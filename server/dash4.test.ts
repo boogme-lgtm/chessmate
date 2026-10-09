@@ -31,7 +31,8 @@ beforeEach(() => {
   vi.mocked(db.createNotification).mockResolvedValue(1);
   vi.mocked(db.getUserById).mockImplementation(async (id) => {
     if (id === 1) return student as any;
-    if (id === 42) return coach as any;
+    // Payable coach — content requests are gated on Stripe-confirmed payout setup.
+    if (id === 42) return { ...coach, stripeConnectAccountId: "acct_42", stripeConnectOnboarded: true } as any;
     return null;
   });
   // getDb used by the email-cooldown query — return a fake that reports no recent unread

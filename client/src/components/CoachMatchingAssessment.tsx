@@ -30,6 +30,7 @@ import {
 import { toast } from "sonner";
 
 import { assessmentDataSchema, type AssessmentData } from "@shared/assessmentMapping";
+import { PAYMENTS_PENDING_COPY } from "@shared/coachPayments";
 
 const TOTAL_QUESTIONS = 20;
 const SECTIONS = 5;
@@ -1437,6 +1438,9 @@ export function CoachMatchingAssessment({ onClose, mode = "signup", initialData,
                           </Badge>
                         ))}
                       </div>
+                      {match.acceptingPayments === false && (
+                        <p className="text-xs text-neutral-400 mb-4">{PAYMENTS_PENDING_COPY.booking}</p>
+                      )}
                       <a
                         href={`/coach/${match.coachUserId}`}
                         className="btn-editorial-primary inline-flex items-center gap-2 text-sm"

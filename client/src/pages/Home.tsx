@@ -1264,7 +1264,7 @@ function PricingTable() {
                   Apply as a founding coach
                   <ChevronRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
                 </a>
-                <p className="mono-label mt-4">$0 upfront · No subscription · Connect payouts when you withdraw</p>
+                <p className="mono-label mt-4">$0 upfront · No subscription · Bookings open once Stripe is connected</p>
               </div>
             </div>
           </motion.div>

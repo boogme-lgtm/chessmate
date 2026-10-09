@@ -101,11 +101,29 @@ describe("S-DASH-2 — coach.updateProfile", () => {
     expect(db.updateUserProfile).toHaveBeenCalledWith(42, expect.objectContaining({ name: undefined, bio: "hi" }));
   });
 
-  it("blocks going live without a Stripe Connect account (Bug 3)", async () => {
+  // Product decision (Sprint 1 payment safety): going live no longer requires
+  // Stripe. Students can't pay the coach until payout setup is confirmed —
+  // that is enforced by requirePayableCoach on every paid action instead.
+  it("allows going live without a Stripe Connect account (payments stay gated)", async () => {
     vi.mocked(db.getUserById).mockResolvedValue({ ...coach, stripeConnectAccountId: null } as any);
     vi.mocked(db.getCoachProfileByUserId).mockResolvedValue({ hourlyRateCents: 5000, lessonDurations: JSON.stringify([60]) } as any);
     const caller = appRouter.createCaller(ctx(coach));
-    await expect(caller.coach.updateProfile({ onboardingCompleted: true })).rejects.toThrow(/stripe/i);
+    const res = await caller.coach.updateProfile({ onboardingCompleted: true, profileActive: true });
+    expect(res).toEqual({ success: true });
+    expect(db.updateCoachProfile).toHaveBeenCalledWith(42, expect.objectContaining({
+      onboardingCompleted: true,
+      profileActive: true,
+    }));
+  });
+
+  it("still blocks going live without an hourly rate or lesson duration", async () => {
+    vi.mocked(db.getUserById).mockResolvedValue({ ...coach, stripeConnectAccountId: null } as any);
+    vi.mocked(db.getCoachProfileByUserId).mockResolvedValue({ hourlyRateCents: 5000, lessonDurations: "[]" } as any);
+    const caller = appRouter.createCaller(ctx(coach));
+    await expect(caller.coach.updateProfile({ profileActive: true })).rejects.toThrow(/lesson duration/i);
+    vi.mocked(db.getCoachProfileByUserId).mockResolvedValue({ hourlyRateCents: null, lessonDurations: JSON.stringify([60]) } as any);
+    await expect(caller.coach.updateProfile({ profileActive: true })).rejects.toThrow(/hourly rate/i);
+    expect(db.updateCoachProfile).not.toHaveBeenCalled();
   });
 
   it("allows going live once Stripe Connect is set", async () => {

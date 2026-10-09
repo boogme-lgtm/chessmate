@@ -23,6 +23,7 @@ import BookingModal from "@/components/BookingModal";
 import Footer from "@/components/Footer";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { PAYMENTS_PENDING_COPY, isCoachNotPayableError } from "@shared/coachPayments";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -107,6 +108,12 @@ export default function CoachDetail() {
 
   const utils = trpc.useUtils();
   const [checkoutPending, setCheckoutPending] = useState<number | null>(null);
+  // The coach's payment state changed since this page loaded (server rejected
+  // a paid action) — refetch so the buttons reflect it.
+  const refreshPaymentState = () => {
+    utils.coach.getById.invalidate({ id: coachId });
+    utils.content.list.invalidate();
+  };
 
   const { data: coach, isLoading } = trpc.coach.getById.useQuery({ id: coachId });
   const { data: reviews } = trpc.coach.getReviews.useQuery({ coachId, limit: 5 });
@@ -141,7 +148,10 @@ export default function CoachDetail() {
   );
   const subscribeMutation = trpc.coachSubscription.subscribe.useMutation({
     onSuccess: () => { toast.success("Subscribed!"); refetchSub(); },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => {
+      toast.error(err.message);
+      if (isCoachNotPayableError(err)) refreshPaymentState();
+    },
   });
   const unsubscribeMutation = trpc.coachSubscription.cancel.useMutation({
     onSuccess: () => { toast.success("Unsubscribed"); refetchSub(); },
@@ -182,6 +192,10 @@ export default function CoachDetail() {
   const minAdvanceHours = availability?.minAdvanceHours ?? 24;
   const coachTimezone = (coach as any).timezone ?? (profile as any)?.timezone ?? null;
   const isAvailable = profile?.isAvailable !== false;
+  // Live coaches without Stripe-confirmed payout setup stay visible, but every
+  // paid action is closed until setup completes (the server enforces it too).
+  const paymentsOpen = coach.acceptingPayments !== false;
+  const paidSubscription = (subSettings?.monthlyPriceCents ?? 0) > 0;
   const videoEmbed = profile?.videoIntroUrl ? getVideoEmbedUrl(profile.videoIntroUrl as string) : null;
 
   const bio = coach.bio as string | null;
@@ -538,10 +552,12 @@ export default function CoachDetail() {
                           item={item}
                           user={user}
                           coachId={coachId}
+                          paymentsOpen={paymentsOpen && item.acceptingPayments !== false}
                           checkoutPending={checkoutPending}
                           setCheckoutPending={setCheckoutPending}
                           utils={utils}
                           setLocation={setLocation}
+                          onPaymentsClosed={refreshPaymentState}
                         />
                       ))}
                     </div>
@@ -627,11 +643,16 @@ export default function CoachDetail() {
                     size="lg"
                     className="w-full gap-2"
                     onClick={handleBookLesson}
-                    disabled={!isAvailable}
+                    disabled={!isAvailable || !paymentsOpen}
                   >
                     <Calendar className="h-5 w-5" />
-                    {isAvailable ? "Book a Lesson" : "Currently unavailable"}
+                    {!isAvailable ? "Currently unavailable" : paymentsOpen ? "Book a Lesson" : "Booking opens soon"}
                   </Button>
+                  {isAvailable && !paymentsOpen && (
+                    <p data-testid="booking-pending-note" className="text-sm text-muted-foreground text-center -mt-2">
+                      {PAYMENTS_PENDING_COPY.booking}
+                    </p>
+                  )}
 
                   {/* Subscribe/Follow button */}
                   {subSettings?.enabled && !subLoading && (
@@ -651,22 +672,29 @@ export default function CoachDetail() {
                           </button>
                         </div>
                       ) : (
-                        <Button
-                          variant="outline"
-                          className="w-full gap-2"
-                          onClick={() => {
-                            if (!user) {
-                              setLocation(`/sign-in?redirect=/coach/${coachId}`);
-                              return;
-                            }
-                            subscribeMutation.mutate({ coachId });
-                          }}
-                          disabled={subscribeMutation.isPending}
-                        >
-                          {(subSettings.monthlyPriceCents ?? 0) > 0
-                            ? `Subscribe — $${((subSettings.monthlyPriceCents ?? 0) / 100).toFixed(0)}/mo`
-                            : "Follow (Free)"}
-                        </Button>
+                        <>
+                          <Button
+                            variant="outline"
+                            className="w-full gap-2"
+                            onClick={() => {
+                              if (!user) {
+                                setLocation(`/sign-in?redirect=/coach/${coachId}`);
+                                return;
+                              }
+                              subscribeMutation.mutate({ coachId });
+                            }}
+                            disabled={subscribeMutation.isPending || (paidSubscription && !paymentsOpen)}
+                          >
+                            {paidSubscription
+                              ? `Subscribe — $${((subSettings.monthlyPriceCents ?? 0) / 100).toFixed(0)}/mo`
+                              : "Follow (Free)"}
+                          </Button>
+                          {paidSubscription && !paymentsOpen && (
+                            <p className="text-xs text-muted-foreground text-center mt-1">
+                              {PAYMENTS_PENDING_COPY.subscription}
+                            </p>
+                          )}
+                        </>
                       )}
                     </div>
                   )}
@@ -758,19 +786,25 @@ function StoreItemRow({
   item,
   user,
   coachId,
+  paymentsOpen,
   checkoutPending,
   setCheckoutPending,
   utils,
   setLocation,
+  onPaymentsClosed,
 }: {
   item: any;
   user: any;
   coachId: number;
+  paymentsOpen: boolean;
   checkoutPending: number | null;
   setCheckoutPending: (id: number | null) => void;
   utils: any;
   setLocation: (path: string) => void;
+  onPaymentsClosed: () => void;
 }) {
+  const purchaseClosed = item.priceCents > 0 && !paymentsOpen;
+
   const handleBuy = async () => {
     if (!user) {
       setLocation(`/sign-in?redirect=/coach/${coachId}`);
@@ -785,6 +819,7 @@ function StoreItemRow({
       else toast.error("Checkout URL unavailable");
     } catch (err: any) {
       toast.error(err?.message || "Could not start checkout");
+      if (isCoachNotPayableError(err)) onPaymentsClosed();
     } finally {
       setCheckoutPending(null);
     }
@@ -814,11 +849,14 @@ function StoreItemRow({
           {KIND_LABELS[item.kind] ?? item.kind}
           {item.description ? ` · ${item.description.slice(0, 60)}${item.description.length > 60 ? "..." : ""}` : ""}
         </p>
+        {purchaseClosed && (
+          <p className="text-xs text-muted-foreground">{PAYMENTS_PENDING_COPY.purchase}</p>
+        )}
       </div>
       <Button
         size="sm"
         variant={item.priceCents > 0 ? "default" : "outline"}
-        disabled={checkoutPending === item.id}
+        disabled={checkoutPending === item.id || purchaseClosed}
         onClick={handleBuy}
         className="shrink-0"
       >
