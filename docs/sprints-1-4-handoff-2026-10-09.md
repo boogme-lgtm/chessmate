@@ -25,7 +25,6 @@ Each sprint was built, reviewed by four independent lenses (correctness, securit
 - Rank unpayable-but-live coaches lower in browse/matching? (Currently same position + badge.)
 - Dashboard rating has no rating-system choice (FIDE/Lichess/Chess.com) while matching interprets it via the questionnaire's system; and once set it can only be changed via Find Another Coach. Add a selector / editing / lichess+chess.com sync?
 - First questionnaire save without a rating still writes 1200 (unchanged behaviour). Leave rating empty instead?
-- `AUTO_RELEASE_PAYOUTS_ENABLED` still requires exactly `"true"` in production (deliberately strict because it moves money). Accept other spellings or fail at boot?
 - OAuth sign-in overwrites a user's custom name with the provider name on every login. Intended?
 - Is the Manus editor's embedded preview still needed? If not, switch the OAuth session cookie from `SameSite=None` to `Lax`.
 
