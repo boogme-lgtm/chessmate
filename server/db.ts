@@ -1,4 +1,4 @@
-import { eq, and, or, desc, ne, sql, gte, lte, isNotNull, isNull, inArray } from "drizzle-orm";
+import { eq, and, or, desc, ne, sql, gte, lte, isNotNull, isNull, inArray, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import {
@@ -16,6 +16,7 @@ import {
   messages,
   InsertCoachProfile,
   InsertStudentProfile,
+  type StudentProfile,
   InsertLesson,
   InsertReview,
   InsertWaitlist,
@@ -47,7 +48,7 @@ import { ENV } from './_core/env';
 import { verifyPreviewDatabase } from './_core/previewDatabase';
 import { computeCancellationRefund } from "@shared/cancellationPolicy";
 import { COACH_PENDING_STATUSES, buildCoachEarningsSummary } from "@shared/coachEarnings";
-import { ratingChangesForProfile } from "@shared/assessmentProfileUpdate";
+import { ratingChangesForProfile, STORED_PROFILE_INPUTS } from "@shared/assessmentProfileUpdate";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 let previewDatabaseReady: Promise<void> | undefined;
@@ -531,6 +532,64 @@ export async function updateStudentProfile(
   await db.update(studentProfiles).set(data).where(eq(studentProfiles.userId, userId));
 }
 
+const STUDENT_PROFILE_WRITE_ATTEMPTS = 5;
+
+/** SQL: this column still holds `value` (null-safe; text compared byte for byte, as a collation could equate different answers). */
+function studentProfileColumnUnchanged(column: keyof StudentProfile, value: unknown): SQL {
+  const target = studentProfiles[column];
+  return target.dataType === "string"
+    ? sql`CAST(${target} AS BINARY) <=> CAST(${sql.param(value, target)} AS BINARY)`
+    : sql`${target} <=> ${sql.param(value, target)}`;
+}
+
+function studentProfileHolds(row: StudentProfile, changes: Partial<InsertStudentProfile>): boolean {
+  return Object.entries(changes).every(([column, value]) => {
+    if (value === undefined) return true;
+    const current: unknown = row[column as keyof StudentProfile];
+    return value instanceof Date && current instanceof Date ? value.getTime() === current.getTime() : current === value;
+  });
+}
+
+/**
+ * Update one student's profile with changes computed from its stored values,
+ * without losing a write that lands in between (a save in another tab, a
+ * rating sync). The UPDATE is a compare-and-set: it applies only while the
+ * columns the computation read (`reads`) still hold the values it read.
+ * Otherwise the row is re-read and the changes recomputed, a bounded number
+ * of times. `changesFor` sees only the columns in `reads`, so it cannot depend
+ * on an unguarded one, and returns null when there is nothing to write.
+ * Resolves to the stored profile, or undefined when the student has none.
+ */
+export async function updateStudentProfileFromStored<K extends keyof StudentProfile>(
+  userId: number,
+  reads: readonly K[],
+  changesFor: (stored: Pick<StudentProfile, K>) => Partial<InsertStudentProfile> | null,
+): Promise<StudentProfile | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+
+  let stored = await getStudentProfileByUserId(userId);
+  for (let attempt = 0; attempt < STUDENT_PROFILE_WRITE_ATTEMPTS; attempt++) {
+    if (!stored) return undefined;
+    const snapshot = stored;
+    const changes = changesFor(Object.fromEntries(reads.map(column => [column, snapshot[column]])) as Pick<StudentProfile, K>);
+    if (!changes || !Object.keys(changes).length) return snapshot;
+
+    const result = await db.update(studentProfiles).set(changes).where(and(
+      eq(studentProfiles.userId, userId),
+      ...reads.map(column => studentProfileColumnUnchanged(column, snapshot[column])),
+    ));
+    if (((result as any)[0]?.affectedRows ?? 0) > 0) return snapshot;
+
+    // Another write changed what was read: recompute from the current row.
+    // A server that counts only changed rows also reports 0 for a write that
+    // changes nothing, so a row already holding these values is done.
+    stored = await getStudentProfileByUserId(userId);
+    if (stored && studentProfileHolds(stored, changes)) return stored;
+  }
+  throw new Error(`[Database] Student profile ${userId} kept changing during an update; it was not applied`);
+}
+
 export async function getWaitlistEntryByEmail(email: string) {
   const db = await getDb();
   if (!db) return undefined;
@@ -550,19 +609,12 @@ export async function updateStudentChessProfiles(
 /**
  * The write path for a rating change outside the questionnaire (dashboard
  * today, synced platform ratings later). Besides currentRating it re-derives
- * skillLevel and keeps the saved rating answer in step, while the student's
- * targetRating goal is kept — see ratingChangesForProfile.
+ * skillLevel and keeps the saved answers in step, while the student's
+ * targetRating goal is kept — see ratingChangesForProfile. Applied as a
+ * compare-and-set, so it never puts back answers saved after it read them.
  */
 export async function updateStudentRating(userId: number, currentRating: number) {
-  const db = await getDb();
-  if (!db) return;
-
-  const profile = await getStudentProfileByUserId(userId);
-  if (!profile) return;
-
-  await db.update(studentProfiles)
-    .set(ratingChangesForProfile(profile, currentRating))
-    .where(eq(studentProfiles.userId, userId));
+  await updateStudentProfileFromStored(userId, STORED_PROFILE_INPUTS, stored => ratingChangesForProfile(stored, currentRating));
 }
 
 export async function updateStudentXp(userId: number, xpToAdd: number) {

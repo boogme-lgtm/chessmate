@@ -49,9 +49,39 @@ export interface AssessmentData {
 /** Upper bound for any stored rating (assessment answer or profile column). */
 export const MAX_RATING = 4000;
 
+/**
+ * The range of ratings a student can enter themselves (dashboard input and
+ * questionnaire slider). Stored ratings may still exceed it up to MAX_RATING
+ * (API saves, older answers), so an input must also reach a stored value.
+ */
+export const MIN_STUDENT_RATING = 100;
+export const MAX_STUDENT_RATING = 3200;
+
+/** Upper bound for the "+N rating points" target answer. */
+export const MAX_TARGET_IMPROVEMENT = 2000;
+
 /** A usable rating: a finite number within the bounds the schema accepts. */
 export function isValidRating(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= MAX_RATING;
+}
+
+/** A usable "+N rating points" target answer. */
+export function isValidTargetImprovement(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= MAX_TARGET_IMPROVEMENT;
+}
+
+/** A usable stored goal (targetRating): a rating plus a target, so it may pass MAX_RATING. */
+export function isValidTargetRating(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+
+/**
+ * The "+N rating points" answer that expresses a goal from a rating: the
+ * distance still to go, 0 once the goal is reached. The goal (targetRating) is
+ * the source of truth; this is how the questionnaire shows it.
+ */
+export function targetImprovementToward(targetRating: number, rating: number): number {
+  return Math.min(MAX_TARGET_IMPROVEMENT, Math.max(0, targetRating - rating));
 }
 
 /**
@@ -68,7 +98,7 @@ export const assessmentDataSchema = z.object({
   improvementAreas: z.array(z.string().max(128)).max(10).optional(),
   primaryGoal: z.string().max(64).optional(),
   timeline: z.string().max(64).optional(),
-  targetImprovement: z.coerce.number().min(0).max(2000).optional(),
+  targetImprovement: z.coerce.number().min(0).max(MAX_TARGET_IMPROVEMENT).optional(),
   teachingArchetype: z.string().max(64).optional(),
   learningMethods: z.array(z.string().max(128)).max(20).optional(),
   feedbackStyle: z.coerce.number().min(0).max(10).optional(),
@@ -197,7 +227,7 @@ function clamp(value: number, min: number, max: number): number {
 export function mapAssessmentToProfile(data: Partial<AssessmentData> | ValidatedAssessmentData): MappedProfile {
   const d = (data ?? {}) as Partial<AssessmentData>;
   const rating = clamp(num(d.rating, 1200), 0, MAX_RATING);
-  const targetImprovement = clamp(num(d.targetImprovement, 200), 0, 2000);
+  const targetImprovement = clamp(num(d.targetImprovement, 200), 0, MAX_TARGET_IMPROVEMENT);
   const budgetMin = clamp(num(d.budgetMin, 50), 0, 100000);
   const budgetMax = clamp(num(d.budgetMax, 100), 0, 100000);
 

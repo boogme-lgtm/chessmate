@@ -93,7 +93,12 @@ describe("existing profile and recommendation reads", () => {
     vi.mocked(auth.verifyEmail).mockResolvedValue({ success: true, userId: user.id });
     vi.mocked(db.getWaitlistEntryByEmail).mockResolvedValue({ assessmentData: JSON.stringify(answers) } as any);
     vi.mocked(db.createStudentProfile).mockImplementation(async value => { stored = value; return 1; });
-    vi.mocked(db.updateStudentProfile).mockImplementation(async (_id, value) => { stored = { ...stored, ...value }; });
+    vi.mocked(db.updateStudentProfileFromStored).mockImplementation(async (_id, _reads, changesFor) => {
+      if (!stored) return undefined;
+      const changes = changesFor(stored);
+      if (changes) stored = { ...stored, ...changes };
+      return stored;
+    });
     await authRouter.createCaller(context()).verifyEmail({ token: "synthetic-verification-token" });
     expect(JSON.parse(stored.assessmentData)).toEqual(answers);
     const migratedBytes = stored.assessmentData;
@@ -108,6 +113,7 @@ describe("existing profile and recommendation reads", () => {
     }
     expect(db.createStudentProfile).not.toHaveBeenCalled();
     expect(db.updateStudentProfile).not.toHaveBeenCalled();
+    expect(db.updateStudentProfileFromStored).not.toHaveBeenCalled();
     expect(db.upsertCoachMatch).not.toHaveBeenCalled();
   });
 
@@ -120,6 +126,7 @@ describe("existing profile and recommendation reads", () => {
     expect(await caller.match.getMatchedCoaches()).toEqual([]);
     expect((await caller.match.getMatchedCoaches())[0].reasons).toContain("Specializes in your improvement areas");
     expect(db.updateStudentProfile).not.toHaveBeenCalled();
+    expect(db.updateStudentProfileFromStored).not.toHaveBeenCalled();
     expect(db.upsertCoachMatch).not.toHaveBeenCalled();
     expect(profile.assessmentData).toBe(JSON.stringify(answers));
   });

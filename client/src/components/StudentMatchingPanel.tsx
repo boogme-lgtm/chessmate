@@ -1,7 +1,7 @@
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { savedMatchingPreferences } from "@shared/savedMatchingPreferences";
+import { savedMatchingPreferences, type SavedAnswersProfile } from "@shared/savedMatchingPreferences";
 import { Link } from "wouter";
 import { useEffect, useState } from "react";
 import { CoachMatchingAssessment } from "./CoachMatchingAssessment";
@@ -11,6 +11,19 @@ import { PAYMENTS_PENDING_BADGE } from "@shared/coachPayments";
 
 /** Matching never hides a coach; it only says whether booking is open yet. */
 type RecommendedCoach = MatchResult & { acceptingPayments?: boolean };
+
+/**
+ * The questionnaire, prefilled from the saved profile. It takes the profile
+ * (not its stored JSON) so the rating and goal prefill from the profile's
+ * current values, the same ones the panel lists.
+ */
+export function EditSavedAnswers({ profile, onClose, onSaved }: {
+  profile: SavedAnswersProfile | null | undefined;
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+}) {
+  return <CoachMatchingAssessment mode="edit" initialData={editableSavedAssessment(profile)} onClose={onClose} onSaved={onSaved} />;
+}
 
 export default function StudentMatchingPanel() {
   const utils = trpc.useUtils();
@@ -62,9 +75,8 @@ export default function StudentMatchingPanel() {
     await profile.refetch();
   }
 
-  if (editing) return <CoachMatchingAssessment
-    mode="edit"
-    initialData={editableSavedAssessment(profile.data)}
+  if (editing) return <EditSavedAnswers
+    profile={profile.data}
     onClose={() => { setEditing(false); requestAnimationFrame(() => document.getElementById("edit-matching-answers")?.focus()); }}
     onSaved={async () => {
       setSnapshot(null);

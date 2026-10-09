@@ -55,12 +55,12 @@ async function main() {
           const input = (payload[0] || payload).json;
           const submitted = input.assessmentData;
           writes.push(structuredClone(submitted));
-          baselines.push(input.ratingBaseline);
+          baselines.push(input.baseline);
           if (saveHold) await saveHold.promise;
           // Same rules as the server: a first save creates the profile, later
           // saves change only what the answers changed.
           if (!saveFail) profile = profile
-            ? { ...profile, ...assessmentChangesForProfile(profile, submitted, { ratingBaseline: input.ratingBaseline }) }
+            ? { ...profile, ...assessmentChangesForProfile(profile, submitted, { baseline: input.baseline }) }
             : { id: 7, userId: 901, ...mapAssessmentToProfile(submitted) };
         }
         const body = names.map(name => {
@@ -72,6 +72,8 @@ async function main() {
           if (name === 'match.getMatchedCoaches') value = profile ? rankCoachesForStudent(inventory, profile) : [];
           if (name === 'notifications.unreadCount') value = 0;
           if (name === 'coach.getProfile') value = null;
+          // An infinite query: one empty page, never a bare array.
+          if (name === 'messages.getClasses') value = { items: [], nextCursor: null };
           return { result: { data: { json: value } } };
         });
         const frozen = JSON.stringify(body);
@@ -111,7 +113,7 @@ async function main() {
         // An untouched edit preserves absent fields and saved zero values.
         await page.getByRole('button', { name: 'Save answers', exact: true }).click(); await ready();
         assert.deepEqual(writes.at(-1), answers);
-        assert.equal(baselines.at(-1), 0, 'the save reports the prefilled rating');
+        assert.deepEqual(baselines.at(-1), { rating: 0, targetImprovement: null }, 'the save reports the prefilled rating');
         // A save must replace a frozen recommendation response from before it.
         inventory = [{ ...coach, name: 'Obsolete Synthetic Coach' }];
         matchHold = deferred(); matchPrepared = deferred();
@@ -145,7 +147,7 @@ async function main() {
         saveHold.release(); saveHold = null; await ready();
         assert.equal(writes.length, before + 1, 'single write per save');
         assert.equal(writes.at(-1).rating, 50);
-        assert.equal(baselines.at(-1), 0);
+        assert.deepEqual(baselines.at(-1), { rating: 0, targetImprovement: null }, 'the baseline stays where the form started');
         assert.equal(profile.currentRating, 50, 'a moved rating is saved to the profile');
         await panel.getByText('50 (FIDE)', { exact: true }).waitFor();
         // Back/navigation discards an unsaved draft; reload reads persisted data.
@@ -171,7 +173,7 @@ async function main() {
         await edit(); await page.getByRole('button', { name: 'Save answers', exact: true }).click();
         await panel.getByRole('status').filter({ hasText: 'No recommendations available' }).waitFor();
         assert.deepEqual(writes.at(-1), {}, 'missing answers do not become defaults');
-        assert.equal(baselines.at(-1), null, 'no rating was prefilled');
+        assert.deepEqual(baselines.at(-1), { rating: null, targetImprovement: null }, 'no rating was prefilled');
         assert.equal(await panel.locator('dd').filter({ hasText: 'Not saved' }).count(), 11);
         assert.deepEqual(errors, []);
         assert.ok(calls.every(name => !/generate|update|create/.test(name)), 'only original save endpoint writes');

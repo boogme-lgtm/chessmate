@@ -10,14 +10,19 @@ it("updates the existing profile then reads recommendations from saved answers",
   const answers = { primaryGoal: "rating", rating: 0, budgetMin: 0, budgetMax: 80, timezone: "Europe/London" };
   let profile = { id: 7, userId: 901, ...mapAssessmentToProfile(answers) };
   vi.mocked(db.getStudentProfileByUserId).mockImplementation(async () => profile as any);
-  vi.mocked(db.updateStudentProfile).mockImplementation(async (_id, changes) => { profile = { ...profile, ...changes }; });
+  // Updates are computed from the stored row and applied as one guarded write.
+  vi.mocked(db.updateStudentProfileFromStored).mockImplementation(async (_id, _reads, changesFor) => {
+    const changes = changesFor(profile as any);
+    if (changes) profile = { ...profile, ...changes };
+    return profile as any;
+  });
   vi.mocked(db.getActiveCoaches).mockResolvedValue([]);
   const caller = appRouter.createCaller({ user: { id: 901, userType: "both" } as any, req: {} as any, res: {} as any });
   const edited = { ...editableSavedAssessment(profile.assessmentData), primaryGoal: "enjoyment" };
   await caller.student.saveQuizResults({ assessmentData: edited });
   expect(JSON.parse((await caller.student.getProfile())!.assessmentData!)).toEqual(edited);
   expect(await caller.match.getMatchedCoaches()).toEqual([]);
-  expect(db.updateStudentProfile).toHaveBeenCalledTimes(1);
+  expect(db.updateStudentProfileFromStored).toHaveBeenCalledTimes(1);
   expect(db.createStudentProfile).not.toHaveBeenCalled();
   expect(db.upsertCoachMatch).not.toHaveBeenCalled();
 });

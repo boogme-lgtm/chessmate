@@ -1,4 +1,4 @@
-import { isValidRating } from "./assessmentMapping";
+import { isValidRating, isValidTargetImprovement, isValidTargetRating, targetImprovementToward } from "./assessmentMapping";
 
 // Read the original answers, not derived profile columns: mapping fills missing
 // columns with defaults, which must never be presented as answers the user gave.
@@ -15,6 +15,7 @@ export function readSavedAssessment(raw: string | null | undefined): Record<stri
 export interface SavedAnswersProfile {
   assessmentData?: string | null;
   currentRating?: number | null;
+  targetRating?: number | null;
 }
 
 /**
@@ -26,12 +27,21 @@ export interface SavedAnswersProfile {
  * a profile that has no questionnaire answers at all. A questionnaire saved
  * without a rating answer gets a default currentRating from the mapping, and a
  * default is never presented as the student's answer.
+ *
+ * Likewise targetRating is the source of truth for the student's goal, and a
+ * "+N rating points" answer is shown as the distance from the current rating
+ * to that goal (see targetImprovementToward), only when the student gave one.
  */
 export function currentAssessmentAnswers(profile: SavedAnswersProfile | null | undefined): Record<string, unknown> {
   if (!profile) return {};
-  const { rating: savedRating, ...answers } = readSavedAssessment(profile.assessmentData);
-  const ratingGiven = profile.assessmentData == null || isValidRating(savedRating);
-  return ratingGiven && isValidRating(profile.currentRating) ? { ...answers, rating: profile.currentRating } : answers;
+  const answers = readSavedAssessment(profile.assessmentData);
+  const ratingGiven = profile.assessmentData == null || isValidRating(answers.rating);
+  delete answers.rating;
+  if (ratingGiven && isValidRating(profile.currentRating)) answers.rating = profile.currentRating;
+  if (isValidTargetImprovement(answers.targetImprovement) && isValidRating(answers.rating) && isValidTargetRating(profile.targetRating)) {
+    answers.targetImprovement = targetImprovementToward(profile.targetRating, answers.rating);
+  }
+  return answers;
 }
 
 /**

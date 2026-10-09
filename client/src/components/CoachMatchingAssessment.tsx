@@ -29,11 +29,13 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { assessmentDataSchema, type AssessmentData } from "@shared/assessmentMapping";
+import { assessmentDataSchema, MAX_STUDENT_RATING, type AssessmentData } from "@shared/assessmentMapping";
 import { PAYMENTS_PENDING_COPY } from "@shared/coachPayments";
+import { answerQuestion, questionnaireSaveInput, sliderMax, startQuestionnaire } from "@shared/questionnaireDraft";
 
 const TOTAL_QUESTIONS = 20;
 const SECTIONS = 5;
+const TARGET_SLIDER_MAX = 600;
 
 export function CoachMatchingAssessment({ onClose, mode = "signup", initialData, onSaved }: {
   onClose: () => void;
@@ -61,7 +63,10 @@ export function CoachMatchingAssessment({ onClose, mode = "signup", initialData,
   const [matchResults, setMatchResults] = useState<any[] | null>(null);
   const [matchError, setMatchError] = useState(false);
 
-  const [startingData] = useState<Partial<AssessmentData>>(() => editing ? { ...initialData } : {
+  // The draft keeps the answers the form started from next to the current
+  // ones: every save reports them, so the server keeps a stored rating or goal
+  // the student left untouched (it may be newer than this form).
+  const [draft, setDraft] = useState(() => startQuestionnaire(editing ? { ...initialData } : {
     rating: 1200,
     ratingSystem: "lichess",
     competitiveExperience: [],
@@ -74,15 +79,14 @@ export function CoachMatchingAssessment({ onClose, mode = "signup", initialData,
     motivations: [],
     techComfort: 5,
     targetImprovement: 200,
-  });
-  const [data, setData] = useState<Partial<AssessmentData>>(startingData);
-  // Sent with every save: a rating still equal to where the form started was
-  // not changed, so the server keeps the stored rating (which may be newer).
-  const ratingBaseline = startingData.rating ?? null;
+  }));
+  const data = draft.answers;
+  const ratingMax = sliderMax(draft, "rating", MAX_STUDENT_RATING);
+  const targetMax = sliderMax(draft, "targetImprovement", TARGET_SLIDER_MAX);
 
   const updateData = (key: keyof AssessmentData, value: any) => {
     if (saveLock.current) return;
-    setData((prev) => ({ ...prev, [key]: value }));
+    setDraft((prev) => answerQuestion(prev, key, value));
   };
 
   const toggleArrayItem = (key: keyof AssessmentData, value: string) => {
@@ -126,7 +130,7 @@ export function CoachMatchingAssessment({ onClose, mode = "signup", initialData,
       setIsProcessing(true);
       setSaveError(null);
       try {
-        await saveQuizMutation.mutateAsync({ assessmentData: parsed.data, ratingBaseline });
+        await saveQuizMutation.mutateAsync(questionnaireSaveInput(draft, parsed.data));
       } catch {
         setSaveError("We couldn't save your answers. Your changes are still here. Please retry or cancel.");
         saveLock.current = false;
@@ -152,7 +156,7 @@ export function CoachMatchingAssessment({ onClose, mode = "signup", initialData,
     try {
       if (user) {
         setProcessingStep(0);
-        await saveQuizMutation.mutateAsync({ assessmentData: data as any, ratingBaseline });
+        await saveQuizMutation.mutateAsync(questionnaireSaveInput(draft, data as any));
       }
 
       for (let i = user ? 1 : 0; i < steps.length; i++) {
@@ -211,7 +215,7 @@ export function CoachMatchingAssessment({ onClose, mode = "signup", initialData,
                 value={[data.rating ?? 1200]}
                 onValueChange={([value]) => updateData("rating", value)}
                 min={0}
-                max={2800}
+                max={ratingMax}
                 step={50}
                 className="w-full"
               />
@@ -525,7 +529,7 @@ export function CoachMatchingAssessment({ onClose, mode = "signup", initialData,
                   updateData("targetImprovement", value)
                 }
                 min={0}
-                max={600}
+                max={targetMax}
                 step={50}
                 className="w-full"
               />

@@ -2,9 +2,7 @@ import { createElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { mapAssessmentToProfile } from "@shared/assessmentMapping";
-import { editableSavedAssessment } from "@shared/editableSavedAssessment";
-import StudentMatchingPanel from "./StudentMatchingPanel";
-import { CoachMatchingAssessment } from "./CoachMatchingAssessment";
+import StudentMatchingPanel, { EditSavedAnswers } from "./StudentMatchingPanel";
 
 const { profileQuery, mutation } = vi.hoisted(() => ({
   profileQuery: { current: {} as Record<string, unknown> },
@@ -42,10 +40,8 @@ describe("saved matching preferences read the profile's current rating", () => {
     expect(html).not.toContain("1400");
   });
 
-  it("prefills the edit form with the current rating", () => {
-    const html = renderToStaticMarkup(createElement(CoachMatchingAssessment, {
-      mode: "edit", initialData: editableSavedAssessment(drifted), onClose: () => {},
-    }));
+  it("regression: the panel's edit view prefills the current rating from the profile", () => {
+    const html = renderToStaticMarkup(createElement(EditSavedAnswers, { profile: drifted, onClose: () => {}, onSaved: async () => {} }));
     expect(html).toContain("Edit matching answers");
     expect(html).toMatch(/>1650</);
     expect(html).toContain("Advanced");

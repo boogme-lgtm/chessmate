@@ -14,7 +14,8 @@ import { retrieveCheckoutSession, createContentRequestCheckoutSession, createCon
 import { ENV } from "./_core/env";
 import { PRICING_TIERS, type PricingTier, calculateLessonBreakdown, getTierFeePercent, DEFAULT_PRICING_TIER } from "@shared/pricing";
 import { toCountryCode } from "@shared/countries";
-import { assessmentDataSchema, MAX_RATING, skillLevelForRating } from "@shared/assessmentMapping";
+import { assessmentDataSchema, MAX_STUDENT_RATING, MIN_STUDENT_RATING, skillLevelForRating } from "@shared/assessmentMapping";
+import { answerBaselineSchema } from "@shared/assessmentProfileUpdate";
 import { saveStudentAssessment } from "./studentAssessment";
 import { generateToken, hashPassword } from "./auth";
 import {
@@ -1221,17 +1222,17 @@ export const appRouter = router({
   // ============ STUDENT OPERATIONS ============
   student: router({
     // Create/update student profile from quiz. An update changes only what the
-    // answers changed (never the rating unless the student moved it).
+    // answers changed (never the rating or goal unless the student moved them).
     saveQuizResults: protectedProcedure
       .input(z.object({
         assessmentData: assessmentDataSchema,
-        // The rating the questionnaire started from (null: it showed none).
+        // The rating and goal answers the questionnaire started from.
         // Optional so clients built before it keep working.
-        ratingBaseline: z.number().min(0).max(MAX_RATING).nullable().optional(),
+        baseline: answerBaselineSchema.optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         const result = await saveStudentAssessment(ctx.user.id, input.assessmentData, {
-          ratingBaseline: input.ratingBaseline,
+          baseline: input.baseline,
         });
         return { success: true, ...result };
       }),
@@ -1243,10 +1244,10 @@ export const appRouter = router({
 
     // Set/update the student's current chess rating (S-DASH-2). The profile's
     // currentRating is the single source of truth for the student's rating;
-    // updateStudentRating also keeps the saved questionnaire answer in step.
+    // updateStudentRating also keeps the saved questionnaire answers in step.
     updateRating: protectedProcedure
       .input(z.object({
-        currentRating: z.number().int().min(100).max(3200),
+        currentRating: z.number().int().min(MIN_STUDENT_RATING).max(MAX_STUDENT_RATING),
       }))
       .mutation(async ({ ctx, input }) => {
         const existing = await db.getStudentProfileByUserId(ctx.user.id);

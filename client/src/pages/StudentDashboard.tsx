@@ -59,6 +59,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { differenceInMinutes } from "date-fns";
 import { useCoachAcceptsPayments, useCoachesAcceptPayments } from "@/hooks/useCoachAcceptsPayments";
 import { PAYMENTS_PENDING_COPY, isCoachNotPayableError } from "@shared/coachPayments";
+import { MAX_STUDENT_RATING, MIN_STUDENT_RATING } from "@shared/assessmentMapping";
 
 /**
  * StudentDashboard (S-DASH-1 redesign)
@@ -2160,8 +2161,8 @@ function ProgressModule({
 
   const handleSaveRating = () => {
     const value = parseInt(ratingInput, 10);
-    if (isNaN(value) || value < 100 || value > 3200) {
-      toast.error("Enter a rating between 100 and 3200.");
+    if (isNaN(value) || value < MIN_STUDENT_RATING || value > MAX_STUDENT_RATING) {
+      toast.error(`Enter a rating between ${MIN_STUDENT_RATING} and ${MAX_STUDENT_RATING}.`);
       return;
     }
     updateRatingMutation.mutate({ currentRating: value });
@@ -2339,8 +2340,8 @@ function ProgressModule({
               <>
                 <input
                   type="number"
-                  min={100}
-                  max={3200}
+                  min={MIN_STUDENT_RATING}
+                  max={MAX_STUDENT_RATING}
                   placeholder="e.g. 1200"
                   value={ratingInput}
                   onChange={(e) => setRatingInput(e.target.value)}
