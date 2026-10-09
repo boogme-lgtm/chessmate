@@ -4,6 +4,13 @@ import type { PreviewConfig } from "./previewPolicy";
 
 export const STORAGE_GUARD_KEY = "boogme_preview_guard.json";
 
+/**
+ * Where an object lives. Public objects get stable unsigned URLs; private ones
+ * only short-lived signed URLs. Callers persist the logical key, so they pass
+ * the same visibility to storageGet that they used for storagePut.
+ */
+export type StorageVisibility = "private" | "public";
+
 function logicalKey(input: string): string {
   const key = input.replace(/^\/+/, "");
   if (!key || key.length > 1024 || /[\\\x00-\x1f\x7f]/.test(key)
@@ -53,7 +60,7 @@ export class PreviewStorage {
     }
   }
 
-  async put(input: string, data: Buffer | Uint8Array | string, contentType: string, visibility: "private" | "public") {
+  async put(input: string, data: Buffer | Uint8Array | string, contentType: string, visibility: StorageVisibility) {
     const key = logicalKey(input);
     await this.verify();
     const objectKey = `${visibility}/${key}`;
@@ -62,19 +69,24 @@ export class PreviewStorage {
         Bucket: this.config.storage.bucket, Key: objectKey, Body: data, ContentType: contentType,
       }));
     } catch { throw new Error("Preview storage upload failed"); }
-    if (visibility === "public") {
-      const encoded = objectKey.split("/").map(encodeURIComponent).join("/");
-      return { key, url: `${this.config.storage.publicEndpoint}/${this.config.storage.bucket}/${encoded}` };
-    }
-    return this.get(key);
+    return { key, url: await this.downloadUrl(visibility, key) };
   }
 
-  async get(input: string) {
+  /** Read from the prefix the object was written under (private unless stated). */
+  async get(input: string, visibility: StorageVisibility = "private") {
     const key = logicalKey(input);
     await this.verify();
-    const url = await getSignedUrl(this.downloadClient, new GetObjectCommand({
-      Bucket: this.config.storage.bucket, Key: `private/${key}`,
+    return { key, url: await this.downloadUrl(visibility, key) };
+  }
+
+  private async downloadUrl(visibility: StorageVisibility, key: string): Promise<string> {
+    const objectKey = `${visibility}/${key}`;
+    if (visibility === "public") {
+      const encoded = objectKey.split("/").map(encodeURIComponent).join("/");
+      return `${this.config.storage.publicEndpoint}/${this.config.storage.bucket}/${encoded}`;
+    }
+    return getSignedUrl(this.downloadClient, new GetObjectCommand({
+      Bucket: this.config.storage.bucket, Key: objectKey,
     }), { expiresIn: 300 });
-    return { key, url };
   }
 }

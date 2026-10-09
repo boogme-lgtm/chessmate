@@ -82,19 +82,13 @@ export default function DashShell({
     return () => window.removeEventListener("hashchange", followMatchingLink);
   }, [role, setLocation]);
 
-  // Total unread messages across all lessons
-  const { data: lessons } = role === "coach"
-    ? trpc.lesson.coachLessons.useQuery({ limit: 50 }, { enabled: !!user })
-    : trpc.lesson.myLessons.useQuery({ limit: 50 }, { enabled: !!user });
-
-  const lessonIds = (lessons || []).map((l: any) => l.id);
-  const { data: unreadCounts } = trpc.messages.getUnreadCounts.useQuery(
-    { lessonIds },
-    { enabled: lessonIds.length > 0, refetchInterval: 30000 }
+  // Total unread messages across ALL of this role's lessons — one server-side
+  // aggregate, so the badge agrees with the Messages panel however many
+  // classes it has paged through. Refreshed when a thread is read.
+  const { data: totalUnread = 0 } = trpc.messages.getUnreadTotal.useQuery(
+    { role },
+    { enabled: !!user, refetchInterval: 30000 }
   );
-  const totalUnread = unreadCounts
-    ? Object.values(unreadCounts as Record<number, number>).reduce((a, b) => a + b, 0)
-    : 0;
 
   const firstName = user?.name?.split(" ")[0] || "there";
   const greeting = getGreeting();

@@ -16,6 +16,7 @@ import { COOKIE_NAME, ONE_YEAR_MS } from '@shared/const';
 import * as db from './db';
 import { toAccountUser } from "./accessControl";
 import { importGuestAssessment } from "./studentAssessment";
+import { DISPLAY_NAME_MAX_LENGTH } from "@shared/displayName";
 
 const JWT_SECRET = new TextEncoder().encode(ENV.cookieSecret);
 
@@ -90,7 +91,9 @@ export const authRouter = router({
             /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/,
             "Password must contain at least one uppercase letter, one lowercase letter, and one number"
           ),
-        name: z.string().min(1, "Name is required"),
+        // Trimmed, so a whitespace-only name cannot create a nameless account.
+        name: z.string().trim().min(1, "Name is required")
+          .max(DISPLAY_NAME_MAX_LENGTH, `Name must be at most ${DISPLAY_NAME_MAX_LENGTH} characters`),
       })
     )
     .mutation(async ({ input }) => {

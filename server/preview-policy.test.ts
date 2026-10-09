@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { previewEnvironment } from "../test/preview-fixture";
-import { loadPreviewConfig } from "./_core/previewPolicy";
+import { explicitAppEnvironment, loadPreviewConfig } from "./_core/previewPolicy";
 import { verifyPreviewDatabase } from "./_core/previewDatabase";
 import { startBackgroundJobs } from "./_core/backgroundJobs";
 import manifest from "../preview/schema-manifest.json";
@@ -41,13 +41,61 @@ describe("preview startup policy", () => {
         .toThrow("Remove STRIPE_SECRET_KEY");
     },
   );
+  // Sprint 3 (intended change): cosmetic production/development spellings used
+  // to throw at import time and crash a live deployment at boot.
   it.each([
-    "", "PRODUCTION", "Production", "PREVIEW", "Preview", "DEVELOPMENT", "Development",
-    " prod", "prod ", " PROD ", "production ", " preview", "prod\n", "staging", "preveiw", "prd",
-  ])("still rejects unrelated or noncanonical APP_ENV=%j", APP_ENV => {
-    expect(() => loadPreviewConfig({ ...previewEnvironment(), APP_ENV, NODE_ENV: "development" }))
-      .toThrow("APP_ENV must be preview, production or development");
+    "PRODUCTION", "Production", " production ", "production\n", "\tProduction\t",
+    " prod", "prod ", " PROD ", "prod\n",
+  ])("normalizes the production spelling %j and never enables preview", APP_ENV => {
+    for (const NODE_ENV of [undefined, "development", "production"]) {
+      // Even with every preview setting present, production stays production.
+      expect(loadPreviewConfig({ ...previewEnvironment(), APP_ENV, NODE_ENV })).toBeUndefined();
+      expect(explicitAppEnvironment(APP_ENV)).toBe("production");
+    }
   });
+  it.each(["DEVELOPMENT", "Development", " development ", "development\n"])(
+    "normalizes the development spelling %j",
+    APP_ENV => {
+      expect(loadPreviewConfig({ ...previewEnvironment(), APP_ENV, NODE_ENV: "production" })).toBeUndefined();
+      expect(explicitAppEnvironment(APP_ENV)).toBe("development");
+    },
+  );
+  it.each(["PREVIEW", "Preview", " preview", "preview ", "preview\n", "\tpreview"])(
+    "fails closed for the non-canonical preview spelling %j instead of guessing a mode",
+    APP_ENV => {
+      // Neither silently isolated (the build compares the raw value) nor
+      // silently production: preview must be selected exactly.
+      for (const env of [previewEnvironment(), { ...previewEnvironment(), STRIPE_SECRET_KEY: "synthetic-key" }, {}]) {
+        expect(() => loadPreviewConfig({ ...env, APP_ENV, NODE_ENV: "production" }))
+          .toThrow('APP_ENV must be exactly "preview"');
+      }
+    },
+  );
+  it.each(["", " ", "staging", "preveiw", "prd", "dev", "productionn", "test", "pre view"])(
+    "still rejects unrelated APP_ENV=%j",
+    APP_ENV => {
+      expect(() => loadPreviewConfig({ ...previewEnvironment(), APP_ENV, NODE_ENV: "development" }))
+        .toThrow("APP_ENV must be preview, production or development");
+    },
+  );
+  it("reports an unset APP_ENV as no explicit selection", () => {
+    expect(explicitAppEnvironment(undefined)).toBeUndefined();
+    expect(explicitAppEnvironment("preview")).toBe("preview");
+  });
+  it.each(["BACKGROUND_JOBS_ENABLED", "AUTO_RELEASE_PAYOUTS_ENABLED"])(
+    "keeps %s off in preview for every true spelling and accepts any false spelling",
+    flag => {
+      for (const value of ["true", "TRUE", "1", "yes", " On "]) {
+        expect(() => loadPreviewConfig({ ...previewEnvironment(), [flag]: value })).toThrow(`${flag} must be false in preview`);
+      }
+      for (const value of ["", "maybe", "enabled"]) {
+        expect(() => loadPreviewConfig({ ...previewEnvironment(), [flag]: value })).toThrow(`${flag} must be true or false`);
+      }
+      for (const value of ["false", "FALSE", "0", "no", " off "]) {
+        expect(loadPreviewConfig({ ...previewEnvironment(), [flag]: value })?.instanceId).toBe("qa1");
+      }
+    },
+  );
   it.each([
     ["APP_ENV", "preveiw"], ["DATABASE_URL", "mysql://user:password@host/Xkyng35xnYFybYAdmyVo96"],
     ["DATABASE_URL", "mysql://root:password@host/boogme_preview_qa1"],

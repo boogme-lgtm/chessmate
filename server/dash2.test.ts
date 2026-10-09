@@ -103,8 +103,8 @@ describe("S-DASH-2 — coach.updateProfile", () => {
   });
 
   it("does not overwrite the account name with a blank/whitespace name (Bug 1)", async () => {
-    // z.string().min(2) blocks "" at the boundary, but a whitespace-only name
-    // ("  ", length 2) slips through — the handler guard must still not blank it.
+    // The name is trimmed and a blank one ("", "  ") means "no change": the
+    // account name must never be blanked (see displayNames.test.ts).
     const caller = appRouter.createCaller(ctx(coach));
     await caller.coach.updateProfile({ name: "  ", bio: "hi" });
     expect(db.updateUserProfile).toHaveBeenCalledWith(42, expect.objectContaining({ name: undefined, bio: "hi" }));

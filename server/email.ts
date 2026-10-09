@@ -1,5 +1,6 @@
 import { ENV } from "./_core/env";
 import { capturePreviewEmail } from "./_core/previewEmail";
+import { escapeHtml, sanitizeEmailSubject } from "./emailSafety";
 
 interface EmailParams {
   to: string;
@@ -10,7 +11,9 @@ interface EmailParams {
 /**
  * Send email using Resend API
  */
-export async function sendEmail(params: EmailParams): Promise<void> {
+export async function sendEmail(rawParams: EmailParams): Promise<void> {
+  // Subjects routinely carry names and titles; keep them to one header line.
+  const params = { ...rawParams, subject: sanitizeEmailSubject(rawParams.subject) };
   if (ENV.preview) {
     await capturePreviewEmail(params);
     return;
@@ -48,25 +51,17 @@ export async function sendEmail(params: EmailParams): Promise<void> {
   }
 }
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
 /**
  * Sent when a coach goes live. Going live doesn't require Stripe, so the copy
  * follows whether students can actually pay the coach yet (coachPayability):
  * bookings are only promised once payout setup is confirmed.
  */
 export function getCoachWelcomeEmail(
-  coachName: string,
+  rawCoachName: string,
   { acceptingPayments }: { acceptingPayments: boolean },
 ): string {
-  const dashboardUrl = `${ENV.frontendUrl || "https://boogme.com"}/coach/dashboard`;
+  const coachName = escapeHtml(rawCoachName);
+  const dashboardUrl = escapeHtml(`${ENV.frontendUrl || "https://boogme.com"}/coach/dashboard`);
   const liveCopy = acceptingPayments
     ? `Your coach profile is now <strong>live</strong> on BooGMe! Students can find you, view your availability, and book lessons immediately.`
     : `Your coach profile is now <strong>live</strong> on BooGMe! Students can find you and view your profile and availability.`;
@@ -104,7 +99,7 @@ export function getCoachWelcomeEmail(
           <tr>
             <td style="padding: 0 40px 40px 40px;">
               <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">
-                Hi ${escapeHtml(coachName)},
+                Hi ${coachName},
               </p>
               <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">
                 ${liveCopy}

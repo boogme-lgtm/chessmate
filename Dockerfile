@@ -19,6 +19,12 @@ RUN pnpm run build
 
 FROM node:24-bookworm-slim AS runtime
 WORKDIR /app
+# Background jobs default OFF so a new replica or preview never duplicates
+# them. EXACTLY ONE production process must run with
+# BACKGROUND_JOBS_ENABLED=true (set it on that one deployment's runtime
+# environment). If none does, lesson reminders, auto-decline/auto-complete
+# settlement, stuck-payment/orphan recovery, content-deadline notices and
+# payout auto-release silently stop. Two or more would run every job twice.
 ENV NODE_ENV=production PORT=3000 BACKGROUND_JOBS_ENABLED=false MANUS_DEV_TOOLS_ENABLED=false
 # The existing server bundle imports Vite packages at startup. Keep its current
 # dependency set until that development/production split is repaired separately.

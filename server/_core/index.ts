@@ -2,13 +2,13 @@ import "dotenv/config";
 import express from "express";
 import { createServer } from "http";
 import net from "net";
-import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthCallbackRoutes, registerOAuthStartRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
-import { startBackgroundJobs } from "./backgroundJobs";
+import { backgroundJobsEnabled, startBackgroundJobs } from "./backgroundJobs";
+import { registerTrpcRateLimits } from "./rateLimits";
 import { ENV } from "./env";
 import { getDb } from "../db";
 import { verifyStorageIsolation } from "../storage";
@@ -33,6 +33,9 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 }
 
 async function startServer() {
+  // Validate job ownership before anything listens: an unrecognized flag must
+  // fail the deploy with a clear message, not crash-loop a serving process.
+  backgroundJobsEnabled();
   if (ENV.preview) {
     await getDb();
     await verifyStorageIsolation();
@@ -90,42 +93,10 @@ async function startServer() {
     // Redirect to homepage with cache-busting parameter
     res.redirect("/?logout=" + Date.now());
   });
-  // Rate limiting on auth-sensitive tRPC endpoints.
-  // Limits login/register/password-reset to 10 requests per minute per IP.
-  // Other tRPC endpoints get a generous 200/min per IP.
-  const authLimiter = rateLimit({
-    windowMs: 60 * 1000,
-    limit: 10,
-    standardHeaders: "draft-7",
-    legacyHeaders: false,
-    message: { error: "Too many requests, please try again later" },
-    keyGenerator: (req) => {
-      const ip = req.ip ?? req.socket.remoteAddress ?? "127.0.0.1";
-      return ipKeyGenerator(ip);
-    },
-  });
-  const generalLimiter = rateLimit({
-    windowMs: 60 * 1000,
-    limit: 200,
-    standardHeaders: "draft-7",
-    legacyHeaders: false,
-    keyGenerator: (req) => {
-      const ip = req.ip ?? req.socket.remoteAddress ?? "127.0.0.1";
-      return ipKeyGenerator(ip);
-    },
-  });
-
-  // Apply strict limiter to auth procedures. Every email-sending auth endpoint
-  // MUST be here — otherwise it's an email-bomb vector at 200/min (the general
-  // limit). register/requestPasswordReset/resendVerification all send mail.
-  app.use("/api/trpc/auth.login", authLimiter);
-  app.use("/api/trpc/auth.register", authLimiter);
-  app.use("/api/trpc/auth.requestPasswordReset", authLimiter);
-  app.use("/api/trpc/auth.resetPassword", authLimiter);
-  app.use("/api/trpc/auth.resendVerification", authLimiter);
-
-  // General rate limit on all tRPC
-  app.use("/api/trpc", generalLimiter);
+  // Rate limiting: credential and email-sending procedures get 10 requests per
+  // minute per IP — including when batched with other calls — and every other
+  // tRPC call 200/min. The procedure list lives in rateLimits.ts.
+  registerTrpcRateLimits(app);
 
   // tRPC API
   app.use(

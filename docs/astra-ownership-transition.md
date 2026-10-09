@@ -43,7 +43,7 @@ The new operations tool is documented in [Stripe operations](operations/stripe-w
 | AI coach vetting | server/aiVettingService.ts, server/_core/llm.ts | Forge AI endpoint and credential | Add a direct AI-provider adapter and rerun vetting contracts before switching |
 | Owner notifications | server/_core/notification.ts and router/webhook call sites | Manus owner-notification API | Replace with owned transactional email or an internal notification queue |
 | Transactional email | server/emailService.ts, server/email.ts | Direct Resend account and sender domain | Reuse verified sender and an appropriately scoped owner-managed key |
-| Background work | server/reminderScheduler.ts; server/nurtureEmailScheduler.ts | In-process jobs; external nurture scheduling remains to be confirmed | Assign one job runner; keep preview workers off |
+| Background work | server/reminderScheduler.ts; server/nurtureEmailScheduler.ts | In-process jobs; external nurture scheduling remains to be confirmed | Assign exactly one job runner (BACKGROUND_JOBS_ENABLED=true); keep replicas and preview workers off |
 | Build/editor integration | vite.config.ts | Manus runtime plugin and debug collector | MANUS_DEV_TOOLS_ENABLED=false omits their instrumentation in standalone builds |
 | Images and branding | client/index.html, Footer/CoachBrowse, email templates | Hardcoded Manus CDN/CloudFront assets | Copy owned assets and update references after verifying ownership and cache behavior |
 | DNS | Prior handoff identifies Cloudflare | Current record ownership/routes not freshly verified | Inspect records before any cutover; preserve email records |
@@ -55,9 +55,9 @@ The repository contains a historical BUILD_PLAN.md with outdated behavior and pa
 ## Changes prepared in this branch
 
 1. A direct Stripe inspection/replay tool with account, mode, destination and event checks. It needs an explicitly supplied sandbox API credential, not a signing secret. Its unit tests use fake clients; handler tests exercise official Stripe signatures against the actual no-write subscription paths.
-2. BACKGROUND_JOBS_ENABLED=false prevents loading or starting the reminder/recovery scheduler. Existing deployments retain their current default when the variable is absent. AUTO_RELEASE_PAYOUTS_ENABLED alone is insufficient: recovery, email reminders, auto-decline and auto-complete still ran on every startup.
+2. BACKGROUND_JOBS_ENABLED=false prevents loading or starting the reminder/recovery scheduler. Existing deployments retain their current default when the variable is absent. AUTO_RELEASE_PAYOUTS_ENABLED alone is insufficient: recovery, email reminders, auto-decline and auto-complete still ran on every startup. **Exactly one production process must run with BACKGROUND_JOBS_ENABLED=true** — the Docker image and .env.example default it to false — or lesson reminders, auto-decline/auto-complete settlement, stuck-payment and orphan recovery, content-deadline notices and payout auto-release silently stop; two such processes run every job twice. The flag accepts true/false, 1/0, yes/no and on/off in any case; any other value stops startup with a clear error before the server listens.
 3. MANUS_DEV_TOOLS_ENABLED=false produces the same application without Manus editor/debug instrumentation.
-4. A Dockerfile for the current Node 24 runtime and pinned pnpm 10.4.1, plus a secret-free environment template and Docker exclusions. The image defaults background jobs off and does not run migrations.
+4. A Dockerfile for the current Node 24 runtime and pinned pnpm 10.4.1, plus a secret-free environment template and Docker exclusions. The image defaults background jobs off and does not run migrations; the one production job runner must override it with BACKGROUND_JOBS_ENABLED=true (see item 2).
 
 These are reviewed source changes, not a completed move off Manus. The Docker recipe still includes the current dependency set because the server bundle imports development packages. Optimizing that bundle is separate from making the first standalone server work.
 
@@ -79,7 +79,7 @@ Use Node 24 and the pnpm version in package.json. Do not use an arbitrary global
     npx --yes pnpm@10.4.1 install --frozen-lockfile
     MANUS_DEV_TOOLS_ENABLED=false npx --yes pnpm@10.4.1 run build
 
-Supply runtime variables through an owned host's secret manager using .env.example as a names-only guide. VITE values are public and baked in at build time. The actual server entry point is server/_core/index.ts, built to dist/index.js; server/index.ts is a separate static-server stub and is not the application entry point.
+Supply runtime variables through an owned host's secret manager using .env.example as a names-only guide. VITE values are public and baked in at build time. Set BACKGROUND_JOBS_ENABLED=true on exactly one production process; every other replica and preview keeps the image default of false. The actual server entry point is server/_core/index.ts, built to dist/index.js; server/index.ts is a separate static-server stub and is not the application entry point.
 
     docker build -t boogme:review \
       --build-arg VITE_APP_ID=boogme \

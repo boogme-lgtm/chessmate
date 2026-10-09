@@ -65,9 +65,19 @@ export async function handleStripeWebhook(req: Request, res: Response) {
       return res.json({ received: true });
     }
 
-    // This integration collects lesson payments on the platform account.
+    // This integration collects lesson payments on the platform account. A
+    // connected-account event signed with the platform secret means the
+    // platform destination is also subscribed to connected accounts. Never
+    // process it, but acknowledge it: a non-2xx makes Stripe retry and
+    // eventually DISABLE the platform endpoint, stopping every payment webhook.
     if (event.account) {
-      return res.status(400).json({ error: 'Connected-account event requires Connect destination signature' });
+      console.error(
+        `[Webhook] MISCONFIGURED DESTINATION: connected-account event ${event.type} (${event.id}) for ${event.account} ` +
+        `arrived on the platform destination. Acknowledged WITHOUT processing. Remove "connected accounts" ` +
+        `from the platform destination; Connect events belong on the Connect destination.`
+      );
+      alertOwnerOfMisroutedConnectEvent(event);
+      return res.json({ received: true, ignored: 'connected_account_event_on_platform_destination' });
     }
 
     // Route to specific handlers based on event type
@@ -93,6 +103,28 @@ export async function handleStripeWebhook(req: Request, res: Response) {
     console.error('[Webhook] Error processing webhook:', error);
     res.status(400).json({ error: 'Webhook processing failed' });
   }
+}
+
+// A misconfigured destination delivers EVERY connected-account event, so the
+// owner is alerted at most once per interval per process, not once per event.
+const MISROUTED_EVENT_ALERT_INTERVAL_MS = 60 * 60 * 1000;
+let lastMisroutedEventAlertAt = Number.NEGATIVE_INFINITY;
+
+/** Non-blocking owner alert; the webhook response never waits on or fails with it. */
+function alertOwnerOfMisroutedConnectEvent(event: Stripe.Event): void {
+  const now = Date.now();
+  if (now - lastMisroutedEventAlertAt < MISROUTED_EVENT_ALERT_INTERVAL_MS) return;
+  lastMisroutedEventAlertAt = now;
+  Promise.resolve()
+    .then(() => notifyOwner({
+      title: "Stripe webhook destination misconfigured",
+      content:
+        `The platform webhook destination received connected-account event ${event.type} (${event.id}) for ${event.account}. ` +
+        `It was acknowledged with HTTP 200 and NOT processed, so Stripe does not disable the endpoint. ` +
+        `Remove "connected accounts" from the platform destination in the Stripe dashboard; Connect events belong on the Connect destination. ` +
+        `Further occurrences are logged and alerted at most once per hour.`,
+    }))
+    .catch(err => console.error('[Webhook] Could not alert the owner about the misconfigured destination:', err));
 }
 
 /**

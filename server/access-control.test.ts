@@ -261,6 +261,24 @@ describe("organized class correspondence", () => {
     expect(db.getMessagesForLesson).toHaveBeenCalledWith(10);
   });
 
+  it.each([[student, "student"], [coach, "coach"]] as const)(
+    "totals unread for the signed-in user $id in the requested role only, without read writes",
+    async (user, role) => {
+      vi.mocked(db.getUnreadMessageTotal).mockResolvedValue(130);
+      await expect(appRouter.createCaller(context(user)).messages.getUnreadTotal({ role })).resolves.toBe(130);
+      expect(db.getUnreadMessageTotal).toHaveBeenCalledWith(user.id, role);
+      expect(db.markLessonMessagesRead).not.toHaveBeenCalled();
+    },
+  );
+
+  it("rejects anonymous or malformed unread-total requests", async () => {
+    await expect(appRouter.createCaller(context(null)).messages.getUnreadTotal({ role: "student" }))
+      .rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    await expect(appRouter.createCaller(context(student)).messages.getUnreadTotal({ role: "admin" as any }))
+      .rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(db.getUnreadMessageTotal).not.toHaveBeenCalled();
+  });
+
   it("rejects anonymous metadata access and oversized summary batches", async () => {
     await expect(appRouter.createCaller(context(null)).messages.getSummaries({ lessonIds: [10] }))
       .rejects.toMatchObject({ code: "UNAUTHORIZED" });

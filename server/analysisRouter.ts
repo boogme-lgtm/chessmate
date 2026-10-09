@@ -12,6 +12,7 @@ import { router, protectedProcedure } from "./_core/trpc";
 import { TRPCError } from "@trpc/server";
 import * as db from "./db";
 import { sendEmail } from "./emailService";
+import { escapeHtml } from "./emailSafety";
 
 export const analysisRouter = router({
   // Create a new analysis session — coaches AND students can create.
@@ -113,11 +114,11 @@ export const analysisRouter = router({
         try {
           const recipient = await db.getUserById(recipientId);
           if (!recipient?.email) return;
-          const senderLabel = ctx.user.name ?? (callerIsCoach ? "Your coach" : "Your student");
+          const senderLabel = ctx.user.name?.trim() || (callerIsCoach ? "Your coach" : "Your student");
           await sendEmail({
             to: recipient.email,
             subject: `${senderLabel} sent you an annotated game`,
-            html: `<p>${senderLabel} sent you an annotated game: <strong>${analysis!.title}</strong>.</p><p>Open your lesson chat to review it on the analysis board.</p>`,
+            html: `<p>${escapeHtml(senderLabel)} sent you an annotated game: <strong>${escapeHtml(analysis!.title)}</strong>.</p><p>Open your lesson chat to review it on the analysis board.</p>`,
           });
         } catch (err) {
           console.error(`[analysis.sendToCoach] recipient email failed for analysis ${input.id}:`, err);

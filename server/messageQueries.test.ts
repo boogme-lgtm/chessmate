@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MySqlDialect } from "drizzle-orm/mysql-core";
-import { getMessageClasses, getMessageSummaries, updateLessonTitle } from "./db";
+import { getMessageClasses, getMessageSummaries, getUnreadMessageTotal, updateLessonTitle } from "./db";
 const fixture = vi.hoisted(() => ({ execute: vi.fn(), where: vi.fn(), set: vi.fn(), update: vi.fn() }));
 vi.mock("drizzle-orm/mysql2", () => ({ drizzle: () => fixture }));
 const dialect = new MySqlDialect();
@@ -43,6 +43,29 @@ describe("messaging database boundaries", () => {
     expect(query.sql).toContain("l.scheduledAt < ? OR (l.scheduledAt = ? AND l.id < ?)");
     expect(query.sql).toContain("ORDER BY l.scheduledAt DESC, l.id DESC LIMIT 101");
     expect(query.params).toEqual([42,42,scheduledAt,scheduledAt,300]);
+  });
+  it.each(["student", "coach"] as const)("totals %s unread in one read-only aggregate over every class", async role => {
+    fixture.execute.mockResolvedValue([[{ unread: "7" }]]);
+    expect(await getUnreadMessageTotal(42, role)).toBe(7);
+    expect(fixture.execute).toHaveBeenCalledTimes(1);
+    const query = dialect.sqlToQuery(fixture.execute.mock.calls[0][0]);
+    // Same lessons and unread rule as the Messages panel (getMessageClasses), no paging limit.
+    expect(query.sql).toContain(`WHERE l.${role}Id = ? AND m.senderId <> ? AND m.readAt IS NULL`);
+    expect(query.sql).toContain("COUNT(*)");
+    expect(query.sql).not.toMatch(/LIMIT|IN \(/);
+    expect(query.sql).not.toMatch(/UPDATE|INSERT|DELETE/);
+    expect(query.params).toEqual([42, 42]);
+  });
+  it("matches the panel's per-class unread rule", async () => {
+    await getMessageClasses(42, "student");
+    const panel = dialect.sqlToQuery(fixture.execute.mock.calls[0][0]).sql;
+    expect(panel).toContain("m.senderId <> ? AND m.readAt IS NULL");
+  });
+  it("reports zero when there is nothing unread", async () => {
+    fixture.execute.mockResolvedValue([[{ unread: 0 }]]);
+    expect(await getUnreadMessageTotal(42, "coach")).toBe(0);
+    fixture.execute.mockResolvedValue([[]]);
+    expect(await getUnreadMessageTotal(42, "coach")).toBe(0);
   });
   it("scopes title writes to both lesson and coach", async () => {
     await updateLessonTitle(10, 42, "Endgames");

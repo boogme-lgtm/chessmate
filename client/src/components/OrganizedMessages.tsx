@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Link } from "wouter";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
@@ -35,7 +36,7 @@ export default function OrganizedMessages({ viewerRole = "student" }: {
   return <Card className="bg-ink-raised border-border/20 rounded-sm">
     <CardContent className="p-4 sm:p-6 min-w-0">
       <h3 className="text-base font-semibold text-bone mb-4">Messages</h3>
-      {classes.isLoading ? <p role="status">Loading coaches and classes…</p> : classes.isError ? <div role="alert">Could not load classes. <Button size="sm" onClick={() => classes.refetch()}>Retry</Button></div> : !groups.length ? <p className="text-sm text-bone-muted">Classes and correspondence appear here when a lesson is booked.</p> : <>
+      {classes.isLoading ? <p role="status">Loading coaches and classes…</p> : classes.isError ? <div role="alert">Could not load classes. <Button size="sm" onClick={() => classes.refetch()}>Retry</Button></div> : !groups.length ? <EmptyMessages viewerRole={viewerRole} /> : <>
         {selected ? <>
           <Button ref={backRef} variant="outline" size="sm" onClick={() => setSelectedId(null)} className="mb-3">Back to {viewerRole === "student" ? "coaches" : "students"}</Button>
           <h4 className="font-medium text-bone break-words mb-3">{selected.name}</h4>
@@ -54,6 +55,17 @@ export default function OrganizedMessages({ viewerRole = "student" }: {
         lessonId={openLesson.id} otherPartyName={selected?.name || "Your coach"} viewerRole={viewerRole} classTitle={messageClassTitle(openLesson)} />}
     </CardContent>
   </Card>;
+}
+
+/** Students get a way to their first coach; coaches learn where messages come from. */
+function EmptyMessages({ viewerRole }: { viewerRole: "student" | "coach" }) {
+  if (viewerRole === "coach") {
+    return <p className="text-sm text-bone-muted">No conversations yet. Messages appear here when students book lessons with you.</p>;
+  }
+  return <div>
+    <p className="text-sm text-bone-muted mb-3">No conversations yet. Messages with your coach appear here once you book a lesson.</p>
+    <Link href="/coaches" className="text-xs text-ember hover:text-ember/80 transition-colors">Find a coach →</Link>
+  </div>;
 }
 
 function ClassList({ lessons, unreadCounts, viewerRole, onOpen }: {

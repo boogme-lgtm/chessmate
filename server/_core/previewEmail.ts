@@ -1,4 +1,5 @@
 import { ENV } from "./env";
+import { sanitizeEmailSubject } from "../emailSafety";
 
 type CapturedEmail = { to: string; subject: string; html: string };
 
@@ -14,7 +15,7 @@ export async function capturePreviewEmail(message: CapturedEmail): Promise<strin
       body: JSON.stringify({
         From: { Email: "preview@boogme.invalid", Name: "BooGMe Preview" },
         To: [{ Email: message.to }],
-        Subject: message.subject,
+        Subject: sanitizeEmailSubject(message.subject),
         HTML: message.html,
       }),
     });

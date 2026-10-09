@@ -1,10 +1,7 @@
 import { Resend } from 'resend';
 import { ENV } from './_core/env';
 import { capturePreviewEmail } from './_core/previewEmail';
-
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-}
+import { escapeHtml, sanitizeEmailSubject, truncateText } from './emailSafety';
 
 // Initialize Resend client
 let resend: Resend | undefined;
@@ -25,7 +22,9 @@ export interface EmailOptions {
 /**
  * Send an email using Resend
  */
-export async function sendEmail(options: EmailOptions) {
+export async function sendEmail(rawOptions: EmailOptions) {
+  // Subjects routinely carry names and titles; keep them to one header line.
+  const options = { ...rawOptions, subject: sanitizeEmailSubject(rawOptions.subject) };
   if (ENV.preview) {
     try {
       return { success: true, id: await capturePreviewEmail(options) };
@@ -69,7 +68,19 @@ export async function sendEmail(options: EmailOptions) {
 
 /**
  * Email Templates
+ *
+ * Every template escapes its own plain-text inputs once, at entry, so callers
+ * pass raw names, titles and messages (see emailSafety.ts).
  */
+
+/** Escape every string field of a template's parameters. */
+function escapeTextFields<T extends object>(params: T): T {
+  const escaped: Record<string, unknown> = { ...(params as Record<string, unknown>) };
+  for (const [key, value] of Object.entries(escaped)) {
+    if (typeof value === "string") escaped[key] = escapeHtml(value);
+  }
+  return escaped as T;
+}
 
 export function getWaitlistConfirmationEmail(name: string, userType: 'student' | 'coach', email: string): string {
   const isCoach = userType === 'coach';
@@ -101,7 +112,7 @@ export function getWaitlistConfirmationEmail(name: string, userType: 'student' |
           <tr>
             <td style="padding: 0 40px 40px 40px;">
               <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">
-                Hi ${name},
+                Hi ${escapeHtml(name)},
               </p>
               
               <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">
@@ -205,7 +216,7 @@ export function getNurtureEmail1(name: string, email: string): string {
               </h1>
               
               <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">
-                Hi ${name},
+                Hi ${escapeHtml(name)},
               </p>
               
               <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">
@@ -330,7 +341,7 @@ export function getNurtureEmail2(name: string, email: string): string {
               </h1>
               
               <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">
-                Hi ${name},
+                Hi ${escapeHtml(name)},
               </p>
               
               <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">
@@ -442,7 +453,7 @@ export function getNurtureEmail3(name: string, email: string): string {
               </h1>
               
               <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">
-                Hi ${name},
+                Hi ${escapeHtml(name)},
               </p>
               
               <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">
@@ -569,7 +580,7 @@ export function getNurtureEmail4(name: string, email: string): string {
               </h1>
               
               <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">
-                Hi ${name},
+                Hi ${escapeHtml(name)},
               </p>
               
               <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">
@@ -689,7 +700,7 @@ export function getNurtureEmail5(name: string, email: string): string {
               </h1>
               
               <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">
-                Hi ${name},
+                Hi ${escapeHtml(name)},
               </p>
               
               <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">
@@ -819,6 +830,12 @@ export function getStudentBookingReservedEmail(
   lessonId: number
 ): string {
   const frontendUrl = process.env.VITE_FRONTEND_URL || 'http://localhost:3000';
+  // Plain-text inputs are escaped once here (see emailSafety.ts).
+  studentName = escapeHtml(studentName);
+  coachName = escapeHtml(coachName);
+  lessonDate = escapeHtml(lessonDate);
+  lessonTime = escapeHtml(lessonTime);
+  amount = escapeHtml(amount);
 
   return `
 <!DOCTYPE html>
@@ -929,7 +946,13 @@ export function getStudentBookingConfirmationEmail(
   lessonId: number
 ): string {
   const frontendUrl = process.env.VITE_FRONTEND_URL || 'http://localhost:3000';
-  
+  // Plain-text inputs are escaped once here (see emailSafety.ts).
+  studentName = escapeHtml(studentName);
+  coachName = escapeHtml(coachName);
+  lessonDate = escapeHtml(lessonDate);
+  lessonTime = escapeHtml(lessonTime);
+  amount = escapeHtml(amount);
+
   return `
 <!DOCTYPE html>
 <html>
@@ -1063,7 +1086,13 @@ export function getCoachBookingNotificationEmail(
   lessonId: number
 ): string {
   const frontendUrl = process.env.VITE_FRONTEND_URL || 'http://localhost:3000';
-  
+  // Plain-text inputs are escaped once here (see emailSafety.ts).
+  coachName = escapeHtml(coachName);
+  studentName = escapeHtml(studentName);
+  lessonDate = escapeHtml(lessonDate);
+  lessonTime = escapeHtml(lessonTime);
+  coachPayout = escapeHtml(coachPayout);
+
   return `
 <!DOCTYPE html>
 <html>
@@ -1199,7 +1228,13 @@ export function getStudentLessonReminderEmail(
   cancelToken: string
 ): string {
   const frontendUrl = process.env.VITE_FRONTEND_URL || 'http://localhost:3000';
-  
+  // Plain-text inputs are escaped once here (see emailSafety.ts).
+  studentName = escapeHtml(studentName);
+  coachName = escapeHtml(coachName);
+  lessonDate = escapeHtml(lessonDate);
+  lessonTime = escapeHtml(lessonTime);
+  cancelToken = encodeURIComponent(cancelToken);
+
   return `
 <!DOCTYPE html>
 <html>
@@ -1334,7 +1369,12 @@ export function getCoachLessonReminderEmail(
   lessonId: number
 ): string {
   const frontendUrl = process.env.VITE_FRONTEND_URL || 'http://localhost:3000';
-  
+  // Plain-text inputs are escaped once here (see emailSafety.ts).
+  coachName = escapeHtml(coachName);
+  studentName = escapeHtml(studentName);
+  lessonDate = escapeHtml(lessonDate);
+  lessonTime = escapeHtml(lessonTime);
+
   return `
 <!DOCTYPE html>
 <html>
@@ -1469,7 +1509,7 @@ export function getStudentCancellationEmail(params: {
     refundPercentage,
     cancelledBy,
     cancellationReason,
-  } = params;
+  } = escapeTextFields(params);
 
   const refundLine =
     refundPercentage === 100
@@ -1555,7 +1595,7 @@ export function getCoachCancellationEmail(params: {
     durationMinutes,
     cancelledBy,
     cancellationReason,
-  } = params;
+  } = escapeTextFields(params);
 
   const cancelledByLine =
     cancelledBy === "student"
@@ -1633,7 +1673,7 @@ export function getCoachNewBookingRequestEmail(params: {
     coachPayout,
     confirmByDate,
     confirmByTime,
-  } = params;
+  } = escapeTextFields(params);
   const frontendUrl = process.env.VITE_FRONTEND_URL || 'http://localhost:3000';
 
   return `
@@ -1713,7 +1753,7 @@ export function getStudentCoachConfirmedEmail(params: {
     durationMinutes,
     amount,
     lessonId,
-  } = params;
+  } = escapeTextFields(params);
   const frontendUrl = process.env.VITE_FRONTEND_URL || 'http://localhost:3000';
 
   return `
@@ -1772,7 +1812,14 @@ export function getStudentCoachConfirmedEmail(params: {
 
 // ─── Dispute Emails (S-REF-3) ───────────────────────────────────────────────
 
-function disputeEmailShell(title: string, body: string, ctaUrl: string, ctaLabel: string): string {
+/**
+ * Shared layout. `title`, `ctaUrl` and `ctaLabel` are plain text and escaped
+ * here; `body` is HTML whose user-supplied parts the caller already escaped.
+ */
+function disputeEmailShell(rawTitle: string, body: string, rawCtaUrl: string, rawCtaLabel: string): string {
+  const title = escapeHtml(rawTitle);
+  const ctaUrl = escapeHtml(rawCtaUrl);
+  const ctaLabel = escapeHtml(rawCtaLabel);
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${title}</title></head>
 <body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;background-color:#0a0a0a;color:#fff;">
 <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#0a0a0a;"><tr><td align="center" style="padding:40px 20px;">
@@ -1789,6 +1836,7 @@ function disputeEmailShell(title: string, body: string, ctaUrl: string, ctaLabel
 </td></tr></table></td></tr></table></body></html>`;
 }
 
+/** `label` is a constant; `value` must already be escaped by the template. */
 function detailRow(label: string, value: string): string {
   return `<tr><td style="font-size:15px;color:#a0a0a0;padding:8px 0;">${label}</td><td style="font-size:15px;color:#fff;font-weight:600;padding:8px 0;text-align:right;">${value}</td></tr>`;
 }
@@ -1797,8 +1845,9 @@ export function getStudentDisputeReceivedEmail(params: {
   studentName: string; coachName: string; lessonId: number;
   category: string; description: string | null; frontendUrl: string;
 }): string {
-  const { studentName, coachName, lessonId, category, description, frontendUrl } = params;
-  const desc = description ? (description.length > 200 ? description.slice(0, 200) + "…" : description) : null;
+  const { studentName, coachName, lessonId, category } = escapeTextFields(params);
+  const { description, frontendUrl } = params;
+  const desc = description ? escapeHtml(truncateText(description, 200, "…")) : null;
   const body = `
   <p style="margin:0 0 20px;font-size:16px;line-height:1.6;color:#e0e0e0;">Hi ${studentName},</p>
   <p style="margin:0 0 20px;font-size:16px;line-height:1.6;color:#e0e0e0;">We've received your dispute for your lesson with <strong>${coachName}</strong>.</p>
@@ -1817,8 +1866,9 @@ export function getCoachDisputeFiledEmail(params: {
   coachName: string; studentName: string; lessonId: number;
   category: string; description: string | null; frontendUrl: string;
 }): string {
-  const { coachName, studentName, lessonId, category, description, frontendUrl } = params;
-  const desc = description ? (description.length > 200 ? description.slice(0, 200) + "…" : description) : null;
+  const { coachName, studentName, lessonId, category } = escapeTextFields(params);
+  const { description, frontendUrl } = params;
+  const desc = description ? escapeHtml(truncateText(description, 200, "…")) : null;
   const body = `
   <p style="margin:0 0 20px;font-size:16px;line-height:1.6;color:#e0e0e0;">Hi ${coachName},</p>
   <p style="margin:0 0 20px;font-size:16px;line-height:1.6;color:#e0e0e0;"><strong>${studentName}</strong> has filed a dispute on Lesson #${lessonId}.</p>
@@ -1838,7 +1888,8 @@ export function getStudentDisputeResolvedEmail(params: {
   resolution: "refund_full" | "refund_partial" | "denied";
   refundAmountCents: number | null; adminNote: string | null; frontendUrl: string;
 }): string {
-  const { studentName, coachName, lessonId, disputeId, resolution, refundAmountCents, adminNote, frontendUrl } = params;
+  const { studentName, coachName, lessonId, disputeId, resolution, refundAmountCents, adminNote } = escapeTextFields(params);
+  const { frontendUrl } = params;
   const resLabel = resolution === "denied" ? "No Refund Issued" : resolution === "refund_full" ? "Full Refund Issued" : "Partial Refund Issued";
   const body = `
   <p style="margin:0 0 20px;font-size:16px;line-height:1.6;color:#e0e0e0;">Hi ${studentName},</p>
@@ -1863,7 +1914,8 @@ export function getCoachDisputeResolvedEmail(params: {
   refundAmountCents: number | null; lessonAmountCents: number;
   adminNote: string | null; frontendUrl: string;
 }): string {
-  const { coachName, studentName, lessonId, disputeId, resolution, refundAmountCents, lessonAmountCents, adminNote, frontendUrl } = params;
+  const { coachName, studentName, lessonId, disputeId, resolution, refundAmountCents, lessonAmountCents, adminNote } = escapeTextFields(params);
+  const { frontendUrl } = params;
   const title = resolution === "denied" ? "Dispute Resolved in Your Favor" : "Dispute Resolved — Refund Issued";
   const body = `
   <p style="margin:0 0 20px;font-size:16px;line-height:1.6;color:#e0e0e0;">Hi ${coachName},</p>
@@ -1889,10 +1941,11 @@ export function getNewContentRequestEmail(params: {
   requestTitle: string;
   requestDescription?: string;
 }): string {
-  const { coachName, studentName, requestTitle, requestDescription } = params;
+  const { coachName, studentName, requestTitle } = escapeTextFields(params);
+  const { requestDescription } = params;
   const frontendUrl = process.env.VITE_FRONTEND_URL || 'http://localhost:3000';
   const descBlock = requestDescription
-    ? `<p style="margin:10px 0 0;font-size:14px;line-height:1.6;color:#a0a0a0;">${requestDescription.length > 300 ? requestDescription.slice(0, 300) + '...' : requestDescription}</p>`
+    ? `<p style="margin:10px 0 0;font-size:14px;line-height:1.6;color:#a0a0a0;">${escapeHtml(truncateText(requestDescription, 300))}</p>`
     : '';
   const body = `
   <p style="margin:0 0 20px;font-size:16px;line-height:1.6;color:#e0e0e0;">Hi ${coachName},</p>
@@ -1910,9 +1963,9 @@ export function getNewMessageEmail(params: {
   senderName: string;
   messagePreview: string;
 }): string {
-  const { recipientName, senderName, messagePreview } = params;
+  const { recipientName, senderName } = escapeTextFields(params);
   const frontendUrl = process.env.VITE_FRONTEND_URL || 'http://localhost:3000';
-  const preview = messagePreview.length > 200 ? messagePreview.slice(0, 200) + '...' : messagePreview;
+  const preview = escapeHtml(truncateText(params.messagePreview, 200));
   const body = `
   <p style="margin:0 0 20px;font-size:16px;line-height:1.6;color:#e0e0e0;">Hi ${recipientName},</p>
   <p style="margin:0 0 20px;font-size:16px;line-height:1.6;color:#e0e0e0;"><strong>${senderName}</strong> sent you a message.</p>
@@ -1931,7 +1984,7 @@ export function getCoachDeadlineReminderEmail(params: {
   dueDate: Date;
   hoursRemaining: 24 | 1;
 }): string {
-  const { coachName, studentName, requestTitle, dueDate, hoursRemaining } = params;
+  const { coachName, studentName, requestTitle, dueDate, hoursRemaining } = escapeTextFields(params);
   const frontendUrl = process.env.VITE_FRONTEND_URL || 'http://localhost:3000';
   const formattedDate = dueDate.toLocaleDateString("en-US", {
     weekday: "long", year: "numeric", month: "long", day: "numeric", timeZone: "UTC",
@@ -1956,7 +2009,7 @@ export function getStudentContentOverdueEmail(params: {
   requestTitle: string;
   dueDate: Date;
 }): string {
-  const { studentName, coachName, requestTitle, dueDate } = params;
+  const { studentName, coachName, requestTitle, dueDate } = escapeTextFields(params);
   const frontendUrl = process.env.VITE_FRONTEND_URL || 'http://localhost:3000';
   const formattedDate = dueDate.toLocaleDateString("en-US", {
     weekday: "long", year: "numeric", month: "long", day: "numeric", timeZone: "UTC",
@@ -1984,7 +2037,7 @@ export function getNewSubscriberEmail(params: {
   subscriberName: string;
   monthlyPriceCents: number;
 }): string {
-  const { coachName, subscriberName, monthlyPriceCents } = params;
+  const { coachName, subscriberName, monthlyPriceCents } = escapeTextFields(params);
   const frontendUrl = process.env.VITE_FRONTEND_URL || 'http://localhost:3000';
   const tierLine = monthlyPriceCents > 0
     ? `<p style="margin:10px 0 0;font-size:15px;color:#10b981;font-weight:600;">Subscription tier: $${(monthlyPriceCents / 100).toFixed(2)}/mo</p>`
@@ -2007,7 +2060,8 @@ export function getStudentContentPurchaseReceiptEmail(params: {
   amountPaidCents: number;
   purchaseDate: string;
 }): string {
-  const { amountPaidCents, purchaseDate } = params;
+  const { amountPaidCents } = params;
+  const purchaseDate = escapeHtml(params.purchaseDate);
   const sName = escapeHtml(params.studentName);
   const title = escapeHtml(params.itemTitle);
   const kind = escapeHtml(params.itemKind);
@@ -2033,4 +2087,45 @@ export function getStudentContentPurchaseReceiptEmail(params: {
     You can download your content at any time from your Content Library.
   </p>`;
   return disputeEmailShell('Purchase Receipt', body, `${frontendUrl}/dashboard`, 'Go to Content Library');
+}
+
+// ─── Coach Applications ─────────────────────────────────────────────────────
+
+/** Admin notice for every new application. Every applicant field is untrusted. */
+export function getCoachApplicationAdminEmail(params: {
+  fullName: string;
+  email: string;
+  chessTitle?: string | null;
+  currentRating?: number | null;
+  vettingStatus: string;
+  confidenceScore?: number | null;
+  reviewUrl: string;
+}): string {
+  const { fullName, email, vettingStatus, reviewUrl } = escapeTextFields(params);
+  const chessTitle = escapeHtml(params.chessTitle || "None");
+  const currentRating = escapeHtml(params.currentRating || "N/A");
+  const confidenceScore = escapeHtml(params.confidenceScore);
+  return `
+    <h2>New Coach Application Received</h2>
+    <p><strong>Name:</strong> ${fullName}</p>
+    <p><strong>Email:</strong> ${email}</p>
+    <p><strong>Chess Title:</strong> ${chessTitle}</p>
+    <p><strong>FIDE Rating:</strong> ${currentRating}</p>
+    <p><strong>AI Vetting:</strong> ${vettingStatus} (score: ${confidenceScore})</p>
+    <p><a href="${reviewUrl}">Review in Admin Panel →</a></p>
+  `;
+}
+
+/** Approval notice with the one-time set-password link for the new coach account. */
+export function getCoachApprovedEmail(params: { fullName: string; setPasswordUrl: string }): string {
+  const { fullName, setPasswordUrl } = escapeTextFields(params);
+  return `
+    <h1>Welcome to BooGMe, ${fullName}!</h1>
+    <p>Your application has been approved. You're now a verified BooGMe coach.</p>
+    <p><strong>Next step:</strong> set your password and complete your profile:</p>
+    <p><a href="${setPasswordUrl}" style="background:#e85d04;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;">Set up my coaching profile →</a></p>
+    <p>This link expires in 72 hours. After setting your password you'll complete a short onboarding wizard (Stripe Connect, availability, profile photo) before your profile goes live.</p>
+    <p>Questions? Just reply to this email.</p>
+    <p>— The BooGMe team</p>
+  `;
 }

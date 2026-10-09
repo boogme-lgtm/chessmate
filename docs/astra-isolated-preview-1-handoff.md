@@ -12,7 +12,7 @@ Astra/Claude own implementation and review in GitHub. Manus may synchronize revi
 
 | Boundary | Preview behavior |
 | --- | --- |
-| Environment | `APP_ENV=preview` validates before clients connect. A unique instance ID, app ID and new JWT secret are required. Shared Stripe, Resend, Forge and OAuth settings are rejected. Legacy production behavior remains when preview is not selected. |
+| Environment | `APP_ENV=preview` validates before clients connect. A unique instance ID, app ID and new JWT secret are required. Shared Stripe, Resend, Forge and OAuth settings are rejected. Legacy production behavior remains when preview is not selected. Preview must be spelled exactly `preview` (other spellings such as `Preview` fail closed at boot); production and development spellings are normalized for case, surrounding whitespace and the `PROD` shorthand. |
 | Database | Only `boogme_preview_<instance>` with a non-admin user is accepted. Before any ORM use, the app checks the selected database name, instance marker and recorded baseline SHA-256 against the reviewed schema manifest. Missing/wrong markers or a stale/missing baseline hash stop startup and application access. |
 | Storage | Uses a dedicated S3-compatible `boogme-preview-<instance>` bucket and explicit credentials. The app checks its instance marker before writes/download signing. Paid and fulfillment files use `private/` and five-minute signed URLs; avatars/thumbnails use `public/` and stable URLs. Existing authorization checks still apply. |
 | Email | Both application email senders and owner notices go to a private Mailpit inbox. Inbox failure never falls back to Resend or Manus notifications. Verification/reset links remain in that inbox, not server logs. |

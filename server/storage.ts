@@ -2,7 +2,7 @@
 // Uses the Biz-provided storage proxy (Authorization: Bearer <token>)
 
 import { ENV } from './_core/env';
-import { PreviewStorage } from './_core/previewStorage';
+import { PreviewStorage, type StorageVisibility } from './_core/previewStorage';
 
 const previewStorage = ENV.preview ? new PreviewStorage(ENV.preview) : undefined;
 
@@ -78,7 +78,7 @@ export async function storagePut(
   relKey: string,
   data: Buffer | Uint8Array | string,
   contentType = "application/octet-stream",
-  visibility: "private" | "public" = "private",
+  visibility: StorageVisibility = "private",
 ): Promise<{ key: string; url: string }> {
   if (previewStorage) return previewStorage.put(relKey, data, contentType, visibility);
   const { baseUrl, apiKey } = getStorageConfig();
@@ -101,8 +101,17 @@ export async function storagePut(
   return { key, url };
 }
 
-export async function storageGet(relKey: string): Promise<{ key: string; url: string; }> {
-  if (previewStorage) return previewStorage.get(relKey);
+/**
+ * Download URL for a stored key. Pass the visibility the object was uploaded
+ * with: isolated preview storage keeps public and private objects under
+ * separate prefixes. The managed storage proxy has a single namespace and
+ * ignores it.
+ */
+export async function storageGet(
+  relKey: string,
+  visibility: StorageVisibility = "private",
+): Promise<{ key: string; url: string; }> {
+  if (previewStorage) return previewStorage.get(relKey, visibility);
   const { baseUrl, apiKey } = getStorageConfig();
   const key = normalizeKey(relKey);
   return {

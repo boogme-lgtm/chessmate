@@ -1,5 +1,6 @@
 import { sendEmail, getNurtureEmail1, getNurtureEmail2, getNurtureEmail3, getNurtureEmail4, getNurtureEmail5 } from './emailService';
 import * as db from './db';
+import { normalizeDisplayName } from '@shared/displayName';
 
 /**
  * Send nurture emails to waitlist members based on their signup date
@@ -28,7 +29,7 @@ export async function sendNurtureEmails() {
       
       for (const entry of entries) {
         try {
-          const emailHtml = getEmail(entry.name || entry.email.split('@')[0], entry.email);
+          const emailHtml = getEmail(normalizeDisplayName(entry.name) || entry.email.split('@')[0], entry.email);
           
           const result = await sendEmail({
             to: entry.email,

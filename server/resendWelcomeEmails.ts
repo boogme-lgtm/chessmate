@@ -1,6 +1,7 @@
 import * as db from './db';
 import { sendEmail } from './emailService';
 import { getWaitlistConfirmationEmail } from './emailService';
+import { normalizeDisplayName } from '@shared/displayName';
 
 /**
  * Resend welcome emails to all active subscribers
@@ -20,7 +21,7 @@ export async function resendWelcomeEmails() {
     try {
       const userType = entry.userType === 'both' ? 'coach' : entry.userType;
       const emailHtml = getWaitlistConfirmationEmail(
-        entry.name || entry.email.split('@')[0],
+        normalizeDisplayName(entry.name) || entry.email.split('@')[0],
         userType as 'student' | 'coach',
         entry.email
       );

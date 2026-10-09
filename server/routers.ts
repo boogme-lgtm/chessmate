@@ -33,7 +33,11 @@ import {
   getNewContentRequestEmail,
   getNewMessageEmail,
   getNewSubscriberEmail,
+  getCoachApplicationAdminEmail,
+  getCoachApprovedEmail,
 } from "./emailService";
+import { escapeHtml, escapeHtmlWithLineBreaks } from "./emailSafety";
+import { DISPLAY_NAME_MAX_LENGTH, normalizeDisplayName } from "@shared/displayName";
 import { sendNurtureEmails, sendNurtureEmailsManual } from "./nurtureEmailScheduler";
 import { resendWelcomeEmails } from "./resendWelcomeEmails";
 import { storagePut, storageGet } from "./storage";
@@ -199,15 +203,7 @@ export async function approveCoachApplication(
     await sendEmail({
       to: application.email,
       subject: "You're approved — set up your BooGMe coaching profile",
-      html: `
-    <h1>Welcome to BooGMe, ${application.fullName}!</h1>
-    <p>Your application has been approved. You're now a verified BooGMe coach.</p>
-    <p><strong>Next step:</strong> set your password and complete your profile:</p>
-    <p><a href="${setPasswordUrl}" style="background:#e85d04;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;display:inline-block;">Set up my coaching profile →</a></p>
-    <p>This link expires in 72 hours. After setting your password you'll complete a short onboarding wizard (Stripe Connect, availability, profile photo) before your profile goes live.</p>
-    <p>Questions? Just reply to this email.</p>
-    <p>— The BooGMe team</p>
-      `,
+      html: getCoachApprovedEmail({ fullName: application.fullName, setPasswordUrl }),
     });
   } catch (e) {
     console.error(`[approveCoachApplication] welcome email failed for application ${applicationId}:`, e);
@@ -249,13 +245,15 @@ export const appRouter = router({
 
     updateProfile: protectedProcedure
       .input(z.object({
-        name: z.string().min(1).max(100).optional(),
+        // Trimmed; a blank name means "no change" (it must never erase the
+        // account name), matching coach.updateProfile.
+        name: z.string().trim().max(DISPLAY_NAME_MAX_LENGTH).optional(),
         bio: z.string().max(500).optional(),
         country: z.string().max(64).optional(),
         timezone: z.string().max(64).optional(),
       }))
       .mutation(async ({ ctx, input }) => {
-        await db.updateUserProfile(ctx.user.id, input);
+        await db.updateUserProfile(ctx.user.id, { ...input, name: normalizeDisplayName(input.name) });
         return { success: true };
       }),
 
@@ -462,7 +460,7 @@ export const appRouter = router({
     join: publicProcedure
       .input(z.object({
         email: z.string().email(),
-        name: z.string().optional(),
+        name: z.string().trim().max(DISPLAY_NAME_MAX_LENGTH).optional(),
         userType: z.enum(["student", "coach", "both"]).default("student"),
         referralSource: z.string().optional(),
         assessmentData: z.string().max(20000).optional(),
@@ -481,7 +479,8 @@ export const appRouter = router({
             // Not valid JSON — drop it silently.
           }
         }
-        const result = await db.addToWaitlist({ ...input, assessmentData: cleanedAssessment });
+        const name = normalizeDisplayName(input.name);
+        const result = await db.addToWaitlist({ ...input, name, assessmentData: cleanedAssessment });
         if (!result.success) {
           throw new TRPCError({
             code: "CONFLICT",
@@ -493,7 +492,7 @@ export const appRouter = router({
         try {
           const userType = input.userType === 'both' ? 'coach' : input.userType;
           const emailHtml = getWaitlistConfirmationEmail(
-            input.name || input.email.split('@')[0],
+            name || input.email.split('@')[0],
             userType,
             input.email
           );
@@ -541,8 +540,8 @@ export const appRouter = router({
   coachApplication: router({
     submit: publicProcedure
       .input(z.object({
-        // Personal Information
-        fullName: z.string().min(2),
+        // Personal Information — the name becomes the provisioned account name.
+        fullName: z.string().trim().min(2).max(DISPLAY_NAME_MAX_LENGTH),
         email: z.string().email(),
         phone: z.string().optional(),
         country: z.string().min(2),
@@ -674,18 +673,19 @@ export const appRouter = router({
 
         // Admin notification — fire-and-forget Resend email for every new
         // application, regardless of vetting outcome (complements notifyOwner).
+        // Every applicant field is untrusted: the template escapes them all.
         sendEmail({
           to: ENV.adminEmail,
           subject: `New Coach Application: ${input.fullName}`,
-          html: `
-    <h2>New Coach Application Received</h2>
-    <p><strong>Name:</strong> ${input.fullName}</p>
-    <p><strong>Email:</strong> ${input.email}</p>
-    <p><strong>Chess Title:</strong> ${input.chessTitle || "None"}</p>
-    <p><strong>FIDE Rating:</strong> ${input.currentRating || "N/A"}</p>
-    <p><strong>AI Vetting:</strong> ${finalStatus} (score: ${vettingResult.confidenceScore})</p>
-    <p><a href="${ENV.frontendUrl}/admin/applications">Review in Admin Panel →</a></p>
-          `,
+          html: getCoachApplicationAdminEmail({
+            fullName: input.fullName,
+            email: input.email,
+            chessTitle: input.chessTitle,
+            currentRating: input.currentRating,
+            vettingStatus: finalStatus,
+            confidenceScore: vettingResult.confidenceScore,
+            reviewUrl: `${ENV.frontendUrl}/admin/applications`,
+          }),
         }).catch((err) => console.error("[coach.apply] admin notification email failed:", err));
 
         // Auto-approved → provision the coach account/profile + send the
@@ -1029,8 +1029,11 @@ export const appRouter = router({
     // Update coach profile (used by onboarding wizard)
     updateProfile: protectedProcedure
       .input(z.object({
-        // User-level fields
-        name: z.string().min(2).max(100).optional(),
+        // User-level fields. A blank name means "no change"; a real one is
+        // trimmed and needs at least two characters.
+        name: z.string().trim().max(DISPLAY_NAME_MAX_LENGTH)
+          .refine(name => name.length === 0 || name.length >= 2, "Name must be at least 2 characters")
+          .optional(),
         bio: z.string().max(2000).optional(),
         avatarUrl: z.string().url().optional(),
         country: z.string().optional(),
@@ -1068,7 +1071,7 @@ export const appRouter = router({
         // Update user-level fields — check !== undefined (not falsy) so empty strings
         // can clear values. EXCEPTION: a name must never be blanked — an empty-string
         // name (e.g. an unpopulated form field) would erase the account name.
-        const safeName = name !== undefined && name.trim().length === 0 ? undefined : name;
+        const safeName = normalizeDisplayName(name);
         if (safeName !== undefined || bio !== undefined || avatarUrl !== undefined || country !== undefined || timezone !== undefined) {
           await db.updateUserProfile(ctx.user.id, { name: safeName, bio, avatarUrl, country, timezone });
         }
@@ -1121,7 +1124,7 @@ export const appRouter = router({
         // Fire-and-forget welcome + owner emails when a coach goes live
         if (input.onboardingCompleted || input.profileActive) {
           const profile = await db.getCoachProfileByUserId(ctx.user.id);
-          const coachName = name || ctx.user.name || "Coach";
+          const coachName = safeName || ctx.user.name || "Coach";
           Promise.allSettled([
             (async () => {
               try {
@@ -2298,6 +2301,15 @@ export const appRouter = router({
         await db.markLessonMessagesRead(input.lessonId, ctx.user.id);
         return { success: true };
       }),
+
+    /**
+     * Total unread messages for the current user in one role, across ALL of
+     * their lessons. The single source of truth for the dashboard badge; it
+     * matches the Messages panel however many classes the panel has loaded.
+     */
+    getUnreadTotal: protectedProcedure
+      .input(z.object({ role: z.enum(["student", "coach"]) }))
+      .query(({ ctx, input }) => db.getUnreadMessageTotal(ctx.user.id, input.role)),
 
     /**
      * Unread counts per lesson for the current user, keyed by lessonId.
@@ -3948,6 +3960,9 @@ export const appRouter = router({
           let successCount = 0;
           let failCount = 0;
           
+          // The subject and message are plain text; recipients' names are user input.
+          const subjectHtml = escapeHtml(input.subject);
+          const messageHtml = escapeHtmlWithLineBreaks(input.message);
           for (const entry of activeSubscribers) {
             try {
               const emailHtml = `
@@ -3956,7 +3971,7 @@ export const appRouter = router({
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${input.subject}</title>
+  <title>${subjectHtml}</title>
 </head>
 <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #0a0a0a;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #0a0a0a;">
@@ -3968,7 +3983,7 @@ export const appRouter = router({
             <td style="padding: 40px 40px 20px 40px; text-align: center;">
               <img src="https://files.manuscdn.com/user_upload_by_module/session_file/310519663188415081/xRYfqyUGHSJUlDcu.png" alt="BooGMe" style="height: 48px; width: auto; margin-bottom: 20px;" />
               <h1 style="margin: 0; font-size: 32px; font-weight: 300; color: #ffffff; letter-spacing: -0.5px;">
-                ${input.subject}
+                ${subjectHtml}
               </h1>
             </td>
           </tr>
@@ -3977,11 +3992,11 @@ export const appRouter = router({
           <tr>
             <td style="padding: 0 40px 40px 40px;">
               <p style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">
-                Hi ${entry.name || entry.email.split('@')[0]},
+                Hi ${escapeHtml(normalizeDisplayName(entry.name) || entry.email.split('@')[0])},
               </p>
               
               <div style="margin: 0 0 20px 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">
-                ${input.message.replace(/\n/g, '<br>')}
+                ${messageHtml}
               </div>
               
               <p style="margin: 20px 0 0 0; font-size: 16px; line-height: 1.6; color: #e0e0e0;">

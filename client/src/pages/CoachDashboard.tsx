@@ -260,14 +260,6 @@ export function CoachDashboardContent({ user }: { user: any }) {
     return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
   });
 
-  // ── Total unread ──────────────────────────────────────────────────────────
-  const totalUnread = unreadCounts
-    ? Object.values(unreadCounts as Record<number, number>).reduce(
-        (a, b) => a + b,
-        0,
-      )
-    : 0;
-
   // ── Messages preview — up to 5 active lesson threads ──────────────────────
   const lessonsWithMessages = (lessons || [])
     .filter(
@@ -505,7 +497,6 @@ export function CoachDashboardContent({ user }: { user: any }) {
         <InboxModule
           lessons={lessonsWithMessages}
           unreadCounts={unreadCounts}
-          totalUnread={totalUnread}
         />
       </section>
 
@@ -894,7 +885,8 @@ function EarningsModule({
 // MODULE 3: INBOX
 // ─────────────────────────────────────────────────────────────────────────────
 
-function InboxModule({ lessons, unreadCounts }: { lessons: any[]; unreadCounts: any; totalUnread: number }) {
+// The inbox's unread total is the sidebar badge (DashShell → messages.getUnreadTotal).
+function InboxModule({ lessons, unreadCounts }: { lessons: any[]; unreadCounts: any }) {
   return <OrganizedMessages viewerRole="coach" />;
 }
 

@@ -86,6 +86,7 @@ export default function MessageThread({
       setContentType("text");
       utils.messages.getForLesson.invalidate({ lessonId });
       utils.messages.getUnreadCounts.invalidate();
+      utils.messages.getUnreadTotal.invalidate();
       utils.messages.getSummaries.invalidate();
       utils.messages.getClasses.invalidate();
     },
@@ -94,7 +95,9 @@ export default function MessageThread({
 
   useEffect(() => {
     if (open && thread.data) {
+      // Opening the thread marked it read: refresh every unread view together.
       utils.messages.getUnreadCounts.invalidate();
+      utils.messages.getUnreadTotal.invalidate();
       utils.messages.getClasses.invalidate();
     }
   }, [open, thread.data, utils]);

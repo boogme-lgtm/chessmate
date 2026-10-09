@@ -4,7 +4,9 @@ import { eq } from "drizzle-orm";
 import { getDb } from "./db";
 import { users } from "../drizzle/schema";
 import { sendEmail } from "./email";
+import { escapeHtml } from "./emailSafety";
 import { ENV } from "./_core/env";
+import { normalizeDisplayName } from "@shared/displayName";
 
 const SALT_ROUNDS = 10;
 const TOKEN_EXPIRY_HOURS = 24;
@@ -50,6 +52,13 @@ export async function registerUser(params: {
   password: string;
   name: string;
 }): Promise<{ success: boolean; userId?: number; error?: string }> {
+  // A blank name would leave the account nameless; the router validates this
+  // too, but the account write is where the rule must hold.
+  const name = normalizeDisplayName(params.name);
+  if (!name) {
+    return { success: false, error: "Name is required" };
+  }
+
   const db = await getDb();
   if (!db) {
     return { success: false, error: "Database not available" };
@@ -77,7 +86,7 @@ export async function registerUser(params: {
   const [newUser] = await db.insert(users).values({
     email: params.email,
     password: hashedPassword,
-    name: params.name,
+    name,
     loginMethod: "email",
     emailVerified: false,
     emailVerificationToken: verificationToken,
@@ -93,7 +102,7 @@ export async function registerUser(params: {
     subject: "Verify your BooGMe account",
     html: `
       <h1>Welcome to BooGMe!</h1>
-      <p>Hi ${params.name},</p>
+      <p>Hi ${escapeHtml(name)},</p>
       <p>Thank you for registering. Please verify your email address by clicking the link below:</p>
       <p><a href="${verificationUrl}">Verify Email</a></p>
       <p>This link will expire in 24 hours.</p>
@@ -142,7 +151,7 @@ export async function resendVerificationEmail(
     subject: "Verify your BooGMe account",
     html: `
       <h1>Verify your email</h1>
-      <p>Hi ${user.name ?? "there"},</p>
+      <p>Hi ${escapeHtml(user.name || "there")},</p>
       <p>Here's a fresh link to verify your BooGMe account:</p>
       <p><a href="${verificationUrl}">Verify Email</a></p>
       <p>This link will expire in 24 hours.</p>
@@ -207,7 +216,7 @@ export async function verifyEmail(token: string): Promise<{
     subject: "Welcome to BooGMe - Your account is verified!",
     html: `
       <h1>Welcome to BooGMe!</h1>
-      <p>Hi ${user.name},</p>
+      <p>Hi ${escapeHtml(user.name || "there")},</p>
       <p>Your email has been successfully verified. You can now start booking lessons with elite chess coaches!</p>
       <p><a href="${ENV.frontendUrl}/coaches">Browse Coaches</a></p>
       <p>Happy learning!</p>
@@ -328,7 +337,7 @@ export async function requestPasswordReset(email: string): Promise<{
     subject: "Reset your BooGMe password",
     html: `
       <h1>Password Reset Request</h1>
-      <p>Hi ${user.name},</p>
+      <p>Hi ${escapeHtml(user.name || "there")},</p>
       <p>You requested to reset your password. Click the link below to create a new password:</p>
       <p><a href="${resetUrl}">Reset Password</a></p>
       <p>This link will expire in 24 hours.</p>

@@ -49,6 +49,7 @@ import { verifyPreviewDatabase } from './_core/previewDatabase';
 import { computeCancellationRefund } from "@shared/cancellationPolicy";
 import { COACH_PENDING_STATUSES, buildCoachEarningsSummary } from "@shared/coachEarnings";
 import { ratingChangesForProfile, STORED_PROFILE_INPUTS } from "@shared/assessmentProfileUpdate";
+import { normalizeDisplayName } from "@shared/displayName";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 let previewDatabaseReady: Promise<void> | undefined;
@@ -96,11 +97,12 @@ export async function upsertUser(user: InsertUser): Promise<void> {
     };
     const updateSet: Record<string, unknown> = {};
 
-    // Handle nullable text fields
-    if (user.name !== undefined) {
-      const normalized = user.name ?? null;
-      values.name = normalized;
-      updateSet.name = normalized;
+    // A provider that returns no (or a blank) name must not erase the name the
+    // account already has; only a real name is written.
+    const name = normalizeDisplayName(user.name);
+    if (name !== undefined) {
+      values.name = name;
+      updateSet.name = name;
     }
     
     // Email is required, already set in values
@@ -290,7 +292,7 @@ export async function provisionCoachFromApplication(
     isNewUser = true;
     const [inserted] = await db.insert(users).values({
       email: application.email,
-      name: application.fullName,
+      name: normalizeDisplayName(application.fullName) ?? null,
       password: creds.hashedPassword,
       loginMethod: "email",
       emailVerified: true, // vetted at approval — no verification link needed
@@ -364,11 +366,18 @@ export async function updateCoachProfile(userId: number, data: Partial<InsertCoa
 }
 
 export async function updateUserProfile(userId: number, data: { name?: string; bio?: string; avatarUrl?: string; country?: string; timezone?: string }) {
+  // Undefined means "leave unchanged", and a blank name is never written: it
+  // would erase the account name. Nothing left to change is a no-op.
+  const changes = Object.fromEntries(
+    Object.entries({ ...data, name: normalizeDisplayName(data.name) }).filter(([, value]) => value !== undefined),
+  );
+  if (Object.keys(changes).length === 0) return;
+
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
   await db.update(users)
-    .set({ ...data })
+    .set(changes)
     .where(eq(users.id, userId));
 }
 
@@ -1814,6 +1823,25 @@ export async function getUnreadMessageCountsForUser(
     counts.set(Number(row.lessonId), Number(row.unread));
   }
   return counts;
+}
+
+/**
+ * Total unread messages across every lesson the user takes part in under one
+ * role — the same lessons and unread rule as getMessageClasses, summed in one
+ * aggregate, so the dashboard badge always agrees with the Messages panel no
+ * matter how many classes the panel has paged through. Read-only.
+ */
+export async function getUnreadMessageTotal(userId: number, role: "student" | "coach"): Promise<number> {
+  const database = await getDb();
+  if (!database) return 0;
+  const ownership = role === "student" ? sql`l.studentId = ${userId}` : sql`l.coachId = ${userId}`;
+  const result: any = await database.execute(sql`
+    SELECT COUNT(*) AS unread
+    FROM messages m
+    JOIN lessons l ON l.id = m.lessonId
+    WHERE ${ownership} AND m.senderId <> ${userId} AND m.readAt IS NULL
+  `);
+  return Number(result[0]?.[0]?.unread ?? 0);
 }
 
 // ============ USER SETTINGS OPERATIONS ============

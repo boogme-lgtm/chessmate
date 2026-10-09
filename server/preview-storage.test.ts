@@ -46,6 +46,49 @@ describe("dedicated preview object storage", () => {
   it.each(["../file", "private/../public/file", "a//b", "a\\b", "a/./b", ""])("rejects invalid key %s", async key => {
     const { send, storage } = mockStorage();
     await expect(storage.put(key, "data", "text/plain", "private")).rejects.toThrow("Invalid preview storage key");
+    await expect(storage.get(key, "public")).rejects.toThrow("Invalid preview storage key");
     expect(send).not.toHaveBeenCalled();
+  });
+
+  // Sprint 3: put() stored public objects under public/ but get() always
+  // signed private/, so reading back a public key returned a dead URL.
+  it("reads a public object back from the prefix it was written under", async () => {
+    const { send, storage } = mockStorage();
+    const written = await storage.put("coach-photos/photo one.jpg", "image", "image/jpeg", "public");
+    const read = await storage.get(written.key, "public");
+    expect(read).toEqual(written);
+    expect(new URL(read.url).pathname).toBe("/boogme-preview-qa1/public/coach-photos/photo%20one.jpg");
+    // Only the identity marker and the upload reached storage; no signing for public reads.
+    expect(send).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps private reads signed, short-lived and under private/ by default", async () => {
+    const { storage } = mockStorage();
+    for (const read of [await storage.get("coach-content/12/file.pgn"), await storage.get("coach-content/12/file.pgn", "private")]) {
+      const url = new URL(read.url);
+      expect(url.pathname).toBe("/boogme-preview-qa1/private/coach-content/12/file.pgn");
+      expect(url.searchParams.get("X-Amz-Expires")).toBe("300");
+      expect(url.searchParams.get("X-Amz-Signature")).toBeTruthy();
+    }
+  });
+
+  it("never hands out a public URL for an unverified bucket", async () => {
+    const { storage } = mockStorage("different");
+    await expect(storage.get("coach-photos/x.jpg", "public")).rejects.toThrow("identity check failed");
+  });
+});
+
+describe("storage helpers in preview", () => {
+  afterEach(() => { vi.doUnmock("./_core/env"); vi.resetModules(); });
+
+  it("round-trip each visibility through storagePut and storageGet", async () => {
+    vi.resetModules();
+    vi.doMock("./_core/env", () => ({ ENV: { preview: config } }));
+    mockStorage();
+    const { storageGet, storagePut } = await import("./storage");
+    const avatar = await storagePut("coach-photos/7.jpg", "image", "image/jpeg", "public");
+    expect((await storageGet(avatar.key, "public")).url).toBe(avatar.url);
+    const content = await storagePut("coach-content/7/lesson.pgn", "1. e4");
+    expect(new URL((await storageGet(content.key)).url).pathname).toBe("/boogme-preview-qa1/private/coach-content/7/lesson.pgn");
   });
 });

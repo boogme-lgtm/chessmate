@@ -45,11 +45,44 @@ describe("environment initialization", () => {
     await expect(import("./_core/env")).rejects.toThrow("Missing required environment variable: VITE_APP_ID");
   });
 
-  it.each(["preveiw", "PRODUCTION", " PROD "])("fails closed before reading required settings for %j", async APP_ENV => {
+  // Sprint 3 (intended change): these spellings used to throw at import time,
+  // crashing a managed production runtime at boot.
+  it.each(["PRODUCTION", " Production ", " PROD ", "production\n"])(
+    "initializes %j exactly as canonical production",
+    async APP_ENV => {
+      vi.stubEnv("APP_ENV", "production");
+      const canonical = (await import("./_core/env")).ENV;
+      vi.resetModules();
+      vi.stubEnv("APP_ENV", APP_ENV);
+      const variant = (await import("./_core/env")).ENV;
+      expect(variant).toEqual(canonical);
+      expect(variant.preview).toBeUndefined();
+      expect(variant.allowOAuthLoopback).toBe(false);
+    },
+  );
+
+  it.each(["DEVELOPMENT", " Development "])("treats %j as explicit development", async APP_ENV => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("APP_ENV", APP_ENV);
+    const env = (await import("./_core/env")).ENV;
+    expect(env.preview).toBeUndefined();
+    expect(env.allowOAuthLoopback).toBe(true);
+  });
+
+  it.each(["preveiw", "staging", ""])("fails closed before reading required settings for %j", async APP_ENV => {
     vi.stubEnv("APP_ENV", APP_ENV);
     vi.stubEnv("VITE_APP_ID", "");
     await expect(import("./_core/env")).rejects.toThrow("APP_ENV must be preview, production or development");
   });
+
+  it.each(["Preview", " preview ", "PREVIEW"])(
+    "fails closed for the non-canonical preview spelling %j even with provider credentials present",
+    async APP_ENV => {
+      for (const [name, value] of Object.entries(previewEnvironment())) vi.stubEnv(name, value);
+      vi.stubEnv("APP_ENV", APP_ENV);
+      await expect(import("./_core/env")).rejects.toThrow('APP_ENV must be exactly "preview"');
+    },
+  );
 
   it("fails closed for incomplete preview before reading required settings", async () => {
     vi.stubEnv("APP_ENV", "preview");

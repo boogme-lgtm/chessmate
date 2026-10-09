@@ -1,3 +1,5 @@
+import { parseBooleanSetting } from "./envFlags";
+
 type Environment = Record<string, string | undefined>;
 
 export type PreviewConfig = Readonly<{
@@ -34,14 +36,34 @@ function origin(env: Environment, name: string): URL {
   return url;
 }
 
+export type AppEnvironment = "preview" | "production" | "development";
+
+/**
+ * The explicitly selected APP_ENV, or undefined when it is unset. Production
+ * and development tolerate cosmetic differences (case, surrounding whitespace,
+ * the PROD shorthand) so a managed runtime's spelling cannot crash a live
+ * deployment at boot; both are the non-isolated default modes, so normalizing
+ * them can never weaken isolation. Preview is the opposite: an opt-in into
+ * isolation whose guards must stay fail-closed. It must be spelled exactly
+ * "preview", because the build (vite.config.ts, optional analytics) compares
+ * the raw value; a normalized "Preview" would be isolated at runtime but not
+ * in the build. Any other value throws before configuration is read.
+ */
+export function explicitAppEnvironment(value: string | undefined): AppEnvironment | undefined {
+  if (value === undefined) return undefined;
+  if (value === "preview") return "preview";
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "production" || normalized === "prod") return "production";
+  if (normalized === "development") return "development";
+  if (normalized === "preview") {
+    throw new Error('APP_ENV must be exactly "preview" (lowercase, no surrounding spaces) to select the isolated preview');
+  }
+  throw new Error("APP_ENV must be preview, production or development");
+}
+
 /** Validate before SDK clients, database connections or background work initialize. */
 export function loadPreviewConfig(env: Environment): PreviewConfig | undefined {
-  // Managed runtimes may use PROD; only this shorthand is case-insensitive.
-  const appEnv = env.APP_ENV?.toLowerCase() === "prod" ? "production" : env.APP_ENV;
-  const mode = appEnv ?? (env.NODE_ENV === "production" ? "production" : "development");
-  if (!["preview", "production", "development"].includes(mode)) {
-    throw new Error("APP_ENV must be preview, production or development");
-  }
+  const mode = explicitAppEnvironment(env.APP_ENV) ?? (env.NODE_ENV === "production" ? "production" : "development");
   if (mode !== "preview") return undefined;
 
   const instanceId = requireSetting(env, "PREVIEW_INSTANCE_ID");
@@ -74,8 +96,10 @@ export function loadPreviewConfig(env: Environment): PreviewConfig | undefined {
   if (jwt.length < 32 || /replace|example|placeholder/i.test(jwt)) {
     throw new Error("Preview requires a newly generated JWT_SECRET of at least 32 characters");
   }
+  // Jobs stay off: absent, or any spelling of false. Every true spelling is
+  // refused, and an unrecognized value fails with the shared flag error.
   for (const flag of ["BACKGROUND_JOBS_ENABLED", "AUTO_RELEASE_PAYOUTS_ENABLED"]) {
-    if (env[flag] !== undefined && env[flag] !== "false") {
+    if (env[flag] !== undefined && parseBooleanSetting(flag, env[flag]) !== false) {
       throw new Error(`${flag} must be false in preview`);
     }
   }

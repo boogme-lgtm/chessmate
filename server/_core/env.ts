@@ -1,5 +1,6 @@
-import { loadPreviewConfig } from "./previewPolicy";
+import { explicitAppEnvironment, loadPreviewConfig } from "./previewPolicy";
 
+// Validates APP_ENV (and preview isolation) before anything else is read.
 const preview = loadPreviewConfig(process.env);
 
 function requireEnv(name: string): string {
@@ -23,7 +24,7 @@ export const ENV = {
   oAuthPortalUrl: optionalEnv("VITE_OAUTH_PORTAL_URL"),
   // Managed production can use NODE_ENV=development; APP_ENV takes precedence.
   allowOAuthLoopback:
-    (process.env.APP_ENV ?? process.env.NODE_ENV) === "development",
+    (explicitAppEnvironment(process.env.APP_ENV) ?? process.env.NODE_ENV) === "development",
   ownerOpenId: optionalEnv("OWNER_OPEN_ID"),
   isProduction: process.env.NODE_ENV === "production",
   forgeApiUrl: optionalEnv("BUILT_IN_FORGE_API_URL"),

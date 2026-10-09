@@ -8,6 +8,7 @@ import * as db from "./db";
 import { getConnectAccountStatus } from "./stripe";
 import { transferToCoach } from "./stripeConnect";
 import { sendEmail } from "./emailService";
+import { notifyOwner } from "./_core/notification";
 import { SAFE_EVENT_TYPES } from "../scripts/stripe-webhook-ops.mjs";
 
 vi.mock("./db");
@@ -193,10 +194,56 @@ describe("event scope and Connect account identity", () => {
     expect(sendEmail).not.toHaveBeenCalled();
   });
 
-  it("does not accept the platform signature for a connected-account event", async () => {
-    const res = await dispatch(connectEvent, platformSecret);
-    expect(res.status).toHaveBeenCalledWith(400);
-    expect(db.getDb).not.toHaveBeenCalled();
+  // Sprint 3 (intended change): this used to return 400, which makes Stripe
+  // retry and eventually DISABLE the platform endpoint — stopping every payment
+  // webhook. It is now acknowledged with 200, logged loudly, alerted to the
+  // owner (throttled) and still never processed.
+  it("acknowledges but never processes a connected-account event on the platform destination", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      // Far enough ahead that no alert from an earlier test is inside the window.
+      const start = Date.now() + 365 * 24 * 60 * 60 * 1000;
+      vi.setSystemTime(start);
+      for (const event of [connectEvent, { ...paymentEvent, account: "acct_coach_unit" }]) {
+        const res = await dispatch(event, platformSecret);
+        expect(res.status).not.toHaveBeenCalled();
+        expect(res.json).toHaveBeenCalledWith({ received: true, ignored: "connected_account_event_on_platform_destination" });
+      }
+      expect(db.getDb).not.toHaveBeenCalled();
+      expect(db.getLessonById).not.toHaveBeenCalled();
+      expect(db.updateUserStripeConnectAccount).not.toHaveBeenCalled();
+      expect(transferToCoach).not.toHaveBeenCalled();
+      expect(sendEmail).not.toHaveBeenCalled();
+      expect(error.mock.calls.filter(([message]) => String(message).includes("MISCONFIGURED DESTINATION"))).toHaveLength(2);
+      // One owner alert per hour, however many events arrive.
+      await vi.waitFor(() => expect(notifyOwner).toHaveBeenCalledTimes(1));
+      expect(vi.mocked(notifyOwner).mock.calls[0][0].title).toBe("Stripe webhook destination misconfigured");
+
+      vi.setSystemTime(start + 60 * 60 * 1000 + 1);
+      await dispatch(connectEvent, platformSecret);
+      await vi.waitFor(() => expect(notifyOwner).toHaveBeenCalledTimes(2));
+    } finally {
+      vi.useRealTimers();
+      error.mockRestore();
+    }
+  });
+
+  it("still acknowledges the event when the owner alert fails", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      vi.setSystemTime(Date.now() + 2 * 365 * 24 * 60 * 60 * 1000);
+      vi.mocked(notifyOwner).mockRejectedValue(new Error("Notification service URL is not configured."));
+      const res = await dispatch(connectEvent, platformSecret);
+      expect(res.status).not.toHaveBeenCalled();
+      expect(res.json).toHaveBeenCalledWith({ received: true, ignored: "connected_account_event_on_platform_destination" });
+      await vi.waitFor(() => expect(error.mock.calls.some(([message]) =>
+        String(message).includes("Could not alert the owner"))).toBe(true));
+    } finally {
+      vi.useRealTimers();
+      error.mockRestore();
+    }
   });
 
   it("ignores platform account updates instead of treating them as coach updates", async () => {
