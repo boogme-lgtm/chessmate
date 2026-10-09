@@ -205,6 +205,12 @@ layers or a running Docker compose stack. Noted here for future sprints.
    `setInterval` started from `_core/index.ts` on boot.
 5. **Session cookies** — `sameSite: "none" + secure: true` over HTTPS; falls
    back to `sameSite: "lax"` when the request is insecure (dev).
+6. **OAuth sign-in binding** — `/api/oauth/start` hops to the configured
+   origin's `/api/oauth/authorize`, which sets a 10-minute `app_oauth_flow`
+   nonce cookie (Lax, httpOnly, callback path) and carries the nonce in
+   `state`. The callback clears it and refuses a mismatch with
+   `/sign-in?oauthError=expired` before any token exchange
+   (`server/_core/oauthFlow.ts`).
 
 ## Known Bugs Being Tracked (from `BUILD_PLAN.md`)
 

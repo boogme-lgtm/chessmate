@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getLoginUrl, getOAuthAvailability } from "./const";
+import { getLoginUrl, getOAuthAvailability, getOAuthSignInErrorMessage } from "./const";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -65,4 +65,23 @@ describe("runtime OAuth availability", () => {
       await expect(getOAuthAvailability()).resolves.toBe(false);
     },
   );
+});
+
+describe("refused OAuth callback message", () => {
+  it("explains an expired or foreign sign-in flow politely and asks for a retry", () => {
+    const message = getOAuthSignInErrorMessage("?oauthError=expired");
+    expect(message).toBe("Your Google sign-in expired or was started in another tab or browser. Please try again.");
+  });
+
+  it.each(["?oauthError=", "?oauthError=unknown", "?oauthError=%3Cscript%3E"])(
+    "falls back to a generic retry without echoing the flag %j",
+    search => {
+      const message = getOAuthSignInErrorMessage(search);
+      expect(message).toBe("We couldn't finish signing you in with Google. Please try again.");
+    },
+  );
+
+  it.each(["", "?redirect=%2Fdashboard", "?error=expired"])("shows nothing without the OAuth flag %j", search => {
+    expect(getOAuthSignInErrorMessage(search)).toBe("");
+  });
 });

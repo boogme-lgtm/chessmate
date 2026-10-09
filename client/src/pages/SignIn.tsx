@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useSearch } from "wouter";
-import { getLoginUrl, getOAuthAvailability } from "@/const";
+import { getLoginUrl, getOAuthAvailability, getOAuthSignInErrorMessage } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { Loader2, Eye, EyeOff } from "lucide-react";
 import Logo from "@/components/Logo";
@@ -14,7 +14,8 @@ export default function SignIn() {
   
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
+  // A refused OAuth callback lands here with a flag; explain it until the next attempt.
+  const [error, setError] = useState(() => getOAuthSignInErrorMessage(searchParams));
   const [showPassword, setShowPassword] = useState(false);
   const [oauthEnabled, setOAuthEnabled] = useState(false);
 

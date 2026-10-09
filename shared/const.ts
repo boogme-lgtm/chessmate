@@ -3,3 +3,8 @@ export const ONE_YEAR_MS = 1000 * 60 * 60 * 24 * 365;
 export const AXIOS_TIMEOUT_MS = 30_000;
 export const UNAUTHED_ERR_MSG = 'Please login (10001)';
 export const NOT_ADMIN_ERR_MSG = 'You do not have required permission (10002)';
+
+// Flag the OAuth callback adds to /sign-in when an attempt must simply be restarted.
+export const OAUTH_SIGN_IN_ERROR_PARAM = "oauthError";
+// The sign-in flow was missing, expired, replayed or started in another tab/browser.
+export const OAUTH_SIGN_IN_EXPIRED = "expired";

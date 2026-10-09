@@ -1,3 +1,8 @@
+import { OAUTH_CALLBACK_PATH, encodeOAuthState } from "./oauthFlow";
+
+/** Same-origin hop that binds a sign-in flow to the browser before it leaves for the broker. */
+export const OAUTH_AUTHORIZE_PATH = "/api/oauth/authorize";
+
 type OAuthStartConfig = {
   preview?: unknown;
   appId: string;
@@ -5,6 +10,15 @@ type OAuthStartConfig = {
   frontendUrl: string;
   allowOAuthLoopback: boolean;
 };
+
+export type OAuthSignInTarget = Readonly<{
+  appId: string;
+  portalOrigin: string;
+  /** The configured origin's binding hop, where the flow cookie is set for the callback. */
+  authorizeUrl: string;
+  redirectUri: string;
+  secureCookies: boolean;
+}>;
 
 function configuredOrigin(value: string, allowLoopback: boolean): string {
   if (!value || value !== value.trim() || /[\u0000-\u0020\u007f\\?#]/.test(value)) {
@@ -22,7 +36,7 @@ function configuredOrigin(value: string, allowLoopback: boolean): string {
 }
 
 /** Resolve only trusted server configuration; request headers and queries are irrelevant. */
-export function getOAuthStartUrl(config: OAuthStartConfig): string | undefined {
+export function getOAuthSignInTarget(config: OAuthStartConfig): OAuthSignInTarget | undefined {
   if (config.preview || !config.oAuthPortalUrl) return undefined;
   if (
     !config.appId || /\s|[\u0000-\u001f\u007f]/.test(config.appId) ||
@@ -32,11 +46,22 @@ export function getOAuthStartUrl(config: OAuthStartConfig): string | undefined {
   }
   const frontendOrigin = configuredOrigin(config.frontendUrl, config.allowOAuthLoopback);
   const portalOrigin = configuredOrigin(config.oAuthPortalUrl, config.allowOAuthLoopback);
-  const redirectUri = `${frontendOrigin}/api/oauth/callback`;
-  const url = new URL("/app-auth", portalOrigin);
-  url.searchParams.set("appId", config.appId);
-  url.searchParams.set("redirectUri", redirectUri);
-  url.searchParams.set("state", Buffer.from(redirectUri, "utf8").toString("base64"));
+  return {
+    appId: config.appId,
+    portalOrigin,
+    authorizeUrl: `${frontendOrigin}${OAUTH_AUTHORIZE_PATH}`,
+    redirectUri: `${frontendOrigin}${OAUTH_CALLBACK_PATH}`,
+    // Validation admits HTTP only for the explicitly allowed loopback development origin.
+    secureCookies: frontendOrigin.startsWith("https:"),
+  };
+}
+
+/** Broker sign-in URL; the same `flowNonce` must be stored in the browser's flow cookie. */
+export function getOAuthStartUrl(target: OAuthSignInTarget, flowNonce: string): string {
+  const url = new URL("/app-auth", target.portalOrigin);
+  url.searchParams.set("appId", target.appId);
+  url.searchParams.set("redirectUri", target.redirectUri);
+  url.searchParams.set("state", encodeOAuthState(target.redirectUri, flowNonce));
   url.searchParams.set("type", "signIn");
   return url.toString();
 }

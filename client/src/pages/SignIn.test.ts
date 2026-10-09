@@ -48,3 +48,21 @@ describe("sign-in before runtime OAuth availability settles", () => {
     expect(html).toContain(`href="/register?redirect=${expected}"`);
   });
 });
+
+describe("sign-in after a refused OAuth callback", () => {
+  it("shows a polite retry message in the existing alert while keeping native sign-in available", () => {
+    route.search = "?oauthError=expired";
+    const html = renderToStaticMarkup(createElement(SignIn));
+    expect(html).toContain('role="alert"');
+    expect(html).toContain("Your Google sign-in expired or was started in another tab or browser. Please try again.");
+    expect(html).not.toContain("Resend verification email");
+    expect(html).toContain('id="email"');
+    expect(html).toContain('type="submit"');
+  });
+
+  it("shows no alert on an ordinary visit", () => {
+    route.search = "?redirect=%2Fdashboard";
+    const html = renderToStaticMarkup(createElement(SignIn));
+    expect(html).not.toContain('role="alert"');
+  });
+});

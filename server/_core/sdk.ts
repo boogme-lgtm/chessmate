@@ -7,6 +7,7 @@ import { SignJWT, jwtVerify } from "jose";
 import type { User } from "../../drizzle/schema";
 import * as db from "../db";
 import { ENV } from "./env";
+import { decodeOAuthState } from "./oauthFlow";
 import type {
   ExchangeTokenRequest,
   ExchangeTokenResponse,
@@ -39,7 +40,11 @@ class OAuthService {
   }
 
   private decodeState(state: string): string {
-    const redirectUri = atob(state);
+    // Flow-bound states carry `?nonce=` after the callback URI (see oauthFlow.ts). The exchange
+    // must send the bare redirectUri the broker saw at /app-auth, byte for byte.
+    const decoded = decodeOAuthState(state);
+    if (!decoded) throw new Error("Invalid OAuth state");
+    const redirectUri = decoded.redirectUri;
     // Validate that the redirect URI is a relative path or same-origin to prevent open redirects
     if (redirectUri.startsWith('/') && !redirectUri.startsWith('//')) {
       return redirectUri;
